@@ -1,0 +1,69 @@
+# Flutter/Dart
+.dart_tool/
+.packages
+.pub-cache/
+.pub/
+build/
+coverage/
+.flutter-plugins
+.flutter-plugins-dependencies
+.metadata
+
+# Android
+.gradle/
+local.properties
+*.apk
+*.ap_
+*.dex
+*.class
+bin/
+gen/
+out/
+android/app/key.properties
+android/app/*.keystore
+android/app/*.jks
+android/app/google-services.json
+
+# iOS/macOS
+.DS_Store
+.atom/
+.history
+.idea/
+*.hmap
+*.ipa
+*.ext.json
+ios/Flutter/Generated.xcconfig
+ios/Flutter/flutter_export_environment.sh
+ios/Flutter/App.framework
+ios/Flutter/App.podspec
+macos/Flutter/ephemeral/
+
+# C/C++
+*.o
+*.obj
+*.so
+*.dylib
+*.dll
+*.exe
+*.out
+*.app
+cmake-build-*/
+.vscode/
+.vs/
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+
+# Windows
+# Flutter/Windows specific
+windows/flutter/ephemeral/
+Visual Studio 2022/
+*.pdb
+*.ilk
+*.exp
+
+# Misc
+.env
+secret.json
+*.log
