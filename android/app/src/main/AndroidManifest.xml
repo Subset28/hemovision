@@ -1,18 +1,42 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="com.tsanationals.hemovision">
-    <!-- Required to fetch data from the internet if you were using wifi (we are not, but good for flutter engine) -->
-    <uses-permission android:name="android.permission.INTERNET"/>
-    <!-- Module B: Audio FFT requires microphone -->
-    <uses-permission android:name="android.permission.RECORD_AUDIO" />
-    <!-- Module A: Camera for Computer Vision -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="com.tsanationals.hemovision">
+
+    <!-- ── Hardware Feature Declarations ──────────────────────────────────── -->
+    <uses-feature android:name="android.hardware.camera"          android:required="true" />
+    <uses-feature android:name="android.hardware.camera.autofocus" android:required="false" />
+    <uses-feature android:name="android.hardware.camera.front"   android:required="false" />
+    <uses-feature android:name="android.hardware.microphone"     android:required="true" />
+    <uses-feature android:name="android.hardware.vibrator"       android:required="false" />
+
+    <!-- ── Runtime Permissions ────────────────────────────────────────────── -->
+
+    <!-- MODULE A: Camera for local on-device Computer Vision (YOLOv8 FFI) -->
     <uses-permission android:name="android.permission.CAMERA" />
-    <!-- Module C: Local LAN Socket connections for Caregiver Sync -->
+
+    <!-- MODULE B: Microphone for local FFT siren/alarm detection -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+
+    <!-- MODULE C: Local LAN socket for Caregiver Sync (no internet required) -->
+    <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
-    
+    <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE" />
+
+    <!-- MODULE B: Haptic alerts for deaf users -->
+    <uses-permission android:name="android.permission.VIBRATE" />
+
+    <!-- Keep CPU alive during sustained CV processing -->
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+
+    <!-- ── Application ────────────────────────────────────────────────────── -->
     <application
-        android:label="Hemovision"
-        android:name="\${applicationName}"
-        android:icon="@mipmap/ic_launcher">
+        android:label="OmniSight Engine"
+        android:name="${applicationName}"
+        android:icon="@mipmap/ic_launcher"
+        android:hardwareAccelerated="true"
+        android:requestLegacyExternalStorage="false"
+        android:usesCleartextTraffic="false">
+
         <activity
             android:name=".MainActivity"
             android:exported="true"
@@ -21,17 +45,26 @@
             android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode"
             android:hardwareAccelerated="true"
             android:windowSoftInputMode="adjustResize">
+
+            <!-- Flutter embedding meta -->
             <meta-data
-              android:name="io.flutter.embedding.android.NormalTheme"
-              android:resource="@style/NormalTheme"
-              />
+                android:name="io.flutter.embedding.android.NormalTheme"
+                android:resource="@style/NormalTheme" />
+
+            <!-- App entry point -->
             <intent-filter>
-                <action android:name="android.intent.action.MAIN"/>
-                <category android:name="android.intent.category.LAUNCHER"/>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!-- Flutter plugin embedding version -->
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
+
+        <!-- Camera2 permission for flutter camera plugin -->
+        <uses-permission android:name="android.permission.CAMERA" />
     </application>
+
 </manifest>

@@ -5,7 +5,7 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
-	<string>Hemovision</string>
+	<string>OmniSight</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -13,7 +13,7 @@
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
 	<key>CFBundleName</key>
-	<string>hemovision</string>
+	<string>OmniSight Engine</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
@@ -24,10 +24,10 @@
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
-	<key>UILaunchStoryboardName</key>
-	<string>LaunchScreen</string>
-	<key>UIMainStoryboardFile</key>
-	<string>Main</string>
+	<key>MinimumOSVersion</key>
+	<string>16.0</string>
+
+	<!-- ── Orientation Support ───────────────────────────────── -->
 	<key>UISupportedInterfaceOrientations</key>
 	<array>
 		<string>UIInterfaceOrientationPortrait</string>
@@ -41,17 +41,60 @@
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
+
+	<!-- ── Performance ──────────────────────────────────────── -->
 	<key>CADisableMinimumFrameDurationOnPhone</key>
 	<true/>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
-    
-    <!-- OmniSight Engine Specific Permissions -->
-    <key>NSCameraUsageDescription</key>
-    <string>Needs camera access for local Computer Vision mapping (Module A).</string>
-    <key>NSMicrophoneUsageDescription</key>
-    <string>Needs microphone access for local FFT Siren Detection (Module B).</string>
-    <key>NSLocalNetworkUsageDescription</key>
-    <string>Needs local network to broadcast securely to the Caregiver Dashboard.</string>
+
+	<!-- ── Privacy Permissions (Required for App Store & TSA) ── -->
+
+	<!-- MODULE A: Computer Vision — camera feed for real-time object detection -->
+	<key>NSCameraUsageDescription</key>
+	<string>OmniSight Engine uses the camera to detect environmental obstacles in real-time using local on-device AI inference (YOLOv8). No video is stored or transmitted — all processing is strictly local.</string>
+
+	<!-- MODULE B: Audio Analysis — microphone for FFT siren detection -->
+	<key>NSMicrophoneUsageDescription</key>
+	<string>OmniSight Engine uses the microphone to analyze environmental audio for emergency sirens and alarms via local FFT processing. No audio is recorded or transmitted.</string>
+
+	<!-- MODULE C: Caregiver Sync — local LAN broadcast (no internet required) -->
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>OmniSight Engine broadcasts safety alerts to a paired Caregiver device over a local ad-hoc hotspot. No data ever leaves the local network.</string>
+
+	<!-- Bonjour service types required for local network permission dialog -->
+	<key>NSBonjourServices</key>
+	<array>
+		<string>_omnisight._tcp</string>
+	</array>
+
+	<!-- Speech (for future voice feedback module) -->
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>OmniSight Engine may use speech recognition for hands-free accessibility commands.</string>
+
+	<!-- Location (for future GPS-assisted path memory) -->
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>OmniSight Engine may use your location to enhance spatial navigation assistance for visually impaired users.</string>
+
+	<!-- Vibration / Haptics — no permission key needed (always allowed on iOS) -->
+
+	<!-- ── Launch & UI ───────────────────────────────────────── -->
+	<key>UILaunchStoryboardName</key>
+	<string>LaunchScreen</string>
+	<key>UIMainStoryboardFile</key>
+	<string>Main</string>
+	<key>UIStatusBarHidden</key>
+	<false/>
+	<key>UIStatusBarStyle</key>
+	<string>UIStatusBarStyleLightContent</string>
+	<key>UIViewControllerBasedStatusBarAppearance</key>
+	<false/>
+
+	<!-- ── Background Modes ──────────────────────────────────── -->
+	<key>UIBackgroundModes</key>
+	<array>
+		<!-- Allow audio processing to continue when app is backgrounded -->
+		<string>audio</string>
+	</array>
 </dict>
 </plist>
