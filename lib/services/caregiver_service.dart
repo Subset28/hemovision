@@ -60,7 +60,6 @@ class CaregiverService {
   // ── Heartbeat tracking ────────────────────────────────────────────────────
   Timer? _heartbeatTimer;
   Timer? _heartbeatWatchdog;
-  int _missedHeartbeats = 0;
   DateTime? _lastHeartbeatReceived;
 
   // ── Isolate for TCP listening ─────────────────────────────────────────────
@@ -153,7 +152,6 @@ class CaregiverService {
   void _startHeartbeat() {
     _heartbeatTimer?.cancel();
     _heartbeatWatchdog?.cancel();
-    _missedHeartbeats = 0;
 
     _heartbeatTimer = Timer.periodic(_heartbeatInterval, (_) {
       final sent = broadcastAlert({'type': 'hb', 'ts': DateTime.now().millisecondsSinceEpoch});
@@ -221,7 +219,6 @@ class CaregiverService {
       if (message is Map<String, dynamic>) {
         if (message['type'] == 'hb') {
           _lastHeartbeatReceived = DateTime.now();
-          _missedHeartbeats = 0;
         } else {
           _alertController.sink.add(message);
         }
@@ -287,7 +284,7 @@ class CaregiverService {
     // Buffer for incomplete JSON lines
     final StringBuffer buffer = StringBuffer();
 
-    socket.transform(const Utf8Decoder()).listen(
+    socket.cast<List<int>>().transform(utf8.decoder).listen(
       (data) {
         buffer.write(data);
         final raw = buffer.toString();
@@ -317,7 +314,6 @@ class CaregiverService {
       final map = jsonDecode(line) as Map<String, dynamic>;
       if (map['type'] == 'hb') {
         _lastHeartbeatReceived = DateTime.now();
-        _missedHeartbeats = 0;
         if (_state == CaregiverConnectionState.unstable) {
           _setState(CaregiverConnectionState.connected);
         }

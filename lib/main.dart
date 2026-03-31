@@ -6,6 +6,13 @@ import 'views/home_view.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
+  // ─────────────────────────────────────────────────────────────────────────────
+  //  OFFLINE ASSET CONFIGURATION
+  //  Disabling runtime fetching ensures the app works in air-gapped environments.
+  //  It will strictly use the .ttf assets bundled in pubspec.yaml.
+  // ─────────────────────────────────────────────────────────────────────────────
+  GoogleFonts.config.allowRuntimeFetching = false;
+
   // Lock orientation to portrait for mobile, allow all for desktop
   await SystemChrome.setPreferredOrientations([
     DeviceOrientation.portraitUp,
@@ -117,12 +124,12 @@ class _SplashScreenState extends State<SplashScreen>
                       shape: BoxShape.circle,
                       gradient: RadialGradient(
                         colors: [
-                          const Color(0xFF00E5FF).withOpacity(0.3),
+                          const Color(0xFF00E5FF).withValues(alpha: 0.3),
                           Colors.transparent,
                         ],
                       ),
                       border: Border.all(
-                        color: const Color(0xFF00E5FF).withOpacity(0.5),
+                        color: const Color(0xFF00E5FF).withValues(alpha: 0.5),
                         width: 2,
                       ),
                     ),
@@ -151,7 +158,7 @@ class _SplashScreenState extends State<SplashScreen>
                     child: LinearProgressIndicator(
                       value: _ctrl.value,
                       backgroundColor:
-                          const Color(0xFF00E5FF).withOpacity(0.1),
+                          const Color(0xFF00E5FF).withValues(alpha: 0.1),
                       valueColor: const AlwaysStoppedAnimation<Color>(
                           Color(0xFF00E5FF)),
                       borderRadius: BorderRadius.circular(8),

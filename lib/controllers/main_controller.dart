@@ -4,6 +4,7 @@ import '../engines/vision_engine.dart';
 import '../engines/simulated_vision_engine.dart';
 import '../engines/yolo_vision_engine.dart';
 import '../services/caregiver_service.dart';
+import '../services/database_service.dart';
 
 // ─────────────────────────────────────────────────────────────────
 //  MAIN CONTROLLER  (MVC Architecture — Controller layer)
@@ -16,7 +17,20 @@ import '../services/caregiver_service.dart';
 class MainController {
   late VisionEngine _engine;
   late CaregiverService caregiverService;
+  late DatabaseService _dbService;
   Timer? _processingTimer;
+
+  // ── Accessibility State ───────────────────────────────────────
+  bool highContrast = false;
+  bool largeText = false;
+  final _accessCtrl = StreamController<void>.broadcast();
+  Stream<void> get accessStream => _accessCtrl.stream;
+
+  void updateAccessibility({bool? hc, bool? lt}) {
+    if (hc != null) highContrast = hc;
+    if (lt != null) largeText = lt;
+    _accessCtrl.add(null);
+  }
 
   // ── View Streams (Strongly Typed) ──────────────────────────────
   final _objectsCtrl = StreamController<List<DetectedObjectData>>.broadcast();
@@ -38,6 +52,7 @@ class MainController {
 
   MainController() {
     caregiverService = CaregiverService();
+    _dbService = DatabaseService();
     
     // ── UPGRADE #2: Dynamic Initialization ───────────────────────
     try {
@@ -121,6 +136,15 @@ class MainController {
     if (!_alertCtrl.isClosed && frame.audioAlert != null) {
       _alertCtrl.sink.add(frame.audioAlert);
       _alertCount++;
+      
+      // ── UPGRADE #6: Persistent Storage ─────────────────────────
+      _dbService.saveAlert({
+        'type': frame.audioAlert!.type,
+        'direction': frame.audioAlert!.direction,
+        'info': 'Confidence: ${frame.audioAlert!.confidence.toStringAsFixed(2)}',
+        'threatLevel': 90.0, // Base level for audio threats
+      });
+
       if (caregiverService.isConnected) {
         caregiverService.broadcastAlert(frame.audioAlert!.toMap());
       }

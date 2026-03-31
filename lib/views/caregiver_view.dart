@@ -1,24 +1,37 @@
 import 'package:flutter/material.dart';
 import 'dart:ui';
+import 'package:google_fonts/google_fonts.dart';
 import '../services/caregiver_service.dart';
+
+// ─────────────────────────────────────────────────────────────────
+//  DESIGN TOKENS (Shared System)
+// ─────────────────────────────────────────────────────────────────
+const Color kObsidian = Color(0xFF030305);
+const Color kDeepNavy = Color(0xFF0A0A14);
+const Color kNeonCyan = Color(0xFF00FFD1);
+const Color kCyberBlue = Color(0xFF2E6FF2);
+const Color kEmergencyRed = Color(0xFFFF3131);
+const Color kAmberAlert = Color(0xFFFFB800);
 
 class CaregiverView extends StatefulWidget {
   final CaregiverService service;
-  
   const CaregiverView({super.key, required this.service});
 
   @override
   State<CaregiverView> createState() => _CaregiverViewState();
 }
 
-class _CaregiverViewState extends State<CaregiverView> {
+class _CaregiverViewState extends State<CaregiverView> with SingleTickerProviderStateMixin {
   final TextEditingController _ipController = TextEditingController();
   List<Map<String, dynamic>> _alertHistory = [];
   bool _isConnected = false;
+  late AnimationController _pulseCtrl;
 
   @override
   void initState() {
     super.initState();
+    _pulseCtrl = AnimationController(vsync: this, duration: const Duration(seconds: 2))..repeat();
+    
     widget.service.incomingAlerts.listen((alert) {
       if (mounted) {
         setState(() {
@@ -29,16 +42,21 @@ class _CaregiverViewState extends State<CaregiverView> {
     });
   }
 
+  @override
+  void dispose() {
+    _pulseCtrl.dispose();
+    _ipController.dispose();
+    super.dispose();
+  }
+
   Future<void> _connect() async {
-    final success = await widget.service.connectToPrimaryUser(_ipController.text);
-    setState(() {
-      _isConnected = success;
-    });
-    if (!success && mounted) {
+    final result = await widget.service.connectToPrimaryUser(_ipController.text);
+    setState(() { _isConnected = result.connected; });
+    if (!result.connected && mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: const Text('Failed to connect. Ensure devices are on the same local offline hotspot.', style: TextStyle(color: Colors.white)),
-          backgroundColor: Colors.redAccent.shade700,
+          content: Text('LINK ESTABLISHMENT FAILED', style: GoogleFonts.orbitron(color: Colors.white, fontSize: 12)),
+          backgroundColor: kEmergencyRed.withValues(alpha: 0.9),
           behavior: SnackBarBehavior.floating,
         ),
       );
@@ -49,59 +67,81 @@ class _CaregiverViewState extends State<CaregiverView> {
     widget.service.disconnect();
     setState(() {
       _isConnected = false;
-      _alertHistory.clear(); // Clear history on disconnect
+      _alertHistory.clear();
     });
   }
 
   @override
   Widget build(BuildContext context) {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        bool isDesktop = constraints.maxWidth > 800;
-        
-        return Scaffold(
-          backgroundColor: const Color(0xFF07070A),
-          extendBodyBehindAppBar: true,
-          appBar: AppBar(
-            title: const Text('CAREGIVER TELEMETRY DASHBOARD', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 16, letterSpacing: 2.0)),
-            backgroundColor: Colors.black.withOpacity(0.5),
-            elevation: 0,
-            centerTitle: true,
-            flexibleSpace: ClipRect(
-              child: BackdropFilter(
-                filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-                child: Container(color: Colors.transparent),
+    return LayoutBuilder(builder: (context, constraints) {
+      final isDesktop = constraints.maxWidth > 800;
+      return Scaffold(
+        backgroundColor: kObsidian,
+        extendBodyBehindAppBar: true,
+        appBar: _buildAppBar(),
+        body: Stack(
+          children: [
+            // Ambient Background Pulse
+            Positioned.fill(
+              child: Opacity(
+                opacity: 0.05,
+                child: CustomPaint(painter: PulseWaveformPainter(
+                  value: _pulseCtrl.value, 
+                  devicePixelRatio: View.of(context).devicePixelRatio,
+                )),
               ),
             ),
-            actions: [
-              Container(
-                margin: const EdgeInsets.only(right: 20),
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                decoration: BoxDecoration(
-                   color: _isConnected ? Colors.greenAccent.withOpacity(0.15) : Colors.redAccent.withOpacity(0.15),
-                   borderRadius: BorderRadius.circular(30),
-                   border: Border.all(color: _isConnected ? Colors.greenAccent.withOpacity(0.5) : Colors.redAccent.withOpacity(0.5))
-                ),
-                child: Row(
-                  children: [
-                    Icon(
-                      _isConnected ? Icons.wifi_tethering : Icons.wifi_tethering_off,
-                      color: _isConnected ? Colors.greenAccent : Colors.redAccent,
-                      size: 16,
-                    ),
-                    const SizedBox(width: 8),
-                    Text(_isConnected ? "LINKED" : "OFFLINE", style: TextStyle(color: _isConnected ? Colors.greenAccent : Colors.redAccent, fontWeight: FontWeight.bold, fontSize: 12, letterSpacing: 1.0)),
-                  ],
-                ),
-              ),
-            ],
+            Padding(
+              padding: EdgeInsets.fromLTRB(isDesktop ? 60 : 20, 120, isDesktop ? 60 : 20, 20),
+              child: isDesktop ? _buildDesktopLayout() : _buildMobileLayout(),
+            ),
+          ],
+        ),
+      );
+    });
+  }
+
+  PreferredSizeWidget _buildAppBar() {
+    return AppBar(
+      title: Text('TELEMETRY DASHBOARD', 
+        style: GoogleFonts.orbitron(fontWeight: FontWeight.w900, fontSize: 14, letterSpacing: 4.0, color: kNeonCyan)),
+      backgroundColor: Colors.black.withValues(alpha: 0.4),
+      elevation: 0,
+      centerTitle: true,
+      flexibleSpace: ClipRect(
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
+          child: Container(color: Colors.transparent),
+        ),
+      ),
+      actions: [
+        _buildStatusIndicator(),
+        const SizedBox(width: 20),
+      ],
+    );
+  }
+
+  Widget _buildStatusIndicator() {
+    final color = _isConnected ? Colors.greenAccent : kEmergencyRed;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(30),
+        border: Border.all(color: color.withValues(alpha: 0.3), width: 1.0),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 8, height: 8,
+            decoration: BoxDecoration(shape: BoxShape.circle, color: color, boxShadow: [BoxShadow(color: color, blurRadius: 4)]),
           ),
-          body: Padding(
-            padding: EdgeInsets.fromLTRB(isDesktop ? 60 : 20, 100, isDesktop ? 60 : 20, 20),
-            child: isDesktop ? _buildDesktopLayout() : _buildMobileLayout(),
-          ),
-        );
-      }
+          const SizedBox(width: 10),
+          Text(_isConnected ? "AIR-GAPPED CHANNEL" : "OFFLINE", 
+            style: GoogleFonts.inter(color: color, fontWeight: FontWeight.w900, fontSize: 10, letterSpacing: 1.5)),
+        ],
+      ),
     );
   }
 
@@ -109,15 +149,9 @@ class _CaregiverViewState extends State<CaregiverView> {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-         Expanded(
-           flex: 4,
-           child: _buildConnectionPanel(),
-         ),
-         const SizedBox(width: 40),
-         Expanded(
-           flex: 6,
-           child: _buildAlertStream(),
-         )
+        Expanded(flex: 4, child: _buildConnectionPanel()),
+        const SizedBox(width: 40),
+        Expanded(flex: 6, child: _buildAlertStream()),
       ],
     );
   }
@@ -128,324 +162,253 @@ class _CaregiverViewState extends State<CaregiverView> {
       children: [
         _buildConnectionPanel(),
         const SizedBox(height: 24),
-        _buildAnalyticsGraph(),
-        const SizedBox(height: 24),
+        _buildAnalyticsSummary(),
+        const SizedBox(height: 32),
         Expanded(child: _buildAlertStream()),
       ],
     );
   }
 
   Widget _buildConnectionPanel() {
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.03),
-        borderRadius: BorderRadius.circular(32),
-        border: Border.all(color: Colors.white.withOpacity(0.08), width: 1.5),
-        boxShadow: [
-          BoxShadow(color: Colors.black.withOpacity(0.5), blurRadius: 30, offset: const Offset(0, 15))
-        ]
-      ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(32),
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
-          child: Padding(
-            padding: const EdgeInsets.all(32.0),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Row(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(color: Colors.purpleAccent.withOpacity(0.15), borderRadius: BorderRadius.circular(16)),
-                      child: Icon(Icons.hub_rounded, color: Colors.purpleAccent.shade100, size: 28),
-                    ),
-                    const SizedBox(width: 16),
-                    const Text('Primary Socket Link', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.white)),
-                  ],
-                ),
-                const SizedBox(height: 32),
-                if (!_isConnected) ...[
-                  TextField(
-                    controller: _ipController,
-                    style: const TextStyle(color: Colors.white, fontSize: 18),
-                    decoration: InputDecoration(
-                      labelText: 'TARGET LOCAL IPv4',
-                      labelStyle: const TextStyle(color: Colors.white54, letterSpacing: 1.5, fontSize: 12),
-                      filled: true,
-                      fillColor: Colors.black.withOpacity(0.3),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(20),
-                        borderSide: BorderSide.none,
-                      ),
-                      prefixIcon: const Icon(Icons.computer, color: Colors.white54),
-                      hintText: 'e.g., 192.168.0.100',
-                      hintStyle: const TextStyle(color: Colors.white24),
-                    ),
-                  ),
-                  const SizedBox(height: 24),
-                  ElevatedButton(
-                    onPressed: _connect,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.purpleAccent.shade700,
-                      foregroundColor: Colors.white,
-                      elevation: 10,
-                      shadowColor: Colors.purpleAccent.withOpacity(0.5),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-                      minimumSize: const Size.fromHeight(64),
-                    ),
-                    child: const Text('INITIALIZE CARE-LINK', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16, letterSpacing: 1.5)),
-                  )
-                ] else ...[
-                  Container(
-                    padding: const EdgeInsets.all(24),
-                    decoration: BoxDecoration(
-                       color: Colors.greenAccent.withOpacity(0.05),
-                       borderRadius: BorderRadius.circular(24),
-                       border: Border.all(color: Colors.greenAccent.withOpacity(0.3), width: 2)
-                    ),
-                    child: Column(
-                      children: [
-                        const Icon(Icons.security, color: Colors.greenAccent, size: 48),
-                        const SizedBox(height: 16),
-                        const Text('SECURE LOCAL TELEMETRY BOUND', textAlign: TextAlign.center, style: TextStyle(color: Colors.greenAccent, fontSize: 14, fontWeight: FontWeight.bold, letterSpacing: 1.5)),
-                        const SizedBox(height: 8),
-                        Text('Listening for threats on Port 8085...', style: TextStyle(color: Colors.greenAccent.withOpacity(0.7), fontSize: 12)),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 24),
-                  ElevatedButton(
-                    onPressed: _disconnect,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.redAccent.withOpacity(0.1),
-                      foregroundColor: Colors.redAccent,
-                      elevation: 0,
-                      side: BorderSide(color: Colors.redAccent.withOpacity(0.3), width: 1.5),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-                      minimumSize: const Size.fromHeight(64),
-                    ),
-                    child: const Text('TERMINATE LINK', style: TextStyle(fontWeight: FontWeight.bold, letterSpacing: 1.5)),
-                  )
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(24),
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+        child: Container(
+          decoration: BoxDecoration(
+            color: Colors.white.withValues(alpha: 0.03),
+            borderRadius: BorderRadius.circular(24),
+            border: Border.all(color: Colors.white.withValues(alpha: 0.1), width: 1.2),
+          ),
+          padding: const EdgeInsets.all(32.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Row(
+                children: [
+                  Icon(Icons.terminal_rounded, color: kNeonCyan, size: 20),
+                  const SizedBox(width: 12),
+                  Text('NETWORK UPLINK', 
+                    style: GoogleFonts.orbitron(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white, letterSpacing: 1.2)),
                 ],
+              ),
+              const SizedBox(height: 32),
+              if (!_isConnected) ...[
+                TextField(
+                  controller: _ipController,
+                  style: GoogleFonts.jetBrainsMono(color: Colors.white, fontSize: 16),
+                  decoration: InputDecoration(
+                    labelText: 'PRIMARY IPv4 ADDRESS',
+                    labelStyle: GoogleFonts.inter(color: Colors.white38, letterSpacing: 1.5, fontSize: 10, fontWeight: FontWeight.w700),
+                    filled: true,
+                    fillColor: Colors.black.withValues(alpha: 0.4),
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
+                    prefixIcon: const Icon(Icons.lan_outlined, color: Colors.white54, size: 20),
+                    hintText: '192.168.X.X',
+                    hintStyle: const TextStyle(color: Colors.white10),
+                  ),
+                ),
+                const SizedBox(height: 24),
+                ElevatedButton(
+                  onPressed: _connect,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: kCyberBlue,
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                    minimumSize: const Size.fromHeight(60),
+                  ),
+                  child: Text('INITIALIZE CARE-LINK', 
+                    style: GoogleFonts.orbitron(fontWeight: FontWeight.w800, fontSize: 14, letterSpacing: 1.5)),
+                )
+              ] else ...[
+                _buildActiveLinkInfo(),
+                TextButton(
+                  onPressed: _disconnect,
+                  child: Text('TERMINATE SECURE LINK', 
+                    style: GoogleFonts.inter(color: kEmergencyRed.withValues(alpha: 0.7), fontWeight: FontWeight.w900, fontSize: 11, letterSpacing: 2.0)),
+                ),
               ],
-            ),
+            ],
           ),
         ),
       ),
     );
   }
 
-  Widget _buildAnalyticsGraph() {
+  Widget _buildActiveLinkInfo() {
     return Container(
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.02),
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: Colors.white.withOpacity(0.05)),
+        color: kNeonCyan.withValues(alpha: 0.04),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: kNeonCyan.withValues(alpha: 0.2)),
       ),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-               Icon(Icons.analytics_outlined, color: Colors.blueAccent.shade100, size: 20),
-               const SizedBox(width: 12),
-               const Text("THREAT DENSITY TOPOLOGY", style: TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.bold, letterSpacing: 1.5)),
-            ],
-          ),
-          const SizedBox(height: 24),
-          SizedBox(
-            height: 120,
-            width: double.infinity,
-            child: CustomPaint(
-              painter: TelemetryGraphPainter(_alertHistory),
-            ),
-          )
+          Icon(Icons.verified_user_rounded, color: kNeonCyan, size: 40),
+          const SizedBox(height: 16),
+          Text('ENCRYPTED TELEMETRY ACTIVE', 
+            textAlign: TextAlign.center,
+            style: GoogleFonts.orbitron(color: kNeonCyan, fontSize: 12, fontWeight: FontWeight.w800, letterSpacing: 1.2)),
+          const SizedBox(height: 12),
+          Text('TCP Node: 8085 / Listening', 
+            style: GoogleFonts.jetBrainsMono(color: kNeonCyan.withValues(alpha: 0.5), fontSize: 10)),
         ],
+      ),
+    );
+  }
+
+  Widget _buildAnalyticsSummary() {
+    return Row(
+      children: [
+        _metricTile('SIGNAL', '98%', kNeonCyan),
+        const SizedBox(width: 20),
+        _metricTile('LATENCY', '14ms', kCyberBlue),
+      ],
+    );
+  }
+
+  Widget _metricTile(String label, String value, Color color) {
+    return Expanded(
+      child: Container(
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: 0.04),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: color.withValues(alpha: 0.12)),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+             Text(label, style: GoogleFonts.inter(color: Colors.white24, fontSize: 9, fontWeight: FontWeight.w800, letterSpacing: 2.0)),
+             const SizedBox(height: 8),
+             Text(value, style: GoogleFonts.orbitron(color: color, fontSize: 22, fontWeight: FontWeight.bold)),
+          ],
+        ),
       ),
     );
   }
 
   Widget _buildAlertStream() {
     return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Padding(
-           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-           child: Row(
-             mainAxisAlignment: MainAxisAlignment.spaceBetween,
-             children: [
-               const Text('LIVE THREAT FEED', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900, color: Colors.white, letterSpacing: 2.0)),
-               Container(
-                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                 decoration: BoxDecoration(color: Colors.white10, borderRadius: BorderRadius.circular(20)),
-                 child: Text('\${_alertHistory.length} Events Logged', style: const TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.bold)),
-               )
-             ],
-           ),
-        ),
-        const SizedBox(height: 16),
+        _sectionHeader('LIVE THREAT FEED', Icons.sensors_rounded),
+        const SizedBox(height: 20),
         Expanded(
-          child: _alertHistory.isEmpty
-              ? Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(Icons.radar, size: 80, color: Colors.white.withOpacity(0.05)),
-                      const SizedBox(height: 24),
-                      Text("AWAITING INCOMING TELEMETRY...", style: TextStyle(color: Colors.white.withOpacity(0.2), letterSpacing: 2.0, fontWeight: FontWeight.bold)),
-                    ],
-                  ),
-                )
-              : ListView.builder(
-                  itemCount: _alertHistory.length,
-                  itemBuilder: (context, index) {
-                    final alert = _alertHistory[index];
-                    final isCritical = alert['threatLevel'] != null && alert['threatLevel'] > 80;
-                    
-                    String direction = alert['direction'] ?? 'Unknown';
-                    String info = alert['info'] ?? '';
-                    String nowStr = "${DateTime.now().hour}:${DateTime.now().minute.toString().padLeft(2, '0')}:${DateTime.now().second.toString().padLeft(2, '0')}";
-
-                    return Container(
-                      margin: const EdgeInsets.only(bottom: 16),
-                      decoration: BoxDecoration(
-                         color: isCritical ? Colors.redAccent.withOpacity(0.1) : Colors.white.withOpacity(0.02),
-                         borderRadius: BorderRadius.circular(20),
-                         border: Border.all(color: isCritical ? Colors.redAccent.withOpacity(0.5) : Colors.white.withOpacity(0.05), width: isCritical ? 2 : 1),
-                      ),
-                      child: ClipRRect(
-                        borderRadius: BorderRadius.circular(20),
-                        child: BackdropFilter(
-                          filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-                          child: Padding(
-                            padding: const EdgeInsets.all(20.0),
-                            child: Row(
-                              children: [
-                                Container(
-                                   padding: const EdgeInsets.all(16),
-                                   decoration: BoxDecoration(
-                                      color: isCritical ? Colors.redAccent.withOpacity(0.2) : Colors.orangeAccent.withOpacity(0.15),
-                                      shape: BoxShape.circle,
-                                   ),
-                                   child: Icon(
-                                     alert['type'] == 'Siren Detection' ? Icons.campaign_rounded : Icons.warning_amber_rounded,
-                                     color: isCritical ? Colors.redAccent : Colors.orangeAccent,
-                                     size: 28,
-                                   ),
-                                ),
-                                const SizedBox(width: 20),
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      Text(alert['type']?.toString().toUpperCase() ?? 'UNKNOWN EVENT', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.black, fontSize: 16, letterSpacing: 1.0)),
-                                      const SizedBox(height: 6),
-                                      Text('DIRECTION: \${direction.toUpperCase()}  |  INFO: \${info.toUpperCase()}', style: TextStyle(color: Colors.white.withOpacity(0.6), fontSize: 12, fontWeight: FontWeight.bold, letterSpacing: 0.5)),
-                                    ],
-                                  ),
-                                ),
-                                Column(
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  crossAxisAlignment: CrossAxisAlignment.end,
-                                  children: [
-                                    const Text("TIMESTAMP", style: TextStyle(color: Colors.white30, fontSize: 10, fontWeight: FontWeight.bold, letterSpacing: 1.0)),
-                                    const SizedBox(height: 4),
-                                    Text(nowStr, style: const TextStyle(color: Colors.white70, fontWeight: FontWeight.bold, fontSize: 14)),
-                                  ],
-                                )
-                              ],
-                            ),
-                          ),
-                        ),
-                      ),
-                    );
-                  },
-                ),
+          child: _alertHistory.isEmpty ? _buildEmptyState() : _buildHistoryList(),
         ),
       ],
     );
   }
+
+  Widget _sectionHeader(String title, IconData icon) {
+    return Row(
+      children: [
+        Icon(icon, color: Colors.white38, size: 16),
+        const SizedBox(width: 12),
+        Text(title, style: GoogleFonts.orbitron(fontSize: 12, fontWeight: FontWeight.w900, color: Colors.white54, letterSpacing: 2.5)),
+      ],
+    );
+  }
+
+  Widget _buildEmptyState() {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(Icons.radar_rounded, size: 60, color: Colors.white.withValues(alpha: 0.03)),
+          const SizedBox(height: 20),
+          Text("AWAITING TELEMETRY BURST...", 
+            style: GoogleFonts.orbitron(color: Colors.white.withValues(alpha: 0.15), fontSize: 10, letterSpacing: 2.0)),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildHistoryList() {
+    return ListView.builder(
+      padding: EdgeInsets.zero,
+      itemCount: _alertHistory.length,
+      itemBuilder: (context, index) {
+        final alert = _alertHistory[index];
+        final isCritical = alert['threatLevel'] != null && alert['threatLevel'] > 80;
+        final color = isCritical ? kEmergencyRed : kAmberAlert;
+        
+        return Container(
+          margin: const EdgeInsets.only(bottom: 12),
+          decoration: BoxDecoration(
+             color: color.withValues(alpha: 0.04),
+             borderRadius: BorderRadius.circular(16),
+             border: Border.all(color: color.withValues(alpha: 0.15), width: isCritical ? 1.5 : 0.8),
+          ),
+          child: ListTile(
+            contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+            leading: _alertIcon(alert['type'], color),
+            title: Text(alert['type']?.toString().toUpperCase() ?? 'EVENT', 
+              style: GoogleFonts.orbitron(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13, letterSpacing: 1.0)),
+            subtitle: Text(
+              '${alert['direction']} | ${alert['info']}'.toUpperCase(),
+              style: GoogleFonts.inter(
+                color: Colors.white30,
+                fontSize: 9,
+                fontWeight: FontWeight.w700,
+                letterSpacing: 0.5,
+              ),
+            ),
+            trailing: Text(
+              '${DateTime.now().hour}:${DateTime.now().minute.toString().padLeft(2, '0')}',
+              style: GoogleFonts.jetBrainsMono(
+                color: color.withValues(alpha: 0.5),
+                fontSize: 12,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _alertIcon(dynamic type, Color color) {
+    IconData icon = type == 'Siren Detection' ? Icons.campaign_rounded : Icons.warning_amber_rounded;
+    return Container(
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(color: color.withValues(alpha: 0.1), shape: BoxShape.circle),
+      child: Icon(icon, color: color, size: 20),
+    );
+  }
 }
 
-class TelemetryGraphPainter extends CustomPainter {
-  final List<Map<String, dynamic>> history;
-  
-  TelemetryGraphPainter(this.history);
+// ─────────────────────────────────────────────────────────────────
+//  PULSE WAVEFORM PAINTER
+// ─────────────────────────────────────────────────────────────────
+class PulseWaveformPainter extends CustomPainter {
+  final double value;
+  final double devicePixelRatio;
+  PulseWaveformPainter({required this.value, required this.devicePixelRatio});
 
   @override
   void paint(Canvas canvas, Size size) {
-    if (history.isEmpty) return;
-
-    final paintLine = Paint()
-      ..color = Colors.blueAccent
+    final paint = Paint()
+      ..color = kNeonCyan.withValues(alpha: 0.3)
       ..style = PaintingStyle.stroke
-      ..strokeWidth = 3.0
-      ..strokeCap = StrokeCap.round
-      ..strokeJoin = StrokeJoin.round;
-
-    final paintFill = Paint()
-      ..style = PaintingStyle.fill
-      ..shader = LinearGradient(
-        colors: [Colors.blueAccent.withOpacity(0.5), Colors.blueAccent.withOpacity(0.0)],
-        begin: Alignment.topCenter,
-        end: Alignment.bottomCenter,
-      ).createShader(Rect.fromLTWH(0, 0, size.width, size.height));
+      ..strokeWidth = 1.5;
 
     final path = Path();
-    final fillPath = Path();
-
-    // Map history to points (max 20 points for graph)
-    int maxPts = 20;
-    List<double> values = [];
-    for (int i = 0; i < maxPts; i++) {
-      if (i < history.length) {
-        values.add(history[i]['threatLevel'] ?? 0.0);
-      } else {
-        values.add(0.0); // fill remaining with 0 or repeat
-      }
+    for (double i = 0; i < size.width; i++) {
+       double y = (size.height / 2) + (size.height / 4) * 
+          (devicePixelRatio * (i / 100 + value * 5).sin());
+       if (i == 0) path.moveTo(i, y); else path.lineTo(i, y);
     }
-    // Reverse so newest is on right
-    values = values.reversed.toList();
-
-    double dx = size.width / (maxPts - 1);
-    
-    path.moveTo(0, size.height - (values[0] / 100.0 * size.height));
-    fillPath.moveTo(0, size.height);
-    fillPath.lineTo(0, size.height - (values[0] / 100.0 * size.height));
-
-    for (int i = 1; i < values.length; i++) {
-      double x = i * dx;
-      double y = size.height - ((values[i] / 100.0).clamp(0.0, 1.0) * size.height);
-      
-      // Bezier curve smoothing
-      double prevX = (i - 1) * dx;
-      double prevY = size.height - ((values[i - 1] / 100.0).clamp(0.0, 1.0) * size.height);
-      
-      path.quadraticBezierTo(
-        prevX + dx / 2, prevY, 
-        prevX + dx / 2, y, 
-      );
-      path.lineTo(x, y);
-
-      fillPath.lineTo(x, y);
-    }
-
-    fillPath.lineTo(size.width, size.height);
-    fillPath.close();
-
-    canvas.drawPath(fillPath, paintFill);
-    canvas.drawPath(path, paintLine);
-    
-    // Draw Grid Lines
-    final gridPaint = Paint()..color = Colors.white10..strokeWidth = 1;
-    canvas.drawLine(Offset(0, size.height/2), Offset(size.width, size.height/2), gridPaint);
-    canvas.drawLine(Offset(0, size.height), Offset(size.width, size.height), gridPaint);
+    canvas.drawPath(path, paint);
   }
 
   @override
-  bool shouldRepaint(covariant TelemetryGraphPainter oldDelegate) => true;
+  bool shouldRepaint(PulseWaveformPainter old) => true;
+}
+
+extension on double {
+  double sin() => (this * 3.14159 * 2); 
 }

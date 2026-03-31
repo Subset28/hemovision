@@ -21,7 +21,6 @@ class YoloVisionEngine implements VisionEngine {
     // In real mode, the FFI call is made inside compute() in MainController.
     // The engine handle is passed as a primitive int — safe across Isolate.
     // For now, returns simulated data using the same formulas as C++.
-    final ms = DateTime.now().millisecondsSinceEpoch;
     return EngineFrame(
       objects: const [],
       spatialMap: const [],

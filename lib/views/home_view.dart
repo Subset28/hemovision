@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'dart:async';
 import 'dart:ui';
-import 'dart:math' as math;
 import 'package:google_fonts/google_fonts.dart';
 import '../controllers/main_controller.dart';
 import '../engines/vision_engine.dart';
@@ -10,10 +10,17 @@ import 'caregiver_view.dart';
 import 'settings_view.dart';
 
 // ─────────────────────────────────────────────────────────────────
-//  HOME VIEW  (Primary UI — MVC View layer)
-//  Displays the live environment scan, AR bounding box overlays,
-//  audio-alert HUD, SLAM radar, and system controls.
+//  DESIGN TOKENS (Cyber-Medical System)
 // ─────────────────────────────────────────────────────────────────
+const Color kObsidian = Color(0xFF030305);
+const Color kDeepNavy = Color(0xFF0A0A14);
+const Color kNeonCyan = Color(0xFF00FFD1);
+const Color kCyberBlue = Color(0xFF2E6FF2);
+const Color kEmergencyRed = Color(0xFFFF3131);
+const Color kAmberAlert = Color(0xFFFFB800);
+const double kGlassBlur = 20.0;
+const double kThinBorder = 1.2;
+
 class HomeView extends StatefulWidget {
   const HomeView({super.key});
 
@@ -30,7 +37,6 @@ class _HomeViewState extends State<HomeView>
   AudioAlertData? _currentAlert;
   Map<String, dynamic> _stats = {};
   CaregiverConnectionState _caregiverState = CaregiverConnectionState.disconnected;
-  bool _isExpanded = false;   // sidebar toggle on desktop
 
   // Animations
   late AnimationController _pulseCtrl;
@@ -39,6 +45,8 @@ class _HomeViewState extends State<HomeView>
   late Animation<double> _alertAnim;
   late AnimationController _glowCtrl;
   late Animation<double> _glowAnim;
+  late AnimationController _scanningCtrl;
+  late Animation<double> _scanningAnim;
 
   @override
   void initState() {
@@ -73,6 +81,10 @@ class _HomeViewState extends State<HomeView>
       if (mounted) setState(() => _stats = s);
     });
 
+    _controller.accessStream.listen((_) {
+      if (mounted) setState(() {});
+    });
+
     _controller.startProcessing();
 
     // Pulse animation (radar sweep)
@@ -94,6 +106,13 @@ class _HomeViewState extends State<HomeView>
       ..repeat(reverse: true);
     _glowAnim = Tween<double>(begin: 0.03, end: 0.12)
         .animate(CurvedAnimation(parent: _glowCtrl, curve: Curves.easeInOut));
+
+    // Scanning line animation
+    _scanningCtrl = AnimationController(
+        vsync: this, duration: const Duration(seconds: 4))
+      ..repeat();
+    _scanningAnim = Tween<double>(begin: 0.0, end: 1.0)
+        .animate(CurvedAnimation(parent: _scanningCtrl, curve: Curves.linear));
   }
 
   @override
@@ -102,6 +121,7 @@ class _HomeViewState extends State<HomeView>
     _pulseCtrl.dispose();
     _alertCtrl.dispose();
     _glowCtrl.dispose();
+    _scanningCtrl.dispose();
     super.dispose();
   }
 
@@ -110,10 +130,8 @@ class _HomeViewState extends State<HomeView>
     return LayoutBuilder(builder: (context, constraints) {
       final isDesktop = constraints.maxWidth > 800;
       return Scaffold(
-        backgroundColor: const Color(0xFF07070A),
-        body: isDesktop
-            ? _buildDesktopLayout()
-            : _buildMobileLayout(),
+        backgroundColor: kObsidian,
+        body: isDesktop ? _buildDesktopLayout() : _buildMobileLayout(),
       );
     });
   }
@@ -130,11 +148,12 @@ class _HomeViewState extends State<HomeView>
             fit: StackFit.expand,
             children: [
               _buildCameraFeed(),
-              ..._buildObjectOverlays(canvasWidth: 700, canvasHeight: 600),
+              _buildObjectOverlays(_detectedObjects),
               if (_currentAlert != null) _buildAlertHUD(),
               _buildTopBar(isDesktop: true),
               Positioned(
-                bottom: 24, left: 24,
+                bottom: 24,
+                left: 24,
                 child: _buildModeIndicator(),
               ),
             ],
@@ -145,7 +164,7 @@ class _HomeViewState extends State<HomeView>
           width: 340,
           child: Container(
             decoration: const BoxDecoration(
-              color: Color(0xFF0B0B10),
+              color: kDeepNavy,
               border: Border(
                   left: BorderSide(color: Color(0xFF1A1A2E), width: 1.5)),
             ),
@@ -161,12 +180,13 @@ class _HomeViewState extends State<HomeView>
       fit: StackFit.expand,
       children: [
         _buildCameraFeed(),
-        ..._buildObjectOverlays(),
+        _buildObjectOverlays(_detectedObjects),
         if (_currentAlert != null) _buildAlertHUD(),
         _buildTopBar(isDesktop: false),
         _buildMobileBottomPanel(),
         Positioned(
-          bottom: 180, right: 20,
+          bottom: 180,
+          right: 20,
           child: _buildModeIndicator(),
         ),
       ],
@@ -176,35 +196,42 @@ class _HomeViewState extends State<HomeView>
   // ── CAMERA FEED ──────────────────────────────────────────────
   Widget _buildCameraFeed() {
     return AnimatedBuilder(
-      animation: _glowCtrl,
-      builder: (context, _) => Container(
-        decoration: BoxDecoration(
-          color: const Color(0xFF050508),
-          // Animated ambient glow at top
-          gradient: RadialGradient(
-            center: const Alignment(0, -0.8),
-            radius: 1.2,
-            colors: [
-              const Color(0xFF00E5FF).withOpacity(_glowAnim.value),
-              Colors.transparent,
-            ],
+      animation: Listenable.merge([_glowCtrl, _scanningCtrl, _pulseCtrl]),
+      builder: (context, _) => Stack(
+        fit: StackFit.expand,
+        children: [
+          CustomPaint(
+            painter: TacticalGridPainter(_pulseAnim.value),
           ),
-        ),
-        child: CustomPaint(
-          painter: ScanGridPainter(),
-          child: Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(Icons.remove_red_eye_outlined,
-                    size: 90,
-                    color: const Color(0xFF00E5FF).withOpacity(0.06)),
-                const SizedBox(height: 20),
-                _buildScanningStatus(),
-              ],
+          Container(
+            decoration: BoxDecoration(
+              gradient: RadialGradient(
+                center: const Alignment(0, -0.8),
+                radius: 1.2,
+                colors: [
+                  kNeonCyan.withValues(alpha: _glowAnim.value),
+                  Colors.transparent,
+                ],
+              ),
+            ),
+            child: CustomPaint(
+              painter: ScanningOverlayPainter(_scanningAnim.value),
+              child: Center(
+                child: Opacity(
+                  opacity: 0.1,
+                  child: Icon(Icons.remove_red_eye_outlined,
+                      size: 90, color: kNeonCyan),
+                ),
+              ),
             ),
           ),
-        ),
+          Center(
+            child: Padding(
+              padding: const EdgeInsets.only(top: 140),
+              child: _buildScanningStatus(),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -217,30 +244,29 @@ class _HomeViewState extends State<HomeView>
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
           decoration: BoxDecoration(
-            color: Colors.black.withOpacity(0.4),
+            color: Colors.black.withValues(alpha: 0.4),
             borderRadius: BorderRadius.circular(30),
-            border: Border.all(color: Colors.white.withOpacity(0.08)),
+            border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
           ),
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              SizedBox(
+              const SizedBox(
                 width: 12,
                 height: 12,
                 child: CircularProgressIndicator(
                   strokeWidth: 2,
-                  color: const Color(0xFF00E5FF),
-                  value: null,
+                  color: kNeonCyan,
                 ),
               ),
               const SizedBox(width: 14),
               Text(
                 'ENVIRONMENT SCAN ACTIVE',
                 style: GoogleFonts.inter(
-                  color: Colors.white54,
-                  fontSize: 13,
-                  letterSpacing: 2.0,
-                  fontWeight: FontWeight.w600,
+                  color: kNeonCyan.withValues(alpha: 0.4),
+                  fontSize: 10,
+                  letterSpacing: 3.5,
+                  fontWeight: FontWeight.w800,
                 ),
               ),
             ],
@@ -262,24 +288,33 @@ class _HomeViewState extends State<HomeView>
             _buildGlassChip(
               label: 'OmniSight',
               icon: Icons.remove_red_eye_outlined,
-              color: const Color(0xFF00E5FF),
+              color: kNeonCyan,
             ),
             const Spacer(),
           ],
           _buildGlassChip(
             label: 'Module A • 8D Audio',
-            color: Colors.blueAccent,
+            color: kCyberBlue,
           ),
           const SizedBox(width: 10),
           _buildGlassChip(
             label: 'Module B • AR Haptics',
             color: Colors.orangeAccent,
           ),
+          _buildOfflineStatusChip(),
           const SizedBox(width: 10),
           _buildConnectionStatusChip(),
           if (isDesktop) const Spacer(),
         ],
       ),
+    );
+  }
+
+  Widget _buildOfflineStatusChip() {
+    return _buildGlassChip(
+      label: 'Local-First Engine',
+      color: kNeonCyan,
+      icon: Icons.offline_bolt_rounded,
     );
   }
 
@@ -295,7 +330,7 @@ class _HomeViewState extends State<HomeView>
         icon = Icons.cloud_off_rounded;
         break;
       case CaregiverConnectionState.listening:
-        color = Colors.blueAccent;
+        color = kCyberBlue;
         label = 'Waiting...';
         icon = Icons.sync_rounded;
         break;
@@ -305,12 +340,12 @@ class _HomeViewState extends State<HomeView>
         icon = Icons.verified_user_rounded;
         break;
       case CaregiverConnectionState.unstable:
-        color = Colors.amberAccent;
+        color = kAmberAlert;
         label = 'Signal Weak';
         icon = Icons.signal_cellular_connected_no_internet_4_bar_rounded;
         break;
       default:
-        color = Colors.redAccent;
+        color = kEmergencyRed;
         label = 'Error';
         icon = Icons.error_outline_rounded;
     }
@@ -323,40 +358,57 @@ class _HomeViewState extends State<HomeView>
     Color color = Colors.white,
     IconData? icon,
   }) {
+    final bool hc = _controller.highContrast;
+    final bool lt = _controller.largeText;
+    final Color effectiveColor = hc ? Colors.white : color;
+
     return ClipRRect(
       borderRadius: BorderRadius.circular(30),
       child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+        filter: ImageFilter.blur(sigmaX: kGlassBlur, sigmaY: kGlassBlur),
         child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+          padding: EdgeInsets.symmetric(
+              horizontal: lt ? 18 : 14, vertical: lt ? 10 : 8),
           decoration: BoxDecoration(
-            color: Colors.black.withOpacity(0.45),
+            color: hc ? Colors.black : Colors.black.withValues(alpha: 0.45),
             borderRadius: BorderRadius.circular(30),
-            border: Border.all(color: color.withOpacity(0.3), width: 1.2),
+            border: Border.all(
+                color: effectiveColor.withValues(alpha: hc ? 0.8 : 0.3),
+                width: hc ? 2.0 : kThinBorder),
+            boxShadow: [
+              BoxShadow(
+                color: effectiveColor.withValues(alpha: hc ? 0.2 : 0.1),
+                blurRadius: 10,
+                spreadRadius: -2,
+              ),
+            ],
           ),
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
               if (icon != null) ...[
-                Icon(icon, size: 15, color: color),
-                const SizedBox(width: 8),
+                Icon(icon, size: lt ? 18 : 15, color: effectiveColor),
+                SizedBox(width: lt ? 12 : 8),
               ] else ...[
                 Container(
-                  width: 8, height: 8,
+                  width: lt ? 10 : 8,
+                  height: lt ? 10 : 8,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
-                    color: color,
-                    boxShadow: [BoxShadow(color: color, blurRadius: 6)],
+                    color: effectiveColor,
+                    boxShadow: [
+                      BoxShadow(color: effectiveColor, blurRadius: 6)
+                    ],
                   ),
                 ),
-                const SizedBox(width: 10),
+                SizedBox(width: lt ? 12 : 10),
               ],
               Text(label,
                   style: GoogleFonts.inter(
                     color: Colors.white,
-                    fontWeight: FontWeight.w600,
-                    fontSize: 12,
-                    letterSpacing: 0.3,
+                    fontWeight: FontWeight.w900,
+                    fontSize: lt ? 13 : 10,
+                    letterSpacing: lt ? 1.5 : 1.2,
                   )),
             ],
           ),
@@ -365,116 +417,127 @@ class _HomeViewState extends State<HomeView>
     );
   }
 
-  // ── BOUNDING BOX OVERLAYS ─────────────────────────────────────
-  List<Widget> _buildObjectOverlays({
-    double canvasWidth = 390,
-    double canvasHeight = 700,
-  }) {
-    return _detectedObjects.map((obj) {
-      final double x = obj.x;
-      final double y = obj.y;
-      final double w = obj.width;
-      final double h = obj.height;
-      final double dist = obj.distance;
-      final double threat = obj.threatLevel;
-      final int classId = obj.classId;
+  Widget _buildObjectOverlays(List<DetectedObjectData> objects) {
+    return Stack(
+      children: objects.map((obj) {
+        final x = obj.x;
+        final y = obj.y;
+        final w = obj.width;
+        final h = obj.height;
+        final dist = obj.distance;
+        final threat = obj.threatLevel;
+        final int classId = obj.classId;
+        final bool isCritical = obj.isCritical;
 
-      final bool isCritical = obj.isCritical;
-      final Color boxColor =
-          isCritical ? Colors.redAccent : Colors.greenAccent;
-      final String label = obj.label;
-      final IconData icon = _iconFor(classId);
+        final bool hc = _controller.highContrast;
+        final bool lt = _controller.largeText;
+        final Color effectiveBoxColor = hc
+            ? Colors.white
+            : (isCritical ? Colors.redAccent : Colors.greenAccent);
 
-      return Positioned(
-        left: x - w / 2,
-        top: y - h / 2,
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 80),
-          width: w,
-          height: h,
-          decoration: BoxDecoration(
-            border: Border.all(color: boxColor, width: isCritical ? 2.5 : 1.5),
-            borderRadius: BorderRadius.circular(10),
-            boxShadow: [
-              BoxShadow(
-                  color: boxColor.withOpacity(isCritical ? 0.3 : 0.15),
-                  blurRadius: 14,
-                  spreadRadius: 2),
-            ],
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Label chip
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(
-                  color: boxColor.withOpacity(0.92),
-                  borderRadius: const BorderRadius.only(
-                    topLeft: Radius.circular(8),
-                    bottomRight: Radius.circular(8),
-                  ),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(icon, size: 12, color: Colors.black87),
-                    const SizedBox(width: 5),
-                    Text(
-                      '$label  ${dist.toStringAsFixed(1)}m',
-                      style: GoogleFonts.inter(
-                        color: Colors.black87,
-                        fontWeight: FontWeight.w900,
-                        fontSize: 11,
-                        letterSpacing: 0.4,
+        final String label = obj.label;
+        final IconData icon = _iconFor(classId);
+
+        return Positioned(
+          left: x - w / 2,
+          top: y - h / 2,
+          child: Semantics(
+            label: 'Detected $label at $dist ${dist == 1.0 ? 'meter' : 'meters'}',
+            hint: isCritical
+                ? 'CRITICAL OBSTACLE — TAKE ACTION'
+                : 'Environment object',
+            value: 'Threat level ${threat.toInt()} percent',
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 80),
+              width: w,
+              height: h,
+              decoration: BoxDecoration(
+                border: Border.all(
+                    color: effectiveBoxColor,
+                    width: (hc || isCritical) ? 3.0 : 1.5),
+                borderRadius: BorderRadius.circular(10),
+                boxShadow: [
+                  BoxShadow(
+                      color:
+                          effectiveBoxColor.withValues(alpha: isCritical ? 0.4 : 0.2),
+                      blurRadius: 14,
+                      spreadRadius: 2),
+                ],
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Container(
+                    padding: EdgeInsets.symmetric(
+                        horizontal: lt ? 12 : 8, vertical: lt ? 6 : 4),
+                    decoration: BoxDecoration(
+                      color: effectiveBoxColor.withValues(alpha: 0.95),
+                      borderRadius: const BorderRadius.only(
+                        topLeft: Radius.circular(8),
+                        bottomRight: Radius.circular(8),
                       ),
                     ),
-                  ],
-                ),
-              ),
-              // Threat level indicator at bottom
-              const Spacer(),
-              if (isCritical)
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(4),
-                    child: LinearProgressIndicator(
-                      value: threat / 100.0,
-                      backgroundColor: Colors.black45,
-                      valueColor: AlwaysStoppedAnimation<Color>(boxColor),
-                      minHeight: 3,
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(icon, size: lt ? 16 : 12, color: Colors.black87),
+                        SizedBox(width: lt ? 8 : 5),
+                        Text(
+                          '$label  ${dist.toStringAsFixed(1)}m',
+                          style: GoogleFonts.inter(
+                            color: Colors.black87,
+                            fontWeight: FontWeight.w900,
+                            fontSize: lt ? 14 : 11,
+                            letterSpacing: 0.4,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
-                ),
-            ],
+                  const Spacer(),
+                  if (isCritical || hc)
+                    Padding(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 6, vertical: 4),
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(4),
+                        child: LinearProgressIndicator(
+                          value: threat / 100.0,
+                          backgroundColor: Colors.black45,
+                          valueColor:
+                              AlwaysStoppedAnimation<Color>(effectiveBoxColor),
+                          minHeight: 3,
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
           ),
-        ),
-      );
-    }).toList();
+        );
+      }).toList(),
+    );
   }
 
-  // ── AUDIO ALERT HUD ───────────────────────────────────────────
   Widget _buildAlertHUD() {
     return Positioned.fill(
       child: IgnorePointer(
         child: AnimatedBuilder(
           animation: _pulseAnim,
           builder: (context, _) {
-            final opacity = 0.4 + 0.6 * ((_pulseAnim.value - 0.7) / 0.6).clamp(0.0, 1.0);
+            final opacity =
+                0.4 + 0.6 * ((_pulseAnim.value - 0.7) / 0.6).clamp(0.0, 1.0);
             return Stack(
               fit: StackFit.expand,
               children: [
-                // Pulsing red border
                 Container(
                   decoration: BoxDecoration(
                     border: Border.all(
-                      color: Colors.redAccent.withOpacity(opacity * 0.7),
+                      color: Colors.redAccent.withValues(alpha: opacity * 0.7),
                       width: 20 * (_pulseAnim.value - 0.7),
                     ),
                   ),
                 ),
-                // Central HUD card
                 Center(
                   child: SlideTransition(
                     position: Tween<Offset>(
@@ -499,76 +562,82 @@ class _HomeViewState extends State<HomeView>
     final type = _currentAlert!.type;
     final direction = _currentAlert!.direction;
 
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(24),
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
-        child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 32, horizontal: 48),
-          decoration: BoxDecoration(
-            color: Colors.redAccent.withOpacity(0.75),
-            borderRadius: BorderRadius.circular(24),
-            border: Border.all(color: Colors.white.withOpacity(0.3)),
-            boxShadow: [
-              BoxShadow(
-                  color: Colors.redAccent.withOpacity(0.5), blurRadius: 60),
-            ],
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Icon(Icons.warning_amber_rounded,
-                  size: 70, color: Colors.white),
-              const SizedBox(height: 16),
-              Text(
-                type.toUpperCase(),
-                textAlign: TextAlign.center,
-                style: GoogleFonts.inter(
-                  fontSize: 26,
-                  fontWeight: FontWeight.w900,
-                  color: Colors.white,
-                  letterSpacing: 2.0,
-                ),
-              ),
-              const SizedBox(height: 10),
-              Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.15),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Text(
-                  'DIRECTION: ${direction.toUpperCase()}',
+    return Semantics(
+      label: 'URGENT HUD ALERT: $type from $direction',
+      hint: 'Critical environmental threat detected',
+      liveRegion: true,
+      container: true,
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(24),
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+          child: Container(
+            padding: const EdgeInsets.symmetric(vertical: 32, horizontal: 48),
+            decoration: BoxDecoration(
+              color: Colors.redAccent.withValues(alpha: 0.75),
+              borderRadius: BorderRadius.circular(24),
+              border: Border.all(color: Colors.white.withValues(alpha: 0.3)),
+              boxShadow: [
+                BoxShadow(
+                    color: Colors.redAccent.withValues(alpha: 0.5), blurRadius: 60),
+              ],
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.warning_amber_rounded,
+                    size: 70, color: Colors.white),
+                const SizedBox(height: 16),
+                Text(
+                  type.toUpperCase(),
+                  textAlign: TextAlign.center,
                   style: GoogleFonts.inter(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w700,
+                    fontSize: 26,
+                    fontWeight: FontWeight.w900,
                     color: Colors.white,
-                    letterSpacing: 1.5,
+                    letterSpacing: 2.0,
                   ),
                 ),
-              ),
-            ],
+                const SizedBox(height: 10),
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Text(
+                    'DIRECTION: ${direction.toUpperCase()}',
+                    style: GoogleFonts.inter(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w700,
+                      color: Colors.white,
+                      letterSpacing: 1.5,
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),
     );
   }
 
-  // ── MODE INDICATOR (MOCK / LIVE) ─────────────────────────────
   Widget _buildModeIndicator() {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       decoration: BoxDecoration(
-        color: Colors.black.withOpacity(0.5),
+        color: Colors.black.withValues(alpha: 0.5),
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: Colors.amber.withOpacity(0.4)),
+        border: Border.all(color: Colors.amber.withValues(alpha: 0.4)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
           Container(
-            width: 7, height: 7,
+            width: 7,
+            height: 7,
             decoration: const BoxDecoration(
                 shape: BoxShape.circle, color: Colors.amberAccent),
           ),
@@ -585,7 +654,6 @@ class _HomeViewState extends State<HomeView>
     );
   }
 
-  // ── SIDEBAR (DESKTOP) ─────────────────────────────────────────
   Widget _buildSidebar() {
     return SingleChildScrollView(
       padding: const EdgeInsets.all(24),
@@ -593,12 +661,11 @@ class _HomeViewState extends State<HomeView>
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const SizedBox(height: 36),
-          // App Header
           Row(children: [
             Container(
               padding: const EdgeInsets.all(10),
               decoration: BoxDecoration(
-                color: const Color(0xFF00E5FF).withOpacity(0.1),
+                color: const Color(0xFF00E5FF).withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(14),
               ),
               child: const Icon(Icons.remove_red_eye_outlined,
@@ -619,17 +686,14 @@ class _HomeViewState extends State<HomeView>
                       letterSpacing: 2.0)),
             ]),
           ]),
-
           const SizedBox(height: 32),
-          _sectionLabel('LIVE STATS'),
+          _sectionLabel('LIVE TELEMETRY'),
           const SizedBox(height: 12),
           _buildStatsGrid(),
-
           const SizedBox(height: 28),
-          _sectionLabel('SLAM TOPOGRAPHY RADAR'),
+          _sectionLabel('SLAM TOPOGRAPHY'),
           const SizedBox(height: 12),
           _buildRadarWidget(),
-
           const SizedBox(height: 28),
           _sectionLabel('ACCESSIBILITY MODULES'),
           const SizedBox(height: 12),
@@ -646,7 +710,6 @@ class _HomeViewState extends State<HomeView>
             sub: 'Siren & obstacle vibration',
             color: Colors.orangeAccent,
           ),
-
           const SizedBox(height: 28),
           _sectionLabel('CAREGIVER NETWORK'),
           const SizedBox(height: 12),
@@ -685,7 +748,6 @@ class _HomeViewState extends State<HomeView>
     );
   }
 
-  // ── STATS GRID ────────────────────────────────────────────────
   Widget _buildStatsGrid() {
     final frames = _stats['frames']?.toString() ?? '0';
     final alerts = _stats['alerts']?.toString() ?? '0';
@@ -700,10 +762,12 @@ class _HomeViewState extends State<HomeView>
       mainAxisSpacing: 10,
       childAspectRatio: 1.8,
       children: [
-        _statCard('Frames', frames, Icons.photo_camera_front_outlined, Colors.cyanAccent),
-        _statCard('Alerts', alerts, Icons.notifications_active_outlined, Colors.redAccent),
+        _statCard('Frames', frames, Icons.photo_camera_front_outlined,
+            Colors.cyanAccent),
+        _statCard('Alerts', alerts, Icons.notifications_active_outlined,
+            Colors.redAccent),
         _statCard('Uptime', uptime, Icons.timer_outlined, Colors.greenAccent),
-        _statCard('Sim FPS', fps, Icons.speed_outlined, Colors.amberAccent),
+        _statCard('Sim FPS', fps, Icons. speed_outlined, Colors.amberAccent),
       ],
     );
   }
@@ -712,29 +776,31 @@ class _HomeViewState extends State<HomeView>
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.05),
+        color: color.withValues(alpha: 0.03),
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: color.withOpacity(0.15)),
+        border: Border.all(color: color.withValues(alpha: 0.12), width: 0.8),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Icon(icon, size: 18, color: color.withOpacity(0.8)),
+          Icon(icon, size: 16, color: color.withValues(alpha: 0.5)),
           Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(value,
-                  style: GoogleFonts.inter(
+                  style: GoogleFonts.orbitron(
                       color: Colors.white,
-                      fontWeight: FontWeight.w900,
+                      fontWeight: FontWeight.w700,
                       fontSize: 18,
-                      letterSpacing: -0.5)),
+                      letterSpacing: 1.0)),
+              const SizedBox(height: 2),
               Text(label,
                   style: GoogleFonts.inter(
-                      color: Colors.white38,
-                      fontSize: 10,
-                      letterSpacing: 1.0)),
+                      color: Colors.white24,
+                      fontSize: 8,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: 1.5)),
             ],
           ),
         ],
@@ -742,7 +808,6 @@ class _HomeViewState extends State<HomeView>
     );
   }
 
-  // ── SLAM RADAR ────────────────────────────────────────────────
   Widget _buildRadarWidget() {
     return AnimatedBuilder(
       animation: _pulseCtrl,
@@ -750,10 +815,9 @@ class _HomeViewState extends State<HomeView>
         height: 190,
         width: double.infinity,
         decoration: BoxDecoration(
-          color: Colors.black.withOpacity(0.4),
+          color: Colors.black.withValues(alpha: 0.3),
           borderRadius: BorderRadius.circular(20),
-          border: Border.all(
-              color: Colors.greenAccent.withOpacity(0.15), width: 1.5),
+          border: Border.all(color: kNeonCyan.withValues(alpha: 0.1), width: 1.0),
         ),
         child: ClipRRect(
           borderRadius: BorderRadius.circular(20),
@@ -765,7 +829,6 @@ class _HomeViewState extends State<HomeView>
     );
   }
 
-  // ── MODULE BUTTONS ────────────────────────────────────────────
   Widget _buildModuleButton({
     required IconData icon,
     required String label,
@@ -778,20 +841,20 @@ class _HomeViewState extends State<HomeView>
       child: InkWell(
         onTap: onTap ?? () {},
         borderRadius: BorderRadius.circular(18),
-        splashColor: color.withOpacity(0.15),
+        splashColor: color.withValues(alpha: 0.15),
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
           decoration: BoxDecoration(
-            color: Colors.white.withOpacity(0.025),
+            color: Colors.white.withValues(alpha: 0.025),
             borderRadius: BorderRadius.circular(18),
-            border: Border.all(color: Colors.white.withOpacity(0.06)),
+            border: Border.all(color: Colors.white.withValues(alpha: 0.06)),
           ),
           child: Row(
             children: [
               Container(
                 padding: const EdgeInsets.all(10),
                 decoration: BoxDecoration(
-                  color: color.withOpacity(0.12),
+                  color: color.withValues(alpha: 0.12),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Icon(icon, size: 20, color: color),
@@ -814,7 +877,7 @@ class _HomeViewState extends State<HomeView>
                 ),
               ),
               if (onTap != null)
-                Icon(Icons.chevron_right_rounded,
+                const Icon(Icons.chevron_right_rounded,
                     color: Colors.white24, size: 20),
             ],
           ),
@@ -823,7 +886,6 @@ class _HomeViewState extends State<HomeView>
     );
   }
 
-  // ── CAREGIVER SYNC TOGGLE ─────────────────────────────────────
   Widget _buildToggleSyncButton() {
     final bool syncing = _controller.caregiverService.isBroadcasting;
     return Material(
@@ -839,13 +901,13 @@ class _HomeViewState extends State<HomeView>
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
           decoration: BoxDecoration(
             color: syncing
-                ? Colors.greenAccent.withOpacity(0.08)
-                : Colors.white.withOpacity(0.025),
+                ? Colors.greenAccent.withValues(alpha: 0.08)
+                : Colors.white.withValues(alpha: 0.025),
             borderRadius: BorderRadius.circular(18),
             border: Border.all(
               color: syncing
-                  ? Colors.greenAccent.withOpacity(0.4)
-                  : Colors.white.withOpacity(0.06),
+                  ? Colors.greenAccent.withValues(alpha: 0.4)
+                  : Colors.white.withValues(alpha: 0.06),
               width: 1.5,
             ),
           ),
@@ -854,8 +916,8 @@ class _HomeViewState extends State<HomeView>
               padding: const EdgeInsets.all(10),
               decoration: BoxDecoration(
                 color: syncing
-                    ? Colors.greenAccent.withOpacity(0.15)
-                    : Colors.white.withOpacity(0.05),
+                    ? Colors.greenAccent.withValues(alpha: 0.15)
+                    : Colors.white.withValues(alpha: 0.05),
                 borderRadius: BorderRadius.circular(12),
               ),
               child: Icon(
@@ -872,18 +934,23 @@ class _HomeViewState extends State<HomeView>
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    syncing ? 'Sync Active' : 'Start Sync',
+                    syncing ? 'Local Network Active' : 'Start Local Link',
                     style: GoogleFonts.inter(
                         color: Colors.white,
                         fontWeight: FontWeight.w700,
                         fontSize: 14),
                   ),
                   Text(
-                    syncing ? 'Local hotspot streaming' : 'Offline mode',
+                    syncing
+                        ? 'AIR-GAPPED READY • NO INTERNET'
+                        : 'OFFLINE-FIRST ARCHITECTURE',
                     style: GoogleFonts.inter(
-                      color:
-                          syncing ? Colors.greenAccent.withOpacity(0.8) : Colors.white38,
-                      fontSize: 11,
+                      color: syncing
+                          ? Colors.greenAccent.withValues(alpha: 0.9)
+                          : Colors.white38,
+                      fontSize: 9,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 0.5,
                     ),
                   ),
                 ],
@@ -898,28 +965,28 @@ class _HomeViewState extends State<HomeView>
     );
   }
 
-  // ── MOBILE BOTTOM PANEL ───────────────────────────────────────
   Widget _buildMobileBottomPanel() {
     return Positioned(
-      bottom: 0, left: 0, right: 0,
+      bottom: 0,
+      left: 0,
+      right: 0,
       child: ClipRRect(
-        borderRadius:
-            const BorderRadius.vertical(top: Radius.circular(32)),
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
         child: BackdropFilter(
           filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
           child: Container(
             padding: const EdgeInsets.fromLTRB(20, 20, 20, 40),
             decoration: BoxDecoration(
-              color: const Color(0xFF0B0B10).withOpacity(0.85),
+              color: const Color(0xFF0B0B10).withValues(alpha: 0.85),
               border: const Border(
                   top: BorderSide(color: Color(0xFF1A1A2E), width: 1)),
             ),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                // Drag handle
                 Container(
-                  width: 40, height: 4,
+                  width: 40,
+                  height: 4,
                   margin: const EdgeInsets.only(bottom: 16),
                   decoration: BoxDecoration(
                       color: Colors.white12,
@@ -966,85 +1033,146 @@ class _HomeViewState extends State<HomeView>
     );
   }
 
-  // ── NAVIGATION ────────────────────────────────────────────────
   void _openCaregiver() {
     Navigator.push(
-        context,
-        MaterialPageRoute(
-            builder: (_) => CaregiverView(
-                service: _controller.caregiverService)));
+      context,
+      MaterialPageRoute(
+        builder: (_) => CaregiverView(service: _controller.caregiverService),
+      ),
+    );
   }
 
   void _openSettings() {
-    Navigator.push(context,
-        MaterialPageRoute(builder: (_) => const SettingsView()));
-  }
-
-  // ── HELPERS ───────────────────────────────────────────────────
-  String _labelFor(int id) {
-    switch (id) {
-      case 0: return 'Person';
-      case 1: return 'Car';
-      case 2: return 'Chair';
-      default: return 'Object';
-    }
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => SettingsView(controller: _controller)),
+    );
   }
 
   IconData _iconFor(int id) {
     switch (id) {
-      case 0: return Icons.person_rounded;
-      case 1: return Icons.directions_car_rounded;
-      case 2: return Icons.chair_rounded;
-      default: return Icons.category_rounded;
+      case 0:
+        return Icons.person_outline_rounded;
+      case 1:
+        return Icons.directions_car_outlined;
+      case 2:
+        return Icons.pedal_bike_rounded;
+      case 3:
+        return Icons.warning_amber_rounded;
+      default:
+        return Icons.help_outline_rounded;
     }
   }
 }
 
-// ─────────────────────────────────────────────────────────────────
-//  SCAN GRID PAINTER — draws the technical scanner grid background
-// ─────────────────────────────────────────────────────────────────
-class ScanGridPainter extends CustomPainter {
+class ScanningOverlayPainter extends CustomPainter {
+  final double progress;
+  ScanningOverlayPainter(this.progress);
+
   @override
   void paint(Canvas canvas, Size size) {
     final paint = Paint()
-      ..color = const Color(0xFF00E5FF).withOpacity(0.025)
-      ..strokeWidth = 1.0;
+      ..shader = LinearGradient(
+        begin: Alignment.topCenter,
+        end: Alignment.bottomCenter,
+        colors: [
+          Colors.transparent,
+          kNeonCyan.withValues(alpha: 0.05),
+          kNeonCyan.withValues(alpha: 0.35),
+          kNeonCyan.withValues(alpha: 0.05),
+          Colors.transparent,
+        ],
+        stops: const [0.0, 0.48, 0.5, 0.52, 1.0],
+      ).createShader(
+          Rect.fromLTWH(0, (progress * size.height) - 40, size.width, 80));
 
-    const step = 40.0;
-    for (double x = 0; x < size.width; x += step) {
-      canvas.drawLine(Offset(x, 0), Offset(x, size.height), paint);
-    }
-    for (double y = 0; y < size.height; y += step) {
-      canvas.drawLine(Offset(0, y), Offset(size.width, y), paint);
-    }
+    canvas.drawRect(
+        Rect.fromLTWH(0, (progress * size.height) - 40, size.width, 80), paint);
 
-    // Corner markers
+    final linePaint = Paint()
+      ..color = kNeonCyan.withValues(alpha: 0.8)
+      ..strokeWidth = 0.8;
+    canvas.drawLine(
+      Offset(0, progress * size.height),
+      Offset(size.width, progress * size.height),
+      linePaint,
+    );
+
     final cornerPaint = Paint()
-      ..color = const Color(0xFF00E5FF).withOpacity(0.2)
-      ..strokeWidth = 2.0
+      ..color = kNeonCyan.withValues(alpha: 0.2)
+      ..strokeWidth = 1.2
       ..style = PaintingStyle.stroke;
 
-    const cornerSize = 20.0;
-    final corners = [
-      Offset(20, 100),
-      Offset(size.width - 20, 100),
-      Offset(20, size.height - 20),
-      Offset(size.width - 20, size.height - 20),
-    ];
-    for (final c in corners) {
-      canvas.drawRect(
-          Rect.fromCenter(center: c, width: cornerSize, height: cornerSize),
-          cornerPaint);
-    }
+    const double cs = 24.0;
+    const double pad = 30.0;
+
+    canvas.drawPath(
+        Path()
+          ..moveTo(pad, pad + cs)
+          ..lineTo(pad, pad)
+          ..lineTo(pad + cs, pad),
+        cornerPaint);
+    canvas.drawPath(
+        Path()
+          ..moveTo(size.width - pad - cs, pad)
+          ..lineTo(size.width - pad, pad)
+          ..lineTo(size.width - pad, pad + cs),
+        cornerPaint);
+    canvas.drawPath(
+        Path()
+          ..moveTo(pad, size.height - pad - cs)
+          ..lineTo(pad, size.height - pad)
+          ..lineTo(pad + cs, size.height - pad),
+        cornerPaint);
+    canvas.drawPath(
+        Path()
+          ..moveTo(size.width - pad - cs, size.height - pad)
+          ..lineTo(size.width - pad, size.height - pad)
+          ..lineTo(size.width - pad, size.height - pad - cs),
+        cornerPaint);
   }
 
   @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+  bool shouldRepaint(ScanningOverlayPainter oldDelegate) =>
+      oldDelegate.progress != progress;
 }
 
-// ─────────────────────────────────────────────────────────────────
-//  RADAR PAINTER — SLAM-lite topography ring visualizer
-// ─────────────────────────────────────────────────────────────────
+class TacticalGridPainter extends CustomPainter {
+  final double pulse;
+  TacticalGridPainter(this.pulse);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final gridPaint = Paint()
+      ..color = kNeonCyan.withValues(alpha: 0.03)
+      ..strokeWidth = 0.5;
+
+    const double step = 45.0;
+    for (double x = 0; x < size.width; x += step) {
+      canvas.drawLine(Offset(x, 0), Offset(x, size.height), gridPaint);
+    }
+    for (double y = 0; y < size.height; y += step) {
+      canvas.drawLine(Offset(0, y), Offset(size.width, y), gridPaint);
+    }
+
+    final center = Offset(size.width / 2, size.height * 0.4);
+    final pulsePaint = Paint()
+      ..shader = RadialGradient(
+        colors: [
+          kNeonCyan.withValues(alpha: 0.12 * (1.3 - pulse)),
+          Colors.transparent,
+        ],
+      ).createShader(
+          Rect.fromCircle(center: center, radius: size.width * 0.8 * pulse));
+
+    canvas.drawRect(Rect.fromLTWH(0, 0, size.width, size.height), pulsePaint);
+  }
+
+  @override
+  bool shouldRepaint(TacticalGridPainter oldDelegate) =>
+      oldDelegate.pulse != pulse;
+}
+
 class RadarPainter extends CustomPainter {
   final List<SpatialPointData> points;
   final double pulse;
@@ -1053,64 +1181,43 @@ class RadarPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    final center = Offset(size.width / 2, size.height);
-    final double maxR = size.height;
+    final center = Offset(size.width / 2, size.height * 0.9);
+    final double maxR = size.height * 0.8;
 
-    // Grid rings
     final gridPaint = Paint()
-      ..color = Colors.greenAccent.withOpacity(0.1)
+      ..color = kNeonCyan.withValues(alpha: 0.08)
       ..style = PaintingStyle.stroke
-      ..strokeWidth = 1.0;
-    for (int i = 1; i <= 4; i++) {
-      canvas.drawCircle(center, (maxR / 4.0) * i, gridPaint);
+      ..strokeWidth = 0.5;
+    for (int i = 1; i <= 3; i++) {
+      canvas.drawCircle(center, (maxR / 3.0) * i, gridPaint);
     }
 
-    // Center cross
-    final crossPaint = Paint()
-      ..color = Colors.greenAccent.withOpacity(0.12)
-      ..strokeWidth = 1;
-    canvas.drawLine(Offset(center.dx, 0), Offset(center.dx, size.height), crossPaint);
-    canvas.drawLine(Offset(0, center.dy), Offset(size.width, center.dy), crossPaint);
-
-    // Sweeping pulse ring
-    final double pr = maxR * (pulse - 0.7) / 0.6 * 1.0;
+    final double pr = maxR * (pulse - 0.7) / 0.6;
     final pulsePaint = Paint()
-      ..color = Colors.greenAccent.withOpacity(0.07)
+      ..color = kNeonCyan.withValues(alpha: 0.05)
       ..style = PaintingStyle.stroke
-      ..strokeWidth = 3;
+      ..strokeWidth = 2;
     canvas.drawCircle(center, pr.clamp(0, maxR), pulsePaint);
 
-    // Spatial map points
     for (final pt in points) {
-      final double x = pt.x / 4.0; 
-      final double y = 190 - (pt.z * 40); 
-      final double alpha = pt.alpha;
-      
-      final double radarX = center.dx + x;
-      final double radarY = center.dy - y;
+      final double alpha = pt.alpha.clamp(0.0, 1.0);
+      if (alpha <= 0.05) continue;
+
+      final double nx = ((pt.x - 320) / 320.0).clamp(-1.0, 1.0);
+      final double radarX = center.dx + nx * size.width * 0.45;
+      final double radarY = center.dy - (pt.z / 10.0).clamp(0.0, 1.0) * maxR;
 
       final bool isClose = pt.z < 3.0;
-      final Color ptColor = isClose ? Colors.redAccent : Colors.greenAccent;
+      final Color ptColor = isClose ? kEmergencyRed : kNeonCyan;
 
       canvas.drawCircle(
         Offset(radarX, radarY),
-        isClose ? 5.0 : 3.5,
-        Paint()
-          ..color = ptColor.withOpacity(alpha)
-          ..style = PaintingStyle.fill,
-      );
-
-      // Glow halo
-      canvas.drawCircle(
-        Offset(radarX, radarY),
-        isClose ? 10.0 : 7.0,
-        Paint()
-          ..color = ptColor.withOpacity(alpha * 0.2)
-          ..style = PaintingStyle.fill,
+        1.8,
+        Paint()..color = ptColor.withValues(alpha: alpha),
       );
     }
   }
 
   @override
-  bool shouldRepaint(covariant RadarPainter old) => true;
+  bool shouldRepaint(RadarPainter old) => true;
 }
