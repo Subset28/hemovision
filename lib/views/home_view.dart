@@ -4,6 +4,8 @@ import 'dart:ui';
 import 'dart:math' as math;
 import 'package:google_fonts/google_fonts.dart';
 import '../controllers/main_controller.dart';
+import '../engines/vision_engine.dart';
+import '../services/caregiver_service.dart';
 import 'caregiver_view.dart';
 import 'settings_view.dart';
 
@@ -23,10 +25,11 @@ class _HomeViewState extends State<HomeView>
     with TickerProviderStateMixin {
   late MainController _controller;
 
-  List<Map<String, dynamic>> _detectedObjects = [];
-  List<Map<String, dynamic>> _spatialMap = [];
-  Map<String, dynamic>? _currentAlert;
+  List<DetectedObjectData> _detectedObjects = [];
+  List<SpatialPointData> _spatialMap = [];
+  AudioAlertData? _currentAlert;
   Map<String, dynamic> _stats = {};
+  CaregiverConnectionState _caregiverState = CaregiverConnectionState.disconnected;
   bool _isExpanded = false;   // sidebar toggle on desktop
 
   // Animations
@@ -61,6 +64,11 @@ class _HomeViewState extends State<HomeView>
         });
       }
     });
+
+    _controller.caregiverService.stateStream.listen((state) {
+      if (mounted) setState(() => _caregiverState = state);
+    });
+
     _controller.statsStream.listen((s) {
       if (mounted) setState(() => _stats = s);
     });
@@ -267,10 +275,47 @@ class _HomeViewState extends State<HomeView>
             label: 'Module B • AR Haptics',
             color: Colors.orangeAccent,
           ),
+          const SizedBox(width: 10),
+          _buildConnectionStatusChip(),
           if (isDesktop) const Spacer(),
         ],
       ),
     );
+  }
+
+  Widget _buildConnectionStatusChip() {
+    Color color;
+    String label;
+    IconData icon;
+
+    switch (_caregiverState) {
+      case CaregiverConnectionState.disconnected:
+        color = Colors.white24;
+        label = 'Caregiver Off';
+        icon = Icons.cloud_off_rounded;
+        break;
+      case CaregiverConnectionState.listening:
+        color = Colors.blueAccent;
+        label = 'Waiting...';
+        icon = Icons.sync_rounded;
+        break;
+      case CaregiverConnectionState.connected:
+        color = Colors.greenAccent;
+        label = 'Caregiver Linked';
+        icon = Icons.verified_user_rounded;
+        break;
+      case CaregiverConnectionState.unstable:
+        color = Colors.amberAccent;
+        label = 'Signal Weak';
+        icon = Icons.signal_cellular_connected_no_internet_4_bar_rounded;
+        break;
+      default:
+        color = Colors.redAccent;
+        label = 'Error';
+        icon = Icons.error_outline_rounded;
+    }
+
+    return _buildGlassChip(label: label, color: color, icon: icon);
   }
 
   Widget _buildGlassChip({
@@ -326,18 +371,18 @@ class _HomeViewState extends State<HomeView>
     double canvasHeight = 700,
   }) {
     return _detectedObjects.map((obj) {
-      final double x = (obj['x'] as double);
-      final double y = (obj['y'] as double);
-      final double w = (obj['width'] as double);
-      final double h = (obj['height'] as double);
-      final double dist = (obj['distance'] as double);
-      final double threat = (obj['threatLevel'] as double);
-      final int classId = (obj['classId'] as int);
+      final double x = obj.x;
+      final double y = obj.y;
+      final double w = obj.width;
+      final double h = obj.height;
+      final double dist = obj.distance;
+      final double threat = obj.threatLevel;
+      final int classId = obj.classId;
 
-      final bool isCritical = threat > 75;
+      final bool isCritical = obj.isCritical;
       final Color boxColor =
           isCritical ? Colors.redAccent : Colors.greenAccent;
-      final String label = _labelFor(classId);
+      final String label = obj.label;
       final IconData icon = _iconFor(classId);
 
       return Positioned(
@@ -451,8 +496,8 @@ class _HomeViewState extends State<HomeView>
   }
 
   Widget _buildAlertCard() {
-    final type = _currentAlert!['type'] as String;
-    final direction = _currentAlert!['direction'] as String;
+    final type = _currentAlert!.type;
+    final direction = _currentAlert!.direction;
 
     return ClipRRect(
       borderRadius: BorderRadius.circular(24),
@@ -1001,10 +1046,10 @@ class ScanGridPainter extends CustomPainter {
 //  RADAR PAINTER — SLAM-lite topography ring visualizer
 // ─────────────────────────────────────────────────────────────────
 class RadarPainter extends CustomPainter {
-  final List<Map<String, dynamic>> spatialMap;
-  final double pulseValue;
+  final List<SpatialPointData> points;
+  final double pulse;
 
-  RadarPainter(this.spatialMap, this.pulseValue);
+  RadarPainter(this.points, this.pulse);
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -1028,7 +1073,7 @@ class RadarPainter extends CustomPainter {
     canvas.drawLine(Offset(0, center.dy), Offset(size.width, center.dy), crossPaint);
 
     // Sweeping pulse ring
-    final double pr = maxR * (pulseValue - 0.7) / 0.6 * 1.0;
+    final double pr = maxR * (pulse - 0.7) / 0.6 * 1.0;
     final pulsePaint = Paint()
       ..color = Colors.greenAccent.withOpacity(0.07)
       ..style = PaintingStyle.stroke
@@ -1036,17 +1081,15 @@ class RadarPainter extends CustomPainter {
     canvas.drawCircle(center, pr.clamp(0, maxR), pulsePaint);
 
     // Spatial map points
-    for (final pt in spatialMap) {
-      final double alpha = ((pt['alpha'] as double?) ?? 1.0).clamp(0.0, 1.0);
-      if (alpha <= 0.02) continue;
+    for (final pt in points) {
+      final double x = pt.x / 4.0; 
+      final double y = 190 - (pt.z * 40); 
+      final double alpha = pt.alpha;
+      
+      final double radarX = center.dx + x;
+      final double radarY = center.dy - y;
 
-      final double px = (pt['x'] as double?) ?? 320.0;
-      final double dist = (pt['z'] as double?) ?? 5.0;
-      final double nx = ((px - 320) / 320.0).clamp(-1.0, 1.0);
-      final double radarX = center.dx + nx * size.width * 0.5;
-      final double radarY = center.dy - (dist / 10.0).clamp(0.0, 1.0) * maxR;
-
-      final bool isClose = dist < 3.0;
+      final bool isClose = pt.z < 3.0;
       final Color ptColor = isClose ? Colors.redAccent : Colors.greenAccent;
 
       canvas.drawCircle(
