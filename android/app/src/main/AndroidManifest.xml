@@ -46,7 +46,11 @@
             android:hardwareAccelerated="true"
             android:windowSoftInputMode="adjustResize">
 
-            <!-- Flutter embedding meta -->
+            <!-- Flutter embedding meta (v2) -->
+            <meta-data
+                android:name="flutterEmbedding"
+                android:value="2" />
+
             <meta-data
                 android:name="io.flutter.embedding.android.NormalTheme"
                 android:resource="@style/NormalTheme" />
@@ -58,13 +62,7 @@
             </intent-filter>
         </activity>
 
-        <!-- Flutter plugin embedding version -->
-        <meta-data
-            android:name="flutterEmbedding"
-            android:value="2" />
-
         <!-- Camera2 permission for flutter camera plugin -->
-        <uses-permission android:name="android.permission.CAMERA" />
     </application>
 
 </manifest>
