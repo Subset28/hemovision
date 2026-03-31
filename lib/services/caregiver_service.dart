@@ -1,7 +1,8 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:io';
-import 'dart:isolate';
+import 'dart:io' if (dart.library.html) 'dart:html';
+import 'dart:isolate' if (dart.library.html) 'package:flutter/foundation.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  UPGRADE #4 — Isolate-based TCP listener
@@ -71,6 +72,7 @@ class CaregiverService {
   // ─────────────────────────────────────────────────────────────────────────
 
   Future<void> startBroadcasting() async {
+    if (kIsWeb) return;
     if (_state != CaregiverConnectionState.disconnected) return;
 
     try {
@@ -120,6 +122,7 @@ class CaregiverService {
   /// Sends a JSON-encoded alert to the connected caregiver.
   /// UPGRADE #5: Result<T,E> pattern — returns false instead of throwing.
   bool broadcastAlert(Map<String, dynamic> alertData) {
+    if (kIsWeb) return false;
     if (_activeSocket == null || !isConnected) return false;
 
     try {
@@ -133,6 +136,7 @@ class CaregiverService {
   }
 
   void stopBroadcasting() {
+    if (kIsWeb) return;
     _stopHeartbeat();
     _listenerIsolate?.kill(priority: Isolate.immediate);
     _listenerIsolate = null;
@@ -197,6 +201,7 @@ class CaregiverService {
   // ─────────────────────────────────────────────────────────────────────────
 
   Future<void> _startListenerIsolate(Socket socket) async {
+    if (kIsWeb) return;
     _fromIsolatePort?.close();
     _fromIsolatePort = ReceivePort();
 
@@ -248,6 +253,7 @@ class CaregiverService {
   /// Returns a Result-like object (connected: true/false + error message).
   Future<({bool connected, String? error})> connectToPrimaryUser(
       String ipAddress) async {
+    if (kIsWeb) return (connected: false, error: 'Remote Sync not supported on Web');
     _setState(CaregiverConnectionState.connecting);
 
     try {

@@ -23,7 +23,7 @@ class CaregiverView extends StatefulWidget {
 
 class _CaregiverViewState extends State<CaregiverView> with SingleTickerProviderStateMixin {
   final TextEditingController _ipController = TextEditingController();
-  List<Map<String, dynamic>> _alertHistory = [];
+  final List<Map<String, dynamic>> _alertHistory = [];
   bool _isConnected = false;
   late AnimationController _pulseCtrl;
 
@@ -197,7 +197,14 @@ class _CaregiverViewState extends State<CaregiverView> with SingleTickerProvider
               if (!_isConnected) ...[
                 TextField(
                   controller: _ipController,
-                  style: GoogleFonts.jetBrainsMono(color: Colors.white, fontSize: 16),
+                  style: GoogleFonts.jetBrainsMono(
+                    color: Colors.white, 
+                    fontSize: 16,
+                    shadows: const [
+                      Shadow(color: Colors.black, blurRadius: 12),
+                      Shadow(color: Colors.black, blurRadius: 24),
+                    ],
+                  ),
                   decoration: InputDecoration(
                     labelText: 'PRIMARY IPv4 ADDRESS',
                     labelStyle: GoogleFonts.inter(color: Colors.white38, letterSpacing: 1.5, fontSize: 10, fontWeight: FontWeight.w700),
@@ -348,21 +355,20 @@ class _CaregiverViewState extends State<CaregiverView> with SingleTickerProvider
             leading: _alertIcon(alert['type'], color),
             title: Text(alert['type']?.toString().toUpperCase() ?? 'EVENT', 
               style: GoogleFonts.orbitron(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13, letterSpacing: 1.0)),
-            subtitle: Text(
-              '${alert['direction']} | ${alert['info']}'.toUpperCase(),
-              style: GoogleFonts.inter(
-                color: Colors.white30,
-                fontSize: 9,
-                fontWeight: FontWeight.w700,
-                letterSpacing: 0.5,
-              ),
+            subtitle: Center(
+              child: Text('CARE_LINK ACTIVE',
+                style: TextStyle(
+                    color: kNeonCyan,
+                    fontSize: 10,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: 2.0)),
             ),
             trailing: Text(
               '${DateTime.now().hour}:${DateTime.now().minute.toString().padLeft(2, '0')}',
               style: GoogleFonts.jetBrainsMono(
                 color: color.withValues(alpha: 0.5),
-                fontSize: 12,
-                fontWeight: FontWeight.bold,
+                fontSize: 10,
+                fontWeight: FontWeight.w600,
               ),
             ),
           ),
