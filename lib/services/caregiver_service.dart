@@ -55,6 +55,22 @@ class CaregiverService {
     }
   }
 
+  void ping() {
+    if (_clients.isEmpty) return;
+    final pingData = jsonEncode({
+      'type': 'ping',
+      'timestamp': DateTime.now().toIso8601String(),
+    });
+    for (final client in _clients) {
+      try {
+        client.write('$pingData\n');
+      } catch (e) {
+        // Handle broken pipe
+      }
+    }
+    _statusCtrl.add('Manual Ping sent to ${_clients.length} clients');
+  }
+
   void stop() {
     for (final client in _clients) {
       client.destroy();

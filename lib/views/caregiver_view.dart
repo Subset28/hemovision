@@ -171,9 +171,7 @@ class _CaregiverViewState extends State<CaregiverView> {
         const SizedBox(width: 12),
         Expanded(
           child: ElevatedButton.icon(
-            onPressed: () {
-              // Trigger a manual poll or sync
-            },
+            onPressed: () => widget.service.ping(),
             icon: const Icon(Icons.sync),
             label: const Text('Ping Clients'),
             style: ElevatedButton.styleFrom(

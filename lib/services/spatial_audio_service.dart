@@ -4,11 +4,16 @@ import '../engines/vision_engine.dart';
 class SpatialAudioService {
   final AudioPlayer _player = AudioPlayer();
   bool _isEnabled = true;
+  DateTime? _lastPlayed;
 
   void setEnabled(bool value) => _isEnabled = value;
 
   Future<void> playThreatSound(DetectedObjectData obj) async {
     if (!_isEnabled) return;
+
+    final now = DateTime.now();
+    if (_lastPlayed != null && now.difference(_lastPlayed!).inMilliseconds < 800) return;
+    _lastPlayed = now;
 
     // Map distance (0-10m) to volume (1.0-0.1)
     final volume = (1.0 - (obj.distance / 10.0)).clamp(0.1, 1.0);
