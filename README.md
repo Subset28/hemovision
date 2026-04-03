@@ -80,6 +80,10 @@ The app uses the phone's camera as a set of eyes. Every frame from the camera is
 3. **How dangerous is it?** (threat level)
 4. **Where is it relative to the user?** (left/right/center)
 
+**Operational Modes:**
+- **Ambient Awareness**: A wide-angle, clean view that remains silent until a high-priority threat enters the immediate safety perimeter.
+- **Target Tactical**: A high-density mapping mode where every object in the frame is tracked, measured, and announced for precise navigation.
+
 This information is then mapped into a **spatial audio soundscape**. Objects closer to the user play louder. Objects to the left of the user play in the left ear. An approaching car at 2 meters plays a high-urgency tone. A chair at 10 meters is a quiet, low-priority marker. The blind user receives a continuous, silent, heads-up sense of space around them — delivered through earphones — while walking, traveling, or in an unfamiliar environment.
 
 ### How We Built It
@@ -139,9 +143,10 @@ The microphone continuously captures the environment's ambient audio. A Fast Fou
 
 When a threat is detected with confidence above 80%, the app triggers:
 
-- **A full-screen AR Alert HUD** — a glassmorphic red overlay appears on the phone screen with large text identifying the alert type and the estimated direction it's coming from
-- **Haptic feedback** — the phone vibrates in a distinct pattern so the user feels the alert even if they're not looking at the phone
-- **A caregiver notification** — if the caregiver sync feature is active, the alert is simultaneously broadcast to the caregiver's device
+- **A full-screen AR Alert HUD** — a glassmorphic red overlay appears on the phone screen with large text identifying the alert type and the estimated direction it's coming from.
+- **Haptic feedback** — the phone vibrates in a distinct pattern so the user feels the alert even if they're not looking at the phone.
+- **Emergency Alert Stream** — a dedicated HUD in the main interface that highlights sirens even while in Vision mode.
+- **A caregiver notification** — if the caregiver sync feature is active, the alert is simultaneously broadcast to the caregiver's device.
 
 ### How We Built It
 
@@ -273,13 +278,14 @@ The TSA prompt asked teams to identify a challenge and solve it. Here is a direc
 | Claim | Delivered? | Evidence |
 |---|---|---|
 | Helps visually impaired users navigate obstacles | ✅ Yes | Distance-sorted priority queue, spatial audio framework |
-| Helps deaf users detect emergency sounds | ✅ Yes | FFT siren detection, AR HUD, haptic feedback |
+| Helps deaf users detect emergency sounds | ✅ Yes | FFT siren detection, AR HUD, haptic feedback, Audio Alert HUD |
 | Works offline | ✅ Yes | TCP local sync, on-device ONNX, zero API calls |
 | Caregiver remote monitoring | ✅ Yes | TCP socket server/client with live telemetry |
 | Spatial memory across time | ✅ Yes | SLAM-lite point cloud with decay algorithm |
 | Cross-platform (iOS, Android, Windows) | ✅ Yes | Single Flutter + C++ codebase |
 | Technically complex | ✅ Yes | FFI bridge, priority queue, FFT, Isolates, CustomPaint |
 | Maintainable code architecture | ✅ Yes | Strict MVC pattern, documented with CODE_MAP.md |
+| Hardware Simulation Mode | ✅ Yes | Toggle between real YOLOv8 and deterministic simulation for testing |
 
 ### What Is Still a Simulation (Mock Mode) ⚠️
 

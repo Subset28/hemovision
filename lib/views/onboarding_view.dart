@@ -28,13 +28,13 @@ class _OnboardingViewState extends State<OnboardingView> {
       'icon': Icons.remove_red_eye_rounded,
     },
     {
-      'title': 'Ambient Mode.',
-      'description': 'Hold your phone up to see clearly. We naturally keep the view wide and clean, only interrupting you if something dangerous gets too close.',
+      'title': 'Ambient Awareness.',
+      'description': 'Keep the view wide and clean. We only interrupt you if something dangerous gets too close.',
       'icon': Icons.zoom_out_map_rounded,
     },
     {
-      'title': 'Focus Mode.',
-      'description': 'Need more detail? Switch to Focus Mode to have your entire immediate environment mapped and pinpointed perfectly.',
+      'title': 'Target Tactical.',
+      'description': 'Need more detail? Switch to Target Tactical to have your entire immediate environment mapped and pinpointed perfectly.',
       'icon': Icons.find_in_page_rounded,
     },
   ];

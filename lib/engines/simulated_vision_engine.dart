@@ -50,16 +50,6 @@ class SimulatedVisionEngine implements VisionEngine {
 
   @override
   Future<EngineFrame> processFrame(int frameNumber) async {
-    if (!mockEnabled) {
-      return EngineFrame(
-        objects: const [],
-        spatialMap: const [],
-        audioAlert: null,
-        frameNumber: frameNumber,
-        timestamp: DateTime.now(),
-      );
-    }
-
     final t = frameNumber * 0.03;
     final sinT = _sin(t);
     final ms = DateTime.now().millisecondsSinceEpoch;

@@ -12,8 +12,13 @@ void main() async {
   //  Disabling runtime fetching ensures the app works in air-gapped environments.
   //  It will strictly use the .ttf assets bundled in pubspec.yaml.
   // ─────────────────────────────────────────────────────────────────────────────
-  // Pre-load critical assets and allow offline fonts (fetch once, cache forever)
-  GoogleFonts.config.allowRuntimeFetching = true;
+  // Pre-load critical assets. We allow runtime fetching for flexible deployment,
+  // but ensure it doesn't block the UI thread if offline.
+  try {
+    GoogleFonts.config.allowRuntimeFetching = true;
+  } catch (e) {
+    debugPrint('GoogleFonts not initialized: $e');
+  }
 
   // Lock orientation to portrait for mobile, allow all for desktop
   await SystemChrome.setPreferredOrientations([
@@ -49,7 +54,11 @@ class OmniSightApp extends StatelessWidget {
           surface: const Color(0xFF0A0A0C),
         ),
         useMaterial3: true,
-        textTheme: GoogleFonts.interTextTheme(ThemeData.dark().textTheme),
+        textTheme: GoogleFonts.interTextTheme(ThemeData.dark().textTheme).copyWith(
+          // Provide local fallbacks for critical UI elements
+          displayLarge: const TextStyle(fontFamily: 'Inter', fontWeight: FontWeight.w900),
+          bodyLarge: const TextStyle(fontFamily: 'Inter'),
+        ),
         scaffoldBackgroundColor: const Color(0xFF0A0A0C),
         splashFactory: InkRipple.splashFactory,
       ),

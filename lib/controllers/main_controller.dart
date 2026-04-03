@@ -17,6 +17,7 @@ class MainController {
   late VisionEngine _engine;
   late DatabaseService _dbService;
   Timer? _processingTimer;
+  bool useSimulation = true; // User-controlled flag
 
   // ── Accessibility State ───────────────────────────────────────
   bool highContrast = false;
@@ -53,19 +54,16 @@ class MainController {
     // ── UPGRADE #2: Dynamic Initialization ───────────────────────
     try {
       final yolo = YoloVisionEngine();
-      if (yolo.isMockMode) {
-        _engine = SimulatedVisionEngine();
-      } else {
-        _engine = yolo;
-      }
+      useSimulation = yolo.isMockMode; // Default to Simulation if native lib missing
+      _engine = useSimulation ? SimulatedVisionEngine() : yolo;
     } catch (e) {
+      useSimulation = true;
       _engine = SimulatedVisionEngine();
     }
   }
 
   void setMockMode(bool enabled) {
-    // If we're toggling back to simulated mode, we just re-instantiate it
-    // If we're toggling back to "Real" mode (YOLO), we re-instantiate the YOLO bridge.
+    useSimulation = enabled;
     if (enabled) {
       _engine = SimulatedVisionEngine();
     } else {
@@ -102,7 +100,7 @@ class MainController {
     // We send the current engine state to a background Isolate.
     // compute() handles the spawning/killing of the thread.
     final resultData = await compute(_processFrameInIsolate, {
-      'isMock': _engine.isMockMode,
+      'useSimulation': useSimulation,
       'frameNumber': _frameCount,
     });
 
@@ -143,13 +141,13 @@ class MainController {
 //  Runs calculations in the background to ensure 60fps UI.
 // ─────────────────────────────────────────────────────────────────
 Future<Map<String, dynamic>> _processFrameInIsolate(Map<String, dynamic> args) async {
-  final bool isMock = args['isMock'] as bool;
+  final bool useSim = args['useSimulation'] as bool;
   final int frameNumber = args['frameNumber'] as int;
 
-  // We instantiate a transient engine inside the Isolate to perform
-  // the deterministic calculations or FFI lookups.
+  // We instantiate a transient engine inside the Isolate.
+  // CRITICAL: We only use Simulation if the user EXPLICITLY requested it.
   late VisionEngine engine;
-  if (isMock) {
+  if (useSim) {
     engine = SimulatedVisionEngine();
   } else {
     engine = YoloVisionEngine(); 

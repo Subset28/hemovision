@@ -29,6 +29,8 @@ class YoloVisionEngine implements VisionEngine {
   @override
   Future<EngineFrame> processFrame(int frameNumber) async {
     if (_nativeEngine == null || _nativeEngine!.isMockMode) {
+      // If we are in real mode but native is missing, we MUST return empty.
+      // Do NOT trigger simulation data here; that is for SimulatedVisionEngine only.
       return EngineFrame(
         objects: const [],
         spatialMap: const [],

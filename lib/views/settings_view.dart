@@ -31,7 +31,7 @@ class _SettingsViewState extends State<SettingsView> {
     super.initState();
     _highContrastMode = widget.controller.highContrast;
     _largeTextMode = widget.controller.largeText;
-    _enableMockEngine = widget.controller.isMockMode;
+    _enableMockEngine = widget.controller.useSimulation;
   }
 
   @override

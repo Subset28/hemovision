@@ -144,11 +144,11 @@ class _HomeViewState extends State<HomeView> {
                           Icon(Icons.remove_red_eye, color: kAccentColor, size: 28),
                           const SizedBox(width: 12),
                           Text(
-                            _isMode1 ? 'Ambient Mode' : 'Target Mode',
+                            _isMode1 ? 'Ambient Awareness' : 'Target Tactical',
                             style: GoogleFonts.inter(
                               color: kTextColor,
-                              fontWeight: FontWeight.w800,
-                              fontSize: 24,
+                              fontWeight: FontWeight.w900,
+                              fontSize: 18,
                               letterSpacing: -0.5,
                             ),
                           ),
