@@ -40,6 +40,9 @@ class MainController {
   final _statsCtrl = StreamController<Map<String, dynamic>>.broadcast();
   Stream<Map<String, dynamic>> get statsStream => _statsCtrl.stream;
 
+  final _audioCtrl = StreamController<AudioAlertData?>.broadcast();
+  Stream<AudioAlertData?> get audioAlertStream => _audioCtrl.stream;
+
   // Live counters for the stats panel
   int _frameCount = 0;
   DateTime _sessionStart = DateTime.now();
@@ -57,6 +60,16 @@ class MainController {
       }
     } catch (e) {
       _engine = SimulatedVisionEngine();
+    }
+  }
+
+  void setMockMode(bool enabled) {
+    // If we're toggling back to simulated mode, we just re-instantiate it
+    // If we're toggling back to "Real" mode (YOLO), we re-instantiate the YOLO bridge.
+    if (enabled) {
+      _engine = SimulatedVisionEngine();
+    } else {
+      _engine = YoloVisionEngine();
     }
   }
 
@@ -78,6 +91,7 @@ class MainController {
     _objectsCtrl.close();
     _spatialCtrl.close();
     _statsCtrl.close();
+    _audioCtrl.close();
   }
 
   // ── Engine Tick ───────────────────────────────────────────────
@@ -100,6 +114,10 @@ class MainController {
 
     if (!_spatialCtrl.isClosed) {
       _spatialCtrl.sink.add(frame.spatialMap);
+    }
+
+    if (!_audioCtrl.isClosed) {
+      _audioCtrl.sink.add(frame.audioAlert);
     }
 
     if (!_statsCtrl.isClosed) {
@@ -134,10 +152,13 @@ Future<Map<String, dynamic>> _processFrameInIsolate(Map<String, dynamic> args) a
   if (isMock) {
     engine = SimulatedVisionEngine();
   } else {
-    // In production, this would use a native handle or singleton
-    engine = SimulatedVisionEngine(); 
+    engine = YoloVisionEngine(); 
   }
 
-  final frame = await engine.processFrame(frameNumber);
-  return frame.toMap();
+  try {
+    final frame = await engine.processFrame(frameNumber);
+    return frame.toMap();
+  } finally {
+    engine.dispose(); // CRITICAL: Prevent native handle leaks every 100ms
+  }
 }

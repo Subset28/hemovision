@@ -2,10 +2,12 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<key>CADisableMinimumFrameDurationOnPhone</key>
+	<true/>
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
-	<string>OmniSight</string>
+	<string>Hemovision</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -13,7 +15,7 @@
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
 	<key>CFBundleName</key>
-	<string>OmniSight Engine</string>
+	<string>hemovision</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
@@ -24,10 +26,39 @@
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
-	<key>MinimumOSVersion</key>
-	<string>16.0</string>
-
-	<!-- ── Orientation Support ───────────────────────────────── -->
+	<key>NSCameraUsageDescription</key>
+	<string>Hemovision needs camera access to perform live object detection and obstacle avoidance.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Hemovision needs microphone access to provide spatial audio feedback.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Hemovision needs photo library access to store analysis snapshots.</string>
+	<key>UIApplicationSceneManifest</key>
+	<dict>
+		<key>UIApplicationSupportsMultipleScenes</key>
+		<false/>
+		<key>UISceneConfigurations</key>
+		<dict>
+			<key>UIWindowSceneSessionRoleApplication</key>
+			<array>
+				<dict>
+					<key>UISceneClassName</key>
+					<string>UIWindowScene</string>
+					<key>UISceneConfigurationName</key>
+					<string>flutter</string>
+					<key>UISceneDelegateClassName</key>
+					<string>$(PRODUCT_MODULE_NAME).SceneDelegate</string>
+					<key>UISceneStoryboardFile</key>
+					<string>Main</string>
+				</dict>
+			</array>
+		</dict>
+	</dict>
+	<key>UIApplicationSupportsIndirectInputEvents</key>
+	<true/>
+	<key>UILaunchStoryboardName</key>
+	<string>LaunchScreen</string>
+	<key>UIMainStoryboardFile</key>
+	<string>Main</string>
 	<key>UISupportedInterfaceOrientations</key>
 	<array>
 		<string>UIInterfaceOrientationPortrait</string>
@@ -40,61 +71,6 @@
 		<string>UIInterfaceOrientationPortraitUpsideDown</string>
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
-	</array>
-
-	<!-- ── Performance ──────────────────────────────────────── -->
-	<key>CADisableMinimumFrameDurationOnPhone</key>
-	<true/>
-	<key>UIApplicationSupportsIndirectInputEvents</key>
-	<true/>
-
-	<!-- ── Privacy Permissions (Required for App Store & TSA) ── -->
-
-	<!-- MODULE A: Computer Vision — camera feed for real-time object detection -->
-	<key>NSCameraUsageDescription</key>
-	<string>OmniSight Engine uses the camera to detect environmental obstacles in real-time using local on-device AI inference (YOLOv8). No video is stored or transmitted — all processing is strictly local.</string>
-
-	<!-- MODULE B: Audio Analysis — microphone for FFT siren detection -->
-	<key>NSMicrophoneUsageDescription</key>
-	<string>OmniSight Engine uses the microphone to analyze environmental audio for emergency sirens and alarms via local FFT processing. No audio is recorded or transmitted.</string>
-
-	<!-- MODULE C: Caregiver Sync — local LAN broadcast (no internet required) -->
-	<key>NSLocalNetworkUsageDescription</key>
-	<string>OmniSight Engine broadcasts safety alerts to a paired Caregiver device over a local ad-hoc hotspot. No data ever leaves the local network.</string>
-
-	<!-- Bonjour service types required for local network permission dialog -->
-	<key>NSBonjourServices</key>
-	<array>
-		<string>_omnisight._tcp</string>
-	</array>
-
-	<!-- Speech (for future voice feedback module) -->
-	<key>NSSpeechRecognitionUsageDescription</key>
-	<string>OmniSight Engine may use speech recognition for hands-free accessibility commands.</string>
-
-	<!-- Location (for future GPS-assisted path memory) -->
-	<key>NSLocationWhenInUseUsageDescription</key>
-	<string>OmniSight Engine may use your location to enhance spatial navigation assistance for visually impaired users.</string>
-
-	<!-- Vibration / Haptics — no permission key needed (always allowed on iOS) -->
-
-	<!-- ── Launch & UI ───────────────────────────────────────── -->
-	<key>UILaunchStoryboardName</key>
-	<string>LaunchScreen</string>
-	<key>UIMainStoryboardFile</key>
-	<string>Main</string>
-	<key>UIStatusBarHidden</key>
-	<false/>
-	<key>UIStatusBarStyle</key>
-	<string>UIStatusBarStyleLightContent</string>
-	<key>UIViewControllerBasedStatusBarAppearance</key>
-	<false/>
-
-	<!-- ── Background Modes ──────────────────────────────────── -->
-	<key>UIBackgroundModes</key>
-	<array>
-		<!-- Allow audio processing to continue when app is backgrounded -->
-		<string>audio</string>
 	</array>
 </dict>
 </plist>

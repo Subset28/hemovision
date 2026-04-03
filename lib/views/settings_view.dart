@@ -46,7 +46,7 @@ class _SettingsViewState extends State<SettingsView> {
           child: BackdropFilter(
             filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
             child: Container(
-              color: kBackground.withValues(alpha: 0.6),
+              color: kBackground.withOpacity(0.6),
               decoration: const BoxDecoration(
                 border: Border(bottom: BorderSide(color: kGlassBorder, width: 1))
               ),
@@ -80,7 +80,10 @@ class _SettingsViewState extends State<SettingsView> {
                 'Mock Simulation Engine', 
                 'Simulates surroundings without camera', 
                 _enableMockEngine, 
-                (v) => setState(() => _enableMockEngine = v)
+                (v) {
+                  setState(() => _enableMockEngine = v);
+                  widget.controller.setMockMode(v);
+                }
               ),
               _divider(),
               _buildSlider(
@@ -149,7 +152,7 @@ class _SettingsViewState extends State<SettingsView> {
                   borderRadius: BorderRadius.circular(20),
                   boxShadow: [
                     BoxShadow(
-                      color: kAccentColor.withValues(alpha: 0.4),
+                      color: kAccentColor.withOpacity(0.4),
                       blurRadius: 20,
                       offset: const Offset(0, 8),
                     )
@@ -201,7 +204,7 @@ class _SettingsViewState extends State<SettingsView> {
             border: Border.all(color: kGlassBorder, width: 1.5),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withValues(alpha: 0.2),
+                color: Colors.black.withOpacity(0.2),
                 blurRadius: 20,
                 offset: const Offset(0, 10),
               )
@@ -213,7 +216,7 @@ class _SettingsViewState extends State<SettingsView> {
     );
   }
 
-  Widget _buildToggle(String label, String sub, bool value, Function(bool) onChanged) {
+  Widget _buildToggle(String label, String sub, bool value, ValueChanged<bool> onChanged) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
       child: Row(
@@ -247,7 +250,7 @@ class _SettingsViewState extends State<SettingsView> {
     );
   }
 
-  Widget _buildSlider(String label, double value, double min, double max, Function(double) onChanged, String display) {
+  Widget _buildSlider(String label, double value, double min, double max, ValueChanged<double> onChanged, String display) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 18, 20, 10),
       child: Column(
@@ -263,9 +266,9 @@ class _SettingsViewState extends State<SettingsView> {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                 decoration: BoxDecoration(
-                  color: kAccentColor.withValues(alpha: 0.1),
+                  color: kAccentColor.withOpacity(0.1),
                   borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: kAccentColor.withValues(alpha: 0.3))
+                  border: Border.all(color: kAccentColor.withOpacity(0.3))
                 ),
                 child: Text(
                   display, 
@@ -280,7 +283,7 @@ class _SettingsViewState extends State<SettingsView> {
               activeTrackColor: kAccentColor,
               inactiveTrackColor: Colors.white12,
               thumbColor: kAccentColor,
-              overlayColor: kAccentColor.withValues(alpha: 0.2),
+              overlayColor: kAccentColor.withOpacity(0.2),
               trackHeight: 6,
             ),
             child: Slider(

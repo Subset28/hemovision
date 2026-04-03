@@ -19,6 +19,8 @@ class SimulatedVisionEngine implements VisionEngine {
   @override
   final bool isMockMode = true;
 
+  bool mockEnabled = true; // Control simulated output
+
   // Deterministic sine wave seed — same frame = same output
   static double _sin(double x) {
     while (x > math.pi) x -= 2 * math.pi;
@@ -48,6 +50,16 @@ class SimulatedVisionEngine implements VisionEngine {
 
   @override
   Future<EngineFrame> processFrame(int frameNumber) async {
+    if (!mockEnabled) {
+      return EngineFrame(
+        objects: const [],
+        spatialMap: const [],
+        audioAlert: null,
+        frameNumber: frameNumber,
+        timestamp: DateTime.now(),
+      );
+    }
+
     final t = frameNumber * 0.03;
     final sinT = _sin(t);
     final ms = DateTime.now().millisecondsSinceEpoch;

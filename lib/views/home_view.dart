@@ -1,5 +1,6 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
+import 'package:camera/camera.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../controllers/main_controller.dart';
 import '../engines/vision_engine.dart';
@@ -24,8 +25,10 @@ class HomeView extends StatefulWidget {
 
 class _HomeViewState extends State<HomeView> {
   late MainController _controller;
+  CameraController? _cameraController;
   List<DetectedObjectData> _detectedObjects = [];
-  bool _isMode1 = true; // Mode 1: Ambient/Maneuver, Mode 2: Target Focus
+  AudioAlertData? _currentAlert;
+  bool _isMode1 = true; // Mode 1: Ambient Mode, Mode 2: Target Mode
 
   @override
   void initState() {
@@ -36,11 +39,30 @@ class _HomeViewState extends State<HomeView> {
       if (mounted) setState(() => _detectedObjects = objects);
     });
 
+    _controller.audioAlertStream.listen((alert) {
+      if (mounted) setState(() => _currentAlert = alert);
+    });
+
     _controller.startProcessing();
+    _initCamera();
+  }
+
+  Future<void> _initCamera() async {
+    try {
+      final cameras = await availableCameras();
+      if (cameras.isNotEmpty) {
+        _cameraController = CameraController(cameras.first, ResolutionPreset.high, enableAudio: false);
+        await _cameraController!.initialize();
+        if (mounted) setState(() {});
+      }
+    } catch (e) {
+      debugPrint('Camera failed to initialize: $e');
+    }
   }
 
   @override
   void dispose() {
+    _cameraController?.dispose();
     _controller.dispose();
     super.dispose();
   }
@@ -53,18 +75,22 @@ class _HomeViewState extends State<HomeView> {
       body: Stack(
         fit: StackFit.expand,
         children: [
-          // 1. Simulated Camera Background with Vignette / Glow
+          // 1. Live Camera / Simulated Background
           Container(
             color: Colors.black,
             child: Stack(
+              fit: StackFit.expand,
               children: [
-                Center(
-                  child: Icon(
-                    _isMode1 ? Icons.camera_alt_outlined : Icons.center_focus_strong_outlined, 
-                    size: 150, 
-                    color: Colors.white12
+                if (_cameraController != null && _cameraController!.value.isInitialized)
+                  CameraPreview(_cameraController!)
+                else
+                  Center(
+                    child: Icon(
+                      _isMode1 ? Icons.camera_alt_outlined : Icons.center_focus_strong_outlined, 
+                      size: 150, 
+                      color: Colors.white12
+                    ),
                   ),
-                ),
                 // Subtle warm gradient glow at the bottom inspired by PlayClip
                 Positioned(
                   bottom: -100,
@@ -74,7 +100,7 @@ class _HomeViewState extends State<HomeView> {
                   child: Container(
                     decoration: BoxDecoration(
                       gradient: RadialGradient(
-                        colors: [kAccentColor.withValues(alpha: 0.15), Colors.transparent],
+                        colors: [kAccentColor.withOpacity(0.15), Colors.transparent],
                       ),
                     ),
                   ),
@@ -85,6 +111,9 @@ class _HomeViewState extends State<HomeView> {
           
           // 2. Object Overlays
           _buildObjectOverlays(_detectedObjects),
+
+          // 2.5 Audio Alert HUD
+          if (_currentAlert != null) _buildAlertHUD(_currentAlert!),
 
           // 3. Floating Top App Bar (Glassmorphic)
           Positioned(
@@ -102,7 +131,7 @@ class _HomeViewState extends State<HomeView> {
                     right: 24
                   ),
                   decoration: BoxDecoration(
-                    color: kBackground.withValues(alpha: 0.6),
+                    color: kBackground.withOpacity(0.6),
                     border: const Border(
                       bottom: BorderSide(color: kGlassBorder, width: 1)
                     )
@@ -115,7 +144,7 @@ class _HomeViewState extends State<HomeView> {
                           Icon(Icons.remove_red_eye, color: kAccentColor, size: 28),
                           const SizedBox(width: 12),
                           Text(
-                            _isMode1 ? 'Maneuver' : 'Focus Mode',
+                            _isMode1 ? 'Ambient Mode' : 'Target Mode',
                             style: GoogleFonts.inter(
                               color: kTextColor,
                               fontWeight: FontWeight.w800,
@@ -128,7 +157,7 @@ class _HomeViewState extends State<HomeView> {
                       Container(
                         decoration: BoxDecoration(
                           shape: BoxShape.circle,
-                          color: Colors.white.withValues(alpha: 0.05),
+                          color: Colors.white.withOpacity(0.05),
                           border: Border.all(color: kGlassBorder, width: 1)
                         ),
                         child: IconButton(
@@ -172,7 +201,7 @@ class _HomeViewState extends State<HomeView> {
             border: Border.all(color: kGlassBorder, width: 1.5),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withValues(alpha: 0.3),
+                color: Colors.black.withOpacity(0.3),
                 blurRadius: 20,
                 offset: const Offset(0, 10),
               )
@@ -191,7 +220,7 @@ class _HomeViewState extends State<HomeView> {
               const SizedBox(width: 8),
               Expanded(
                 child: _buildPillNavButton(
-                  title: 'Details',
+                  title: 'Target',
                   icon: Icons.find_in_page_rounded,
                   isActive: !_isMode1,
                   onTap: () => setState(() => _isMode1 = false),
@@ -220,7 +249,7 @@ class _HomeViewState extends State<HomeView> {
           borderRadius: BorderRadius.circular(30),
           boxShadow: isActive ? [
             BoxShadow(
-              color: kAccentColor.withValues(alpha: 0.4),
+              color: kAccentColor.withOpacity(0.4),
               blurRadius: 15,
               offset: const Offset(0, 4)
             )
@@ -272,7 +301,7 @@ class _HomeViewState extends State<HomeView> {
               border: Border.all(color: boxColor, width: 4.0),
               boxShadow: [
                 BoxShadow(
-                  color: boxColor.withValues(alpha: 0.5),
+                  color: boxColor.withOpacity(0.5),
                   blurRadius: 20,
                   spreadRadius: 2,
                 )
@@ -292,9 +321,9 @@ class _HomeViewState extends State<HomeView> {
                       child: Container(
                         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                         decoration: BoxDecoration(
-                          color: boxColor.withValues(alpha: 0.2),
+                          color: boxColor.withOpacity(0.2),
                           borderRadius: BorderRadius.circular(20),
-                          border: Border.all(color: boxColor.withValues(alpha: 0.5), width: 1.5)
+                          border: Border.all(color: boxColor.withOpacity(0.5), width: 1.5)
                         ),
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
@@ -328,6 +357,56 @@ class _HomeViewState extends State<HomeView> {
           ),
         );
       }).toList(),
+    );
+  }
+
+  Widget _buildAlertHUD(AudioAlertData alert) {
+    return Positioned(
+      top: 140,
+      left: 24,
+      right: 24,
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(20),
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+          child: Container(
+            padding: const EdgeInsets.all(20),
+            decoration: BoxDecoration(
+              color: const Color(0xFFFF3366).withOpacity(0.15),
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: const Color(0xFFFF3366).withOpacity(0.5), width: 1.5),
+            ),
+            child: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFFF3366),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: const Icon(Icons.emergency_rounded, color: Colors.white, size: 30),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        alert.type.toUpperCase(),
+                        style: GoogleFonts.inter(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 18),
+                      ),
+                      Text(
+                        'Location: ${alert.direction} | ${alert.frequency.toInt()} Hz',
+                        style: GoogleFonts.inter(color: Colors.white70, fontSize: 14, fontWeight: FontWeight.w600),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
     );
   }
 }

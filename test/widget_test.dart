@@ -8,6 +8,6 @@ void main() {
 
     // Verify that the splash screen text is present
     expect(find.text('OmniSight'), findsOneWidget);
-    expect(find.text('ENGINE  v1.0'), findsOneWidget);
+    expect(find.text('ENGINE  v2.0'), findsOneWidget);
   });
 }

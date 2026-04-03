@@ -1,6 +1,7 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:permission_handler/permission_handler.dart';
 import 'home_view.dart';
 
 const Color kBackground = Color(0xFF0A0A0C);
@@ -38,7 +39,7 @@ class _OnboardingViewState extends State<OnboardingView> {
     },
   ];
 
-  void _nextPage() {
+  Future<void> _nextPage() async {
     if (_currentPage < _onboardingData.length - 1) {
       _pageController.animateToPage(
         _currentPage + 1,
@@ -46,12 +47,43 @@ class _OnboardingViewState extends State<OnboardingView> {
         curve: Curves.easeOutCubic,
       );
     } else {
-      Navigator.of(context).pushReplacement(
-        PageRouteBuilder(
-          transitionDuration: const Duration(milliseconds: 800),
-          pageBuilder: (_, animation, __) => FadeTransition(opacity: animation, child: const HomeView()),
-        ),
-      );
+      // Hardware Permission Check for "Real App" verification
+      final status = await Permission.camera.request();
+      
+      if (status.isGranted) {
+        if (mounted) {
+          Navigator.of(context).pushReplacement(
+            PageRouteBuilder(
+              transitionDuration: const Duration(milliseconds: 800),
+              pageBuilder: (_, animation, __) => FadeTransition(opacity: animation, child: const HomeView()),
+            ),
+          );
+        }
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                'Camera Access Denied. OmniSight will operate in Simulation Mode without live background frames.',
+                style: GoogleFonts.inter(fontWeight: FontWeight.w600),
+              ),
+              backgroundColor: const Color(0xFFFF3366),
+              duration: const Duration(seconds: 4),
+            ),
+          );
+          // Still push to HomeView so they can see the Mock simulation UI
+          Future.delayed(const Duration(seconds: 1), () {
+            if (mounted) {
+              Navigator.of(context).pushReplacement(
+                PageRouteBuilder(
+                  transitionDuration: const Duration(milliseconds: 800),
+                  pageBuilder: (_, animation, __) => FadeTransition(opacity: animation, child: const HomeView()),
+                ),
+              );
+            }
+          });
+        }
+      }
     }
   }
 
@@ -73,7 +105,7 @@ class _OnboardingViewState extends State<OnboardingView> {
               decoration: BoxDecoration(
                 gradient: RadialGradient(
                   colors: [
-                    kAccentColor.withValues(alpha: _currentPage == 0 ? 0.2 : 0.1), 
+                    kAccentColor.withOpacity(_currentPage == 0 ? 0.2 : 0.1), 
                     Colors.transparent
                   ],
                 ),
@@ -96,8 +128,8 @@ class _OnboardingViewState extends State<OnboardingView> {
                       padding: const EdgeInsets.all(24),
                       decoration: BoxDecoration(
                         shape: BoxShape.circle,
-                        color: kAccentColor.withValues(alpha: 0.1),
-                        border: Border.all(color: kAccentColor.withValues(alpha: 0.3), width: 2)
+                        color: kAccentColor.withOpacity(0.1),
+                        border: Border.all(color: kAccentColor.withOpacity(0.3), width: 2)
                       ),
                       child: Icon(
                         _onboardingData[index]['icon'],
@@ -180,7 +212,7 @@ class _OnboardingViewState extends State<OnboardingView> {
                             borderRadius: BorderRadius.circular(30),
                             boxShadow: [
                               BoxShadow(
-                                color: kAccentColor.withValues(alpha: 0.4),
+                                color: kAccentColor.withOpacity(0.4),
                                 blurRadius: 15,
                                 offset: const Offset(0, 4),
                               )

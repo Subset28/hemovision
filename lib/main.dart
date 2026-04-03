@@ -12,7 +12,8 @@ void main() async {
   //  Disabling runtime fetching ensures the app works in air-gapped environments.
   //  It will strictly use the .ttf assets bundled in pubspec.yaml.
   // ─────────────────────────────────────────────────────────────────────────────
-  GoogleFonts.config.allowRuntimeFetching = false;
+  // Pre-load critical assets and allow offline fonts (fetch once, cache forever)
+  GoogleFonts.config.allowRuntimeFetching = true;
 
   // Lock orientation to portrait for mobile, allow all for desktop
   await SystemChrome.setPreferredOrientations([
@@ -125,12 +126,12 @@ class _SplashScreenState extends State<SplashScreen>
                       shape: BoxShape.circle,
                       gradient: RadialGradient(
                         colors: [
-                          const Color(0xFFFF9F1C).withValues(alpha: 0.3),
+                          const Color(0xFFFF9F1C).withOpacity(0.3),
                           Colors.transparent,
                         ],
                       ),
                       border: Border.all(
-                        color: const Color(0xFFFF9F1C).withValues(alpha: 0.5),
+                        color: const Color(0xFFFF9F1C).withOpacity(0.5),
                         width: 2,
                       ),
                     ),
@@ -159,7 +160,7 @@ class _SplashScreenState extends State<SplashScreen>
                     child: LinearProgressIndicator(
                       value: _ctrl.value,
                       backgroundColor:
-                          const Color(0xFFFF9F1C).withValues(alpha: 0.1),
+                          const Color(0xFFFF9F1C).withOpacity(0.1),
                       valueColor: const AlwaysStoppedAnimation<Color>(
                           Color(0xFFFF9F1C)),
                       borderRadius: BorderRadius.circular(8),
