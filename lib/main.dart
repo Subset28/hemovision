@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'views/home_view.dart';
+import 'views/onboarding_view.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -42,13 +43,13 @@ class OmniSightApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(
-          seedColor: const Color(0xFF00E5FF),
+          seedColor: const Color(0xFFFF9F1C),
           brightness: Brightness.dark,
-          surface: const Color(0xFF07070A),
+          surface: const Color(0xFF0A0A0C),
         ),
         useMaterial3: true,
         textTheme: GoogleFonts.interTextTheme(ThemeData.dark().textTheme),
-        scaffoldBackgroundColor: const Color(0xFF07070A),
+        scaffoldBackgroundColor: const Color(0xFF0A0A0C),
         splashFactory: InkRipple.splashFactory,
       ),
       home: const SplashScreen(),
@@ -89,7 +90,7 @@ class _SplashScreenState extends State<SplashScreen>
           PageRouteBuilder(
             transitionDuration: const Duration(milliseconds: 600),
             pageBuilder: (_, animation, __) => FadeTransition(
-                opacity: animation, child: const HomeView()),
+                opacity: animation, child: const OnboardingView()),
           ),
         );
       }
@@ -124,17 +125,17 @@ class _SplashScreenState extends State<SplashScreen>
                       shape: BoxShape.circle,
                       gradient: RadialGradient(
                         colors: [
-                          const Color(0xFF00E5FF).withValues(alpha: 0.3),
+                          const Color(0xFFFF9F1C).withValues(alpha: 0.3),
                           Colors.transparent,
                         ],
                       ),
                       border: Border.all(
-                        color: const Color(0xFF00E5FF).withValues(alpha: 0.5),
+                        color: const Color(0xFFFF9F1C).withValues(alpha: 0.5),
                         width: 2,
                       ),
                     ),
                     child: const Icon(Icons.remove_red_eye_outlined,
-                        size: 54, color: Color(0xFF00E5FF)),
+                        size: 54, color: Color(0xFFFF9F1C)),
                   ),
                   const SizedBox(height: 28),
                   Text('OmniSight',
@@ -145,11 +146,11 @@ class _SplashScreenState extends State<SplashScreen>
                         letterSpacing: -1.5,
                       )),
                   const SizedBox(height: 8),
-                  Text('ENGINE  v1.0',
+                  Text('ENGINE  v2.0',
                       style: GoogleFonts.inter(
                         fontSize: 12,
                         fontWeight: FontWeight.w600,
-                        color: const Color(0xFF00E5FF),
+                        color: const Color(0xFFFF9F1C),
                         letterSpacing: 4.0,
                       )),
                   const SizedBox(height: 48),
@@ -158,9 +159,9 @@ class _SplashScreenState extends State<SplashScreen>
                     child: LinearProgressIndicator(
                       value: _ctrl.value,
                       backgroundColor:
-                          const Color(0xFF00E5FF).withValues(alpha: 0.1),
+                          const Color(0xFFFF9F1C).withValues(alpha: 0.1),
                       valueColor: const AlwaysStoppedAnimation<Color>(
-                          Color(0xFF00E5FF)),
+                          Color(0xFFFF9F1C)),
                       borderRadius: BorderRadius.circular(8),
                     ),
                   ),
