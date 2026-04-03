@@ -66,6 +66,12 @@ class _HomeViewState extends State<HomeView> {
           imageFormatGroup: ImageFormatGroup.bgra8888, // Optimal for AI processing
         );
         await _cameraController!.initialize();
+        
+        // Wire the real-time frame stream to the controller
+        _cameraController!.startImageStream((image) {
+          _controller.onCameraFrame(image);
+        });
+
         if (mounted) setState(() {});
       }
     } catch (e) {

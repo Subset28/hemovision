@@ -17,9 +17,9 @@ import 'dart:typed_data';
 
 abstract interface class VisionEngine {
   /// Process the current environment and return detected objects.
-  /// In production, this consumes a live camera frame.
+  /// In production, this consumes a live camera frame (bytes).
   /// In simulation, this returns deterministic animated data.
-  Future<EngineFrame> processFrame(int frameNumber);
+  Future<EngineFrame> processFrame(int frameNumber, {Uint8List? bytes, int? width, int? height});
 
   /// Process raw audio samples and return detected alerts (e.g. sirens).
   Future<AudioAlertData?> processAudio(Float32List buffer);

@@ -2,6 +2,12 @@ import '../services/settings_service.dart';
 import '../services/mic_service.dart';
 import '../services/spatial_audio_service.dart';
 import 'package:vibration/vibration.dart';
+import '../services/caregiver_service.dart';
+import '../engines/vision_engine.dart';
+import 'dart:async';
+import 'dart:typed_data';
+import 'package:camera/camera.dart';
+import 'package:flutter/foundation.dart';
 
 // ─────────────────────────────────────────────────────────────────
 //  MAIN CONTROLLER  (MVC Architecture — Controller layer)
@@ -13,12 +19,16 @@ import 'package:vibration/vibration.dart';
 // ─────────────────────────────────────────────────────────────────
 class MainController {
   late VisionEngine _engine;
-  late DatabaseService _dbService;
   final SettingsService _settings;
   late MicService _micService;
   late SpatialAudioService _audioFeedback;
+  late CaregiverService caregiverService;
   Timer? _processingTimer;
   bool useSimulation = true;
+
+  Uint8List? _latestFrameBytes;
+  int? _latestFrameWidth;
+  int? _latestFrameHeight;
 
   // ── Accessibility State ───────────────────────────────────────
   bool get highContrast => _settings.highContrast;
@@ -60,9 +70,9 @@ class MainController {
   DateTime _sessionStart = DateTime.now();
 
   MainController(this._settings) {
-    _dbService = DatabaseService();
     _micService = MicService();
     _audioFeedback = SpatialAudioService();
+    caregiverService = CaregiverService();
     
     // ── UPGRADE #2: Dynamic Initialization ───────────────────────
     try {
@@ -111,11 +121,22 @@ class MainController {
 
   void stopProcessing() => _processingTimer?.cancel();
 
+  void onCameraFrame(CameraImage image) {
+    if (image.planes.isEmpty) return;
+    
+    // BGRA8888 has one plane on iOS
+    // We only copy if we aren't currently "ticking" to save CPU
+    _latestFrameBytes = image.planes[0].bytes;
+    _latestFrameWidth = image.width;
+    _latestFrameHeight = image.height;
+  }
+
   void dispose() {
     stopProcessing();
     _engine.dispose();
     _micService.dispose();
     _audioFeedback.dispose();
+    caregiverService.dispose();
     _objectsCtrl.close();
     _spatialCtrl.close();
     _statsCtrl.close();
@@ -132,12 +153,17 @@ class MainController {
     final resultData = await compute(_processFrameInIsolate, {
       'useSimulation': useSimulation,
       'frameNumber': _frameCount,
+      'bytes': _latestFrameBytes,
+      'width': _latestFrameWidth,
+      'height': _latestFrameHeight,
     });
 
     final frame = EngineFrame.fromMap(resultData);
 
     if (!_objectsCtrl.isClosed) {
       _objectsCtrl.sink.add(frame.objects);
+      // Broadcast to connected caregivers
+      caregiverService.broadcastTelemetry(frame.objects);
     }
 
     if (!_spatialCtrl.isClosed) {
@@ -201,7 +227,12 @@ Future<Map<String, dynamic>> _processFrameInIsolate(Map<String, dynamic> args) a
   }
 
   try {
-    final frame = await engine.processFrame(frameNumber);
+    final frame = await engine.processFrame(
+      frameNumber, 
+      bytes: args['bytes'] as Uint8List?,
+      width: args['width'] as int?,
+      height: args['height'] as int?
+    );
     return frame.toMap();
   } finally {
     engine.dispose(); // CRITICAL: Prevent native handle leaks every 100ms

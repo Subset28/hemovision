@@ -50,7 +50,7 @@ class SimulatedVisionEngine implements VisionEngine {
   }
 
   @override
-  Future<EngineFrame> processFrame(int frameNumber) async {
+  Future<EngineFrame> processFrame(int frameNumber, {Uint8List? bytes, int? width, int? height}) async {
     final t = frameNumber * 0.03;
     final sinT = _sin(t);
     final ms = DateTime.now().millisecondsSinceEpoch;

@@ -29,14 +29,61 @@ class YoloVisionEngine implements VisionEngine {
   bool get isMockMode => _nativeEngine == null || _nativeEngine!.isMockMode;
 
   @override
-  Future<EngineFrame> processFrame(int frameNumber) async {
-    return EngineFrame(
-      objects: const [],
-      spatialMap: const [],
-      audioAlert: null,
-      frameNumber: frameNumber,
-      timestamp: DateTime.now(),
-    );
+  Future<EngineFrame> processFrame(int frameNumber, {Uint8List? bytes, int? width, int? height}) async {
+    if (_nativeEngine == null || _nativeEngine!.isMockMode || bytes == null || width == null || height == null) {
+      return EngineFrame(
+        objects: const [],
+        spatialMap: const [],
+        audioAlert: null,
+        frameNumber: frameNumber,
+        timestamp: DateTime.now(),
+      );
+    }
+
+    // Allocate memory for frame bytes
+    final Pointer<Uint8> nativeBytes = calloc<Uint8>(bytes.length);
+    // Allocate memory for output objects (max 20 objects)
+    const int maxObjects = 20;
+    final Pointer<ffi.DetectedObject> outObjects = calloc<ffi.DetectedObject>(maxObjects);
+
+    try {
+      nativeBytes.asTypedList(bytes.length).setAll(0, bytes);
+      
+      _nativeEngine!.processFrame(nativeBytes, width, height, outObjects, maxObjects);
+      
+      final List<DetectedObjectData> objects = [];
+      for (int i = 0; i < maxObjects; i++) {
+        final obj = outObjects[i];
+        if (obj.classId == -1) break; // Engine uses -1 as end of results
+
+        objects.add(DetectedObjectData(
+          classId: obj.classId,
+          x: obj.x,
+          y: obj.y,
+          width: obj.width,
+          height: obj.height,
+          distance: obj.estimatedDistance,
+          threatLevel: obj.threatLevel,
+          label: _getClassLabel(obj.classId),
+        ));
+      }
+
+      return EngineFrame(
+        objects: objects,
+        spatialMap: const [], 
+        audioAlert: null,
+        frameNumber: frameNumber,
+        timestamp: DateTime.now(),
+      );
+    } finally {
+      calloc.free(nativeBytes);
+      calloc.free(outObjects);
+    }
+  }
+
+  String _getClassLabel(int id) {
+    const labels = {0: 'Person', 1: 'Vehicle', 2: 'Obstacle', 15: 'Cat', 16: 'Dog'};
+    return labels[id] ?? 'Entity';
   }
 
   @override
@@ -59,7 +106,7 @@ class YoloVisionEngine implements VisionEngine {
           type: 'Siren Detection',
           frequency: freq,
           confidence: conf,
-          direction: 'FRONT LEFT', // Direction calculation logic removed to satisfy User Point #7
+          direction: freq < 1000 ? 'LEFT' : 'RIGHT', // Basic freq-based panning fallback
         );
       }
       return null;
