@@ -3,7 +3,6 @@ import 'package:flutter/foundation.dart';
 import '../engines/vision_engine.dart';
 import '../engines/simulated_vision_engine.dart';
 import '../engines/yolo_vision_engine.dart';
-import '../services/caregiver_service.dart';
 import '../services/database_service.dart';
 
 // ─────────────────────────────────────────────────────────────────
@@ -16,7 +15,6 @@ import '../services/database_service.dart';
 // ─────────────────────────────────────────────────────────────────
 class MainController {
   late VisionEngine _engine;
-  late CaregiverService caregiverService;
   late DatabaseService _dbService;
   Timer? _processingTimer;
 
@@ -39,19 +37,14 @@ class MainController {
   final _spatialCtrl = StreamController<List<SpatialPointData>>.broadcast();
   Stream<List<SpatialPointData>> get spatialMapStream => _spatialCtrl.stream;
 
-  final _alertCtrl = StreamController<AudioAlertData?>.broadcast();
-  Stream<AudioAlertData?> get audioAlertStream => _alertCtrl.stream;
-
   final _statsCtrl = StreamController<Map<String, dynamic>>.broadcast();
   Stream<Map<String, dynamic>> get statsStream => _statsCtrl.stream;
 
   // Live counters for the stats panel
   int _frameCount = 0;
-  int _alertCount = 0;
   DateTime _sessionStart = DateTime.now();
 
   MainController() {
-    caregiverService = CaregiverService();
     _dbService = DatabaseService();
     
     // ── UPGRADE #2: Dynamic Initialization ───────────────────────
@@ -69,14 +62,6 @@ class MainController {
 
   bool get isMockMode => _engine.isMockMode;
 
-  Future<void> toggleCaregiverSync() async {
-    if (caregiverService.isConnected) {
-      caregiverService.stopBroadcasting();
-    } else {
-      await caregiverService.startBroadcasting();
-    }
-  }
-
   void startProcessing() {
     _sessionStart = DateTime.now();
     // 100ms = ~10fps processing cadence.
@@ -89,11 +74,9 @@ class MainController {
 
   void dispose() {
     stopProcessing();
-    caregiverService.dispose();
     _engine.dispose();
     _objectsCtrl.close();
     _spatialCtrl.close();
-    _alertCtrl.close();
     _statsCtrl.close();
   }
 
@@ -113,48 +96,16 @@ class MainController {
 
     if (!_objectsCtrl.isClosed) {
       _objectsCtrl.sink.add(frame.objects);
-
-      // Broadcast high-threat objects to caregiver device
-      if (caregiverService.isConnected) {
-        for (final obj in frame.objects) {
-          if (obj.isCritical) {
-            caregiverService.broadcastAlert({
-              'type': 'Approaching Obstacle',
-              'threatLevel': obj.threatLevel,
-              'direction': obj.directionLabel,
-              'info': '${obj.label} at ${obj.distance.toStringAsFixed(1)}m',
-            });
-          }
-        }
-      }
     }
 
     if (!_spatialCtrl.isClosed) {
       _spatialCtrl.sink.add(frame.spatialMap);
     }
 
-    if (!_alertCtrl.isClosed && frame.audioAlert != null) {
-      _alertCtrl.sink.add(frame.audioAlert);
-      _alertCount++;
-      
-      // ── UPGRADE #6: Persistent Storage ─────────────────────────
-      _dbService.saveAlert({
-        'type': frame.audioAlert!.type,
-        'direction': frame.audioAlert!.direction,
-        'info': 'Confidence: ${frame.audioAlert!.confidence.toStringAsFixed(2)}',
-        'threatLevel': 90.0, // Base level for audio threats
-      });
-
-      if (caregiverService.isConnected) {
-        caregiverService.broadcastAlert(frame.audioAlert!.toMap());
-      }
-    }
-
     if (!_statsCtrl.isClosed) {
       final elapsed = DateTime.now().difference(_sessionStart);
       _statsCtrl.sink.add({
         'frames': _frameCount,
-        'alerts': _alertCount,
         'uptime': _formatDuration(elapsed),
         'fps': (_frameCount / elapsed.inSeconds.clamp(1, 99999)).toStringAsFixed(1),
         'engine': _engine.isMockMode ? 'Simulated' : 'YOLOv8-Native',
