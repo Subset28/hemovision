@@ -3,9 +3,13 @@ import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'views/home_view.dart';
 import 'views/onboarding_view.dart';
+import 'services/settings_service.dart';
+
+late SettingsService globalSettings;
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  globalSettings = await SettingsService.init();
 
   // ─────────────────────────────────────────────────────────────────────────────
   //  OFFLINE ASSET CONFIGURATION

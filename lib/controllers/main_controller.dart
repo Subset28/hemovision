@@ -1,9 +1,7 @@
-import 'dart:async';
-import 'package:flutter/foundation.dart';
-import '../engines/vision_engine.dart';
-import '../engines/simulated_vision_engine.dart';
-import '../engines/yolo_vision_engine.dart';
-import '../services/database_service.dart';
+import '../services/settings_service.dart';
+import '../services/mic_service.dart';
+import '../services/spatial_audio_service.dart';
+import 'package:vibration/vibration.dart';
 
 // ─────────────────────────────────────────────────────────────────
 //  MAIN CONTROLLER  (MVC Architecture — Controller layer)
@@ -16,19 +14,32 @@ import '../services/database_service.dart';
 class MainController {
   late VisionEngine _engine;
   late DatabaseService _dbService;
+  final SettingsService _settings;
+  late MicService _micService;
+  late SpatialAudioService _audioFeedback;
   Timer? _processingTimer;
-  bool useSimulation = true; // User-controlled flag
+  bool useSimulation = true;
 
   // ── Accessibility State ───────────────────────────────────────
-  bool highContrast = false;
-  bool largeText = false;
+  bool get highContrast => _settings.highContrast;
+  bool get largeText => _settings.largeText;
+  bool get universalMode => _settings.universalMode;
+  double get threatThreshold => _settings.dangerSensitivity;
+  double get detectionRange => _settings.maxDistance;
+
   final _accessCtrl = StreamController<void>.broadcast();
   Stream<void> get accessStream => _accessCtrl.stream;
 
-  void updateAccessibility({bool? hc, bool? lt}) {
-    if (hc != null) highContrast = hc;
-    if (lt != null) largeText = lt;
+  void updateAccessibility({bool? hc, bool? lt, bool? um}) {
+    if (hc != null) _settings.setHighContrast(hc);
+    if (lt != null) _settings.setLargeText(lt);
+    if (um != null) _settings.setUniversalMode(um);
     _accessCtrl.add(null);
+  }
+
+  void updateDetectionParams({double? threshold, double? range}) {
+    if (threshold != null) _settings.setDangerSensitivity(threshold);
+    if (range != null) _settings.setMaxDistance(range);
   }
 
   // ── View Streams (Strongly Typed) ──────────────────────────────
@@ -48,13 +59,16 @@ class MainController {
   int _frameCount = 0;
   DateTime _sessionStart = DateTime.now();
 
-  MainController() {
+  MainController(this._settings) {
     _dbService = DatabaseService();
+    _micService = MicService();
+    _audioFeedback = SpatialAudioService();
     
     // ── UPGRADE #2: Dynamic Initialization ───────────────────────
     try {
       final yolo = YoloVisionEngine();
-      useSimulation = yolo.isMockMode; // Default to Simulation if native lib missing
+      // Use persisted mock setting, but fallback to Simulation if native lib missing
+      useSimulation = _settings.isMockMode || yolo.isMockMode; 
       _engine = useSimulation ? SimulatedVisionEngine() : yolo;
     } catch (e) {
       useSimulation = true;
@@ -64,6 +78,7 @@ class MainController {
 
   void setMockMode(bool enabled) {
     useSimulation = enabled;
+    _settings.setMockMode(enabled);
     if (enabled) {
       _engine = SimulatedVisionEngine();
     } else {
@@ -79,6 +94,19 @@ class MainController {
     _processingTimer = Timer.periodic(const Duration(milliseconds: 100), (_) {
       _tick();
     });
+
+    // Start real-time audio analysis loop
+    _micService.startRecording();
+    _micService.audioStream.listen((buffer) async {
+      final alert = await _engine.processAudio(buffer);
+      if (alert != null && !_audioCtrl.isClosed) {
+        _audioCtrl.add(alert);
+        // Alert haptics handled here for real-time response
+        if (await Vibration.hasVibrator() ?? false) {
+          Vibration.vibrate(pattern: [0, 200, 100, 200]);
+        }
+      }
+    });
   }
 
   void stopProcessing() => _processingTimer?.cancel();
@@ -86,6 +114,8 @@ class MainController {
   void dispose() {
     stopProcessing();
     _engine.dispose();
+    _micService.dispose();
+    _audioFeedback.dispose();
     _objectsCtrl.close();
     _spatialCtrl.close();
     _statsCtrl.close();
@@ -116,6 +146,23 @@ class MainController {
 
     if (!_audioCtrl.isClosed) {
       _audioCtrl.sink.add(frame.audioAlert);
+      // HARDWARE HAPTICS: Trigger vibration for emergency sirens
+      if (frame.audioAlert != null && frame.audioAlert!.confidence > 0.8) {
+        if (await Vibration.hasVibrator() ?? false) {
+          Vibration.vibrate(pattern: [0, 500, 200, 500], intensities: [0, 255, 0, 255]);
+        }
+      }
+    }
+
+    // HARDWARE HAPTICS: Trigger vibration for critical close-range objects
+    if (frame.objects.any((o) => o.isCritical)) {
+      if (await Vibration.hasVibrator() ?? false) {
+        Vibration.vibrate(duration: 100);
+      }
+      
+      // SPATIAL AUDIO: Play panned sound for the most critical object
+      final mostCritical = frame.objects.reduce((a, b) => a.threatLevel > b.threatLevel ? a : b);
+      _audioFeedback.playThreatSound(mostCritical);
     }
 
     if (!_statsCtrl.isClosed) {

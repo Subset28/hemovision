@@ -2,9 +2,11 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:camera/camera.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:permission_handler/permission_handler.dart';
 import '../controllers/main_controller.dart';
 import '../engines/vision_engine.dart';
 import 'settings_view.dart';
+import '../main.dart';
 
 // Premium Dark Mode Design Tokens
 const Color kBackground = Color(0xFF0A0A0C);
@@ -33,7 +35,7 @@ class _HomeViewState extends State<HomeView> {
   @override
   void initState() {
     super.initState();
-    _controller = MainController();
+    _controller = MainController(globalSettings);
     
     _controller.detectedObjectsStream.listen((objects) {
       if (mounted) setState(() => _detectedObjects = objects);
@@ -48,10 +50,21 @@ class _HomeViewState extends State<HomeView> {
   }
 
   Future<void> _initCamera() async {
+    final status = await Permission.camera.request();
+    if (!status.isGranted) {
+      debugPrint('Camera permission denied.');
+      return;
+    }
+
     try {
       final cameras = await availableCameras();
       if (cameras.isNotEmpty) {
-        _cameraController = CameraController(cameras.first, ResolutionPreset.high, enableAudio: false);
+        _cameraController = CameraController(
+          cameras.first, 
+          ResolutionPreset.high, 
+          enableAudio: false,
+          imageFormatGroup: ImageFormatGroup.bgra8888, // Optimal for AI processing
+        );
         await _cameraController!.initialize();
         if (mounted) setState(() {});
       }
@@ -165,9 +178,26 @@ class _HomeViewState extends State<HomeView> {
                           onPressed: () => Navigator.push(
                             context,
                             MaterialPageRoute(builder: (_) => SettingsView(controller: _controller)),
-                          ),
+                          ).then((_) => setState(() {})),
                         ),
-                      )
+                      ),
+                      const SizedBox(width: 12),
+                      Container(
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: _controller.universalMode ? kAccentColor.withOpacity(0.2) : Colors.white.withOpacity(0.05),
+                          border: Border.all(color: _controller.universalMode ? kAccentColor : kGlassBorder, width: 1)
+                        ),
+                        child: IconButton(
+                          icon: Icon(
+                            _controller.universalMode ? Icons.public_rounded : Icons.person_off_rounded, 
+                            color: _controller.universalMode ? kAccentColor : kTextColor
+                          ),
+                          onPressed: () {
+                            setState(() => _controller.updateAccessibility(um: !_controller.universalMode));
+                          },
+                        ),
+                      ),
                     ],
                   ),
                 ),
@@ -339,7 +369,9 @@ class _HomeViewState extends State<HomeView> {
                             ),
                             const SizedBox(width: 8),
                             Text(
-                              '${obj.label.toUpperCase()} • ${obj.distance.toStringAsFixed(1)}m',
+                              _controller.universalMode 
+                                ? '${obj.label.toUpperCase()} • ${(obj.distance * 3.28).toStringAsFixed(0)}ft'
+                                : '${obj.label.toUpperCase()} • ${obj.distance.toStringAsFixed(1)}m',
                               style: GoogleFonts.inter(
                                 color: Colors.white,
                                 fontWeight: FontWeight.w900,

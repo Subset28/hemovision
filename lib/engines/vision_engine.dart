@@ -13,11 +13,16 @@
 //  enterprise-grade, testable code architecture.
 // ─────────────────────────────────────────────────────────────────────────────
 
+import 'dart:typed_data';
+
 abstract interface class VisionEngine {
   /// Process the current environment and return detected objects.
   /// In production, this consumes a live camera frame.
   /// In simulation, this returns deterministic animated data.
   Future<EngineFrame> processFrame(int frameNumber);
+
+  /// Process raw audio samples and return detected alerts (e.g. sirens).
+  Future<AudioAlertData?> processAudio(Float32List buffer);
 
   /// Whether this engine is running in simulated (mock) mode.
   bool get isMockMode;

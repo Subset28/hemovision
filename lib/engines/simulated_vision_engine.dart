@@ -1,4 +1,5 @@
 import 'dart:math' as math;
+import 'dart:typed_data';
 import 'vision_engine.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -109,16 +110,9 @@ class SimulatedVisionEngine implements VisionEngine {
       );
     });
 
-    // ── Audio Alert (siren every 8 seconds) ────────────────────────────────
+    // ── Audio Alert (Manual / Hardware Driven) ────────────────────────────
     AudioAlertData? alert;
-    if ((ms ~/ 1000) % 8 == 0) {
-      alert = const AudioAlertData(
-        type: 'Siren Detection',
-        frequency: 1200.0,
-        confidence: 0.94,
-        direction: 'FRONT LEFT',
-      );
-    }
+    // Removed hardcoded 8s timer to prevent "fake" demo behavior
 
     return EngineFrame(
       objects: objects,
@@ -127,6 +121,13 @@ class SimulatedVisionEngine implements VisionEngine {
       frameNumber: frameNumber,
       timestamp: DateTime.now(),
     );
+  }
+
+  @override
+  Future<AudioAlertData?> processAudio(Float32List buffer) async {
+    // In simulation mode, we ignore real audio buffers.
+    // Manual testing can trigger alerts via the controller if needed.
+    return null;
   }
 
   @override

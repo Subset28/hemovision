@@ -25,6 +25,7 @@ class _SettingsViewState extends State<SettingsView> {
   bool _highContrastMode = false;
   bool _largeTextMode = false;
   bool _enableMockEngine = true;
+  bool _universalMode = false;
 
   @override
   void initState() {
@@ -32,6 +33,7 @@ class _SettingsViewState extends State<SettingsView> {
     _highContrastMode = widget.controller.highContrast;
     _largeTextMode = widget.controller.largeText;
     _enableMockEngine = widget.controller.useSimulation;
+    _universalMode = widget.controller.universalMode;
   }
 
   @override
@@ -77,8 +79,8 @@ class _SettingsViewState extends State<SettingsView> {
             const SizedBox(height: 12),
             _buildCard(children: [
               _buildToggle(
-                'Mock Simulation Engine', 
-                'Simulates surroundings without camera', 
+                'Demo Simulation Mode', 
+                'Simulates surroundings for safe indoor testing', 
                 _enableMockEngine, 
                 (v) {
                   setState(() => _enableMockEngine = v);
@@ -126,6 +128,15 @@ class _SettingsViewState extends State<SettingsView> {
                   widget.controller.updateAccessibility(lt: v);
                 }
               ),
+              _buildToggle(
+                'Universal Design Mode', 
+                'Contextual alerts for non-disabled use cases', 
+                _universalMode, 
+                (v) {
+                  setState(() => _universalMode = v);
+                  widget.controller.updateAccessibility(um: v);
+                }
+              ),
             ]),
 
             const SizedBox(height: 32),
@@ -136,7 +147,7 @@ class _SettingsViewState extends State<SettingsView> {
               _divider(),
               _buildInfoRow('Offline Scope', '100% On-Device Inference'),
               _divider(),
-              _buildInfoRow('Build Version', 'v2.0 (Low-Vision Pivot)'),
+              _buildInfoRow('Build Version', 'v2.0 (Competition Ready)'),
             ]),
 
             const SizedBox(height: 48),
@@ -323,6 +334,11 @@ class _SettingsViewState extends State<SettingsView> {
   Widget _divider() => Divider(height: 1, color: kGlassBorder, indent: 20, endIndent: 20);
 
   void _saveSettings() {
+    widget.controller.updateDetectionParams(
+      threshold: _threatThreshold,
+      range: _detectionRange,
+    );
+    
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(

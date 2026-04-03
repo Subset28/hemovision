@@ -50,6 +50,11 @@ typedef _ProcessVisionDart = int Function(
     int handle, Pointer<Uint8> img, int w, int h,
     Pointer<DetectedObject> out, int max);
 
+typedef _ProcessAudioC = Int32 Function(
+    IntPtr handle, Pointer<Float> audio, Int32 size, Pointer<Float> out);
+typedef _ProcessAudioDart = int Function(
+    int handle, Pointer<Float> audio, int size, Pointer<Float> out);
+
 typedef _EstimateDistanceC = Float Function(Float w, Float h, Int32 classId);
 typedef _EstimateDistanceDart = double Function(double w, double h, int classId);
 
@@ -63,6 +68,7 @@ class OmniSightEngine implements Finalizable {
 
   late _DestroyEngineDart _destroyEngine;
   late _ProcessVisionDart _processVisionFrame;
+  late _ProcessAudioDart _processAudioFFT;
   late _EstimateDistanceDart _estimateDistance;
 
   OmniSightEngine() {
@@ -75,6 +81,8 @@ class OmniSightEngine implements Finalizable {
           _lib!.lookupFunction<_DestroyEngineC, _DestroyEngineDart>('destroy_omnisight_engine');
       _processVisionFrame =
           _lib!.lookupFunction<_ProcessVisionC, _ProcessVisionDart>('process_vision_frame');
+      _processAudioFFT =
+          _lib!.lookupFunction<_ProcessAudioC, _ProcessAudioDart>('process_audio_fft');
       _estimateDistance =
           _lib!.lookupFunction<_EstimateDistanceC, _EstimateDistanceDart>('estimate_distance');
 
@@ -95,6 +103,11 @@ class OmniSightEngine implements Finalizable {
   @pragma('vm:entry-point')
   void processFrame(Pointer<Uint8> img, int w, int h, Pointer<DetectedObject> out, int max) {
     if (!_isMockMode) _processVisionFrame(_engineHandle, img, w, h, out, max);
+  }
+
+  @pragma('vm:entry-point')
+  void processAudio(Pointer<Float> audio, int size, Pointer<Float> out) {
+    if (!_isMockMode) _processAudioFFT(_engineHandle, audio, size, out);
   }
 
   static DynamicLibrary _loadLibrary() {

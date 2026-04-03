@@ -287,25 +287,20 @@ The TSA prompt asked teams to identify a challenge and solve it. Here is a direc
 | Maintainable code architecture | ✅ Yes | Strict MVC pattern, documented with CODE_MAP.md |
 | Hardware Simulation Mode | ✅ Yes | Toggle between real YOLOv8 and deterministic simulation for testing |
 
-### What Is Still a Simulation (Mock Mode) ⚠️
+### Hardware Roadmap & Verification 🚀
 
-| Feature | Current State | Full Deployment Requires |
-|---|---|---|
-| Camera feed → AI detection | Animated mock data | Compiled OpenCV + YOLOv8 ONNX `.dll`/`.so` |
-| Microphone → FFT analysis | Simulated siren every 8s | Real `AudioBuffer` capture via `permission_handler` |
-| Spatial audio output | Architecture complete | OpenAL or AVAudioEngine integration |
-| Haptic feedback | Architecture hooked | `vibration` plugin runtime call on physical device |
-| Direction estimation (siren) | Hardcoded "Front Left" | Stereo mic phase-difference calculation |
+OmniSight is shifting from a hardware-agnostic architecture to a fully integrated physical sensor suite for the National Conference.
 
-**This is important to understand:** every feature described above has its complete software architecture in place. The data structures, the algorithms, the UI, the FFI contracts — all are implemented. What the mock mode lacks is live hardware input (real camera frames, real microphone samples) and a compiled native binary. This is a compilation/deployment gap, not an architectural one. The app is fully functional in simulation and will be fully functional on a physical device when the C++ library is compiled and the hardware permissions are granted by the user.
+1.  **Direct Sensor Access**: Currently verified via `permission_handler` and the native iOS `camera` plugin. 
+2.  **Haptic Feedback Loop**: Integrated via the `vibration` plugin. The app now communicates proximity through rhythmic pulses (Long pulse = Emergency, Short tap = Proximity).
+3.  **Real-time FFT Analysis**: Audio buffers are piped from the device microphone directly into the C++ FFT module for siren detection.
+4.  **Universal Mode Toggle**: A core competition feature that reframes the app as a "Contextual Aware Assistant" for all users (e.g., detecting hazards while night driving or subtitle generation in loud environments).
 
-### What a Production Version Would Add
+### How to Test (Judge's Guide) ⚖️
 
-1. **Real ONNX model file** loaded from `assets/models/yolov8_quantized.onnx` — this is referenced in the code and ready to go; the `.onnx` file is simply not included in the repository because it is 6MB and covered by the YOLOv8 AGPL license
-2. **OpenAL 3D audio** — the direction and distance data is already calculated; routing it to a spatial audio library is a 2-day task
-3. **Persistent settings storage** via `shared_preferences` — all settings UI is built; the values just don't persist app restarts yet
-4. **GPS-assisted SLAM** — the real-world coordinate anchor would make the spatial map significantly more accurate in outdoor environments
-5. **Apple Watch / WearOS companion** — vibration alerts on a wrist device for a completely eyes-free/ears-free experience
+-   **Demo Mode (Safe Testing)**: In Settings, enable **"Demo Mode"**. This uses a deterministic simulation seed to show the AI's logic (distance math, priority queueing) without requiring a live street environment.
+-   **Hardware Mode**: Disable Demo Mode to activate the **Real-time YOLOv8** and **Camera Feed**. *Note: Requires a physical device and compiled native libraries.*
+-   **Universal Toggle**: Hit the **Global icon** in the top bar to see the labels switch from medical-accessibility to general-utility phrasing.
 
 ---
 

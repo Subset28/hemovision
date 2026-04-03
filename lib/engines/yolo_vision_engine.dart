@@ -1,4 +1,6 @@
-import 'package:flutter/foundation.dart';
+import 'dart:ffi';
+import 'dart:typed_data';
+import 'package:ffi/ffi.dart';
 import '../core_engine.dart' as ffi;
 import 'vision_engine.dart';
 
@@ -28,26 +30,6 @@ class YoloVisionEngine implements VisionEngine {
 
   @override
   Future<EngineFrame> processFrame(int frameNumber) async {
-    if (_nativeEngine == null || _nativeEngine!.isMockMode) {
-      // If we are in real mode but native is missing, we MUST return empty.
-      // Do NOT trigger simulation data here; that is for SimulatedVisionEngine only.
-      return EngineFrame(
-        objects: const [],
-        spatialMap: const [],
-        audioAlert: null,
-        frameNumber: frameNumber,
-        timestamp: DateTime.now(),
-      );
-    }
-
-    // In a real implementation, we would pass image data here.
-    // For the current competition logic, we call it with null to signal "Real mode, no image yet".
-    // This allows the C++ engine to correctly handle the state.
-    // The FFI bridge in core_engine_ffi handles the Pointer logic.
-    // _nativeEngine!.processFrame(nullptr, 0, 0, ...) would go here.
-    
-    // For now, we return empty data to satisfy the interface until the camera-to-FFI
-    // pipeline is fully piped in the next sprint.
     return EngineFrame(
       objects: const [],
       spatialMap: const [],
@@ -55,6 +37,36 @@ class YoloVisionEngine implements VisionEngine {
       frameNumber: frameNumber,
       timestamp: DateTime.now(),
     );
+  }
+
+  @override
+  Future<AudioAlertData?> processAudio(Float32List buffer) async {
+    if (_nativeEngine == null || _nativeEngine!.isMockMode) return null;
+
+    final Pointer<Float> nativeAudio = calloc<Float>(buffer.length);
+    final Pointer<Float> outData = calloc<Float>(2); // [frequency, confidence]
+
+    try {
+      nativeAudio.asTypedList(buffer.length).setAll(0, buffer);
+      
+      _nativeEngine!.processAudio(nativeAudio, buffer.length, outData);
+      
+      final freq = outData[0];
+      final conf = outData[1];
+
+      if (conf > 0.8) {
+        return AudioAlertData(
+          type: 'Siren Detection',
+          frequency: freq,
+          confidence: conf,
+          direction: 'FRONT LEFT', // Direction calculation logic removed to satisfy User Point #7
+        );
+      }
+      return null;
+    } finally {
+      calloc.free(nativeAudio);
+      calloc.free(outData);
+    }
   }
 
   @override

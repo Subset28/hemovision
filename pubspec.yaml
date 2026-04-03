@@ -14,6 +14,9 @@ dependencies:
   permission_handler: ^11.3.1
   camera: ^0.10.6
   vibration: ^2.0.0
+  shared_preferences: ^2.2.2
+  record: ^5.1.0
+  audioplayers: ^5.2.1
   sqflite: ^2.3.0
   path: ^1.9.0
 
@@ -36,6 +39,7 @@ flutter:
     - assets/models/
     - assets/icons/
     - assets/fonts/
+    - assets/sounds/
 
   fonts:
     - family: Orbitron
