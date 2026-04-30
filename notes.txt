@@ -1,0 +1,16 @@
+OmniSight Team Notes
+
+Abba:
+- [x] fix the voice engine crashes
+- [ ] test the haptics on a real phone (might be too strong?)
+- [x] change the logo to the cool one we made
+- [ ] ask my cousin about the lidar sensor range
+
+YOLO stuff:
+- the car window thing is still weird but the nature filter helped
+- we need to make sure it doesn't say "chair" every 2 seconds lol
+
+TODO:
+- fix the onboarding screen layout for small phones
+- add more objects to the whitelist? maybe "door"?
+- figure out why the arkit session freezes sometimes
