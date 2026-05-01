@@ -15,18 +15,17 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y highlight ghostscript
+          sudo apt-get install -y highlight pandoc texlive-latex-base texlive-fonts-recommended
 
       - name: Create Cover Page and TOC
         run: |
           echo "OmniSight - Visual Navigation System" > documentation.txt
-          echo "2026 Software Development - Source Code Submission" >> documentation.txt
+          echo "Software Development - Source Code Submission" >> documentation.txt
           echo "================================================" >> documentation.txt
           echo "" >> documentation.txt
           echo "TABLE OF CONTENTS" >> documentation.txt
           echo "------------------------------------------------" >> documentation.txt
           
-          # List all files for the TOC
           find ios -name "*.swift" -o -name "Package.swift" | sort | while read file; do
             echo " - $file" >> documentation.txt
           done
@@ -34,13 +33,12 @@ jobs:
           echo "" >> documentation.txt
           echo "================================================" >> documentation.txt
           echo "" >> documentation.txt
-          echo "RAW SOURCE CODE" >> documentation.txt
+          echo "SOURCE CODE LISTING" >> documentation.txt
           echo "================================================" >> documentation.txt
           echo "" >> documentation.txt
 
       - name: Combine All Source Code
         run: |
-          # Append every file to the documentation
           find ios -name "*.swift" -o -name "Package.swift" | sort | while read file; do
             echo "// MARK: - $file" >> documentation.txt
             echo "" >> documentation.txt
@@ -49,22 +47,22 @@ jobs:
             echo "" >> documentation.txt
           done
 
-      - name: Convert to PDF with Syntax Highlighting
+      - name: Convert to PDF
         run: |
-          # Use 'highlight' for professional syntax coloring and line numbers
-          # --syntax=swift ensures it looks like real code
-          # --out-format=latex or xhtml is usually better, but ps -> pdf is fast
-          highlight --out-format=ps \
+          # Step 1: Use highlight to generate a clean HTML version with inline CSS
+          highlight --out-format=html \
+                    --inline-css \
                     --font="Courier" \
                     --font-size=10 \
                     --line-numbers \
                     --syntax=swift \
-                    --doc-title="OmniSight Source Code" \
                     --input=documentation.txt \
-                    --output=source_code.ps
+                    --output=source_code.html
           
-          ps2pdf source_code.ps source_code_submission.pdf
-
+          # Step 2: Use pandoc to convert the HTML to a professional PDF
+          # We use --pdf-engine=pdflatex for high-quality font rendering
+          pandoc source_code.html -o source_code_submission.pdf --pdf-engine=pdflatex
+          
       - name: Upload PDF Artifact
         uses: actions/upload-artifact@v4
         with:
