@@ -1,0 +1,45 @@
+name: Generate Code PDF
+
+on:
+  push:
+    branches: [ master ]
+  workflow_dispatch:
+
+jobs:
+  build-pdf:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y enscript ghostscript
+
+      - name: Combine Swift files
+        run: |
+          echo "OmniSight - Source Code Submission" > combined_code.txt
+          echo "Generated on $(date)" >> combined_code.txt
+          echo "====================================" >> combined_code.txt
+          echo "" >> combined_code.txt
+          
+          find ios -name "*.swift" -not -path "*/.*" | while read file; do
+            echo "FILE: $file" >> combined_code.txt
+            echo "------------------------------------" >> combined_code.txt
+            cat "$file" >> combined_code.txt
+            echo "" >> combined_code.txt
+            echo "====================================" >> combined_code.txt
+            echo "" >> combined_code.txt
+          done
+
+      - name: Convert to PDF
+        run: |
+          enscript -Eswift -q -Z -p combined_code.ps combined_code.txt
+          ps2pdf combined_code.ps source_code_submission.pdf
+
+      - name: Upload PDF Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Source Code PDF
+          path: source_code_submission.pdf
