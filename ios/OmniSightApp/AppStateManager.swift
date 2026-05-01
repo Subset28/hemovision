@@ -65,6 +65,19 @@ class AppStateManager: ObservableObject {
         }
         
         setupLocation()
+        
+        let engine = OnDeviceVisionEngine(detector: detector)
+        engine.config = config // Apply the filtered config
+        
+        session        = OmniSightSession(engine: engine)
+        modelAvailable = true
+        
+        // Initialize the unified cameraManager
+        // We force unwrap session because we know it exists here
+        cameraManager = OmniPipeline(vision: session!)
+        
+        speechEngine.start(vision: session!)
+        setupDepthSubscription()
     }
     
     private func setupLocation() {
@@ -112,20 +125,6 @@ class AppStateManager: ObservableObject {
         if let url = URL(string: "sms:911&body=\(message.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? "")") {
             UIApplication.shared.open(url)
         }
-    }
-        
-        let engine = OnDeviceVisionEngine(detector: detector)
-        engine.config = config // Apply the filtered config
-        
-        session        = OmniSightSession(engine: engine)
-        modelAvailable = true
-        
-        // Initialize the unified cameraManager
-        // We force unwrap session because we know it exists here
-        cameraManager = OmniPipeline(vision: session!)
-        
-        speechEngine.start(vision: session!)
-        setupDepthSubscription()
     }
 
     private func setupDepthSubscription() {

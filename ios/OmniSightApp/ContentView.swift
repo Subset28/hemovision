@@ -154,7 +154,7 @@ struct ContentView: View {
                 Spacer()
                 scanDock
             }
-        }
+            
             // SOS Overlay
             if app.isSOSActive {
                 ZStack {
