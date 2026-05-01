@@ -1,10 +1,7 @@
 // OmniSight - Visual Navigation System
 // Personal Project - Source Code
 
-
 import OmniSightKit
-
-
 import SwiftUI
 
 struct ContentView: View {
@@ -23,7 +20,6 @@ struct ContentView: View {
             } else {
                 mainDashboard
                     .onAppear {
-                        // Start scanning automatically if the model is loaded to make it easier to use.
                         if app.modelAvailable && !app.isScanning {
                             app.setScanning(true)
                         }
@@ -43,7 +39,6 @@ struct ContentView: View {
             OmniSightTheme.background.ignoresSafeArea()
             
             if app.isScanning {
-                // big camera view
                 #if os(iOS)
                 if let arSession = app.cameraManager?.arSession {
                     ZStack {
@@ -63,7 +58,6 @@ struct ContentView: View {
                 }
                 #endif
             } else {
-                // when the camera is off
                 VStack(spacing: 24) {
                     Spacer()
                     Image(systemName: "eye.circle")
@@ -85,28 +79,15 @@ struct ContentView: View {
                 }
             }
             
-            // Mute Banner
             if speechMutedBanner {
                 mutedBanner
                     .padding()
                     .frame(maxHeight: .infinity, alignment: .top)
             }
 
-            // Controls Overlay
             VStack {
                 HStack {
-                    // New Accessibility Mode Picker
-                    Picker("Mode", selection: $app.mode) {
-                        ForEach(AccessibilityMode.allCases, id: \.self) { mode in
-                            Text(mode.rawValue).tag(mode)
-                        }
-                    }
-                    .pickerStyle(.segmented)
-                    .background(.ultraThinMaterial)
-                    .cornerRadius(8)
-                    
                     Spacer()
-                    
                     Button {
                         showingSettings = true
                     } label: {
@@ -118,7 +99,7 @@ struct ContentView: View {
                     .accessibilityLabel("Settings")
                 }
                 
-                if app.mode == .deaf || app.mode == .both {
+                if app.isScanning && !app.lastDetection.isEmpty {
                     VStack {
                         if !app.currentRoom.isEmpty {
                             Text(app.currentRoom.capitalized)
@@ -132,7 +113,7 @@ struct ContentView: View {
                         Spacer()
                         
                         Text(app.lastDetection)
-                            .font(.system(size: 44, weight: .black))
+                            .font(.system(size: 32, weight: .black))
                             .multilineTextAlignment(.center)
                             .padding()
                             .background(.black.opacity(0.8))
@@ -146,20 +127,13 @@ struct ContentView: View {
             }
             .padding()
 
-            // Bottom Scan Dock
             VStack {
                 Spacer()
                 scanDock
             }
             
-            // SOS Overlay
             if app.isSOSActive {
                 sosOverlay
-            }
-            
-            // Auditory Awareness Overlay (Feature 6)
-            if app.mode == .deaf || app.mode == .both {
-                auditoryOverlay
             }
         }
         .background {
@@ -181,13 +155,11 @@ struct ContentView: View {
         .preferredColorScheme(.dark)
     }
 
-    // standard legal text
     private var safetyDisclaimer: some View {
         Text("Assistive only. Distances are estimated and this does not replace a cane, guide dog, or orientation training.")
             .font(.caption)
             .foregroundStyle(.secondary)
             .multilineTextAlignment(.center)
-            .accessibilityLabel("Safety note. Assistive only. Distances are estimated and this does not replace cane or guide dog.")
     }
 
     private var mutedBanner: some View {
@@ -268,39 +240,4 @@ struct ContentView: View {
         .transition(.opacity)
         .zIndex(100)
     }
-
-    private var auditoryOverlay: some View {
-        VStack {
-            // Sound Detection Alert
-            if !app.detectedSound.isEmpty {
-                Text(app.detectedSound)
-                    .font(.headline.bold())
-                    .foregroundColor(.white)
-                    .padding()
-                    .frame(maxWidth: .infinity)
-                    .background(RoundedRectangle(cornerRadius: 12).fill(.orange))
-                    .padding(.top, 60)
-                    .transition(.move(edge: .top).combined(with: .opacity))
-            }
-            
-            Spacer()
-            
-            // Live Captions
-            if !app.liveCaptions.isEmpty {
-                Text(app.liveCaptions)
-                    .font(.title3.bold())
-                    .foregroundColor(.white)
-                    .padding()
-                    .background(RoundedRectangle(cornerRadius: 16).fill(.black.opacity(0.7)))
-                    .padding(.bottom, 100)
-                    .frame(maxWidth: 320)
-            }
-        }
-        .padding(.horizontal)
-        .allowsHitTesting(false)
-    }
-}
-
-#Preview {
-    ContentView()
 }

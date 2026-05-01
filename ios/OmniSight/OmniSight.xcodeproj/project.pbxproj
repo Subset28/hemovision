@@ -274,8 +274,11 @@
 				DEVELOPMENT_TEAM = 92N57TAU62;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_NSCameraUsageDescription = lebron;
-				INFOPLIST_KEY_NSLocalNetworkUsageDescription = james;
+				INFOPLIST_KEY_NSCameraUsageDescription = "OmniSight uses the camera for object detection and sign language recognition.";
+				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "OmniSight uses the local network for pairing with caregiver devices.";
+				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "OmniSight uses your location to provide accurate coordinates during SOS emergencies.";
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "OmniSight uses the microphone to detect emergency sounds and provide speech-to-text.";
+				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "OmniSight uses speech recognition to provide live captions for deaf users.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
@@ -317,8 +320,11 @@
 				DEVELOPMENT_TEAM = 92N57TAU62;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_NSCameraUsageDescription = lebron;
-				INFOPLIST_KEY_NSLocalNetworkUsageDescription = james;
+				INFOPLIST_KEY_NSCameraUsageDescription = "OmniSight uses the camera for object detection and sign language recognition.";
+				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "OmniSight uses the local network for pairing with caregiver devices.";
+				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "OmniSight uses your location to provide accurate coordinates during SOS emergencies.";
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "OmniSight uses the microphone to detect emergency sounds and provide speech-to-text.";
+				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "OmniSight uses speech recognition to provide live captions for deaf users.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;

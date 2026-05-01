@@ -1,10 +1,7 @@
 // OmniSight - Visual Navigation System
 // Personal Project - Source Code
 
-
 import OmniSightKit
-
-
 import AVFoundation
 import Combine
 import Foundation
@@ -12,17 +9,12 @@ import Vision
 
 // OmniSight Speech Engine
 // This module manages text-to-speech feedback for detected objects.
-// Levels: 1=Emergency, 2=Approaching, 3=Nearby
-
-// We removed the masterConfig dictionary and moved it to functions 
-// because it's easier to read and change during testing.
-
 class SpeechEngine: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
 
-    // Shared instance for application-wide access
     static let shared = SpeechEngine()
 
     @Published private(set) var alertActive: Bool = false
+    @Published var objectCount: Int = 0
 
     private let synth     = AVSpeechSynthesizer()
     private var frameSub:   AnyCancellable?
@@ -32,17 +24,10 @@ class SpeechEngine: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
     private var isEnabled   = false
     private var mutedUntil: Date?
 
-    @Published var objectCount: Int = 0
-
     private var lastSpokenAt: [String: Date] = [:]
     private var lastClassAt:  [String: Date] = [:]
-
-    private var userInVehicle: Bool = false
-    private var travelVelocitySamples: [Double] = []
-
     private var lastLiDARDepth: Float = 0.0
 
-    // This is for the list of things to say
     struct QueueItem {
         var text: String
         var priority: Int
@@ -53,22 +38,15 @@ class SpeechEngine: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
 
     private var lastCollisionAt: Date = .distantPast
     private var lastLiDARAt:     Date = .distantPast
-
     private var framesSeen: [String: Int] = [:]
-    
     private var lastLiDARTime:  Date  = .distantPast
-    
-    private var lastSceneClassTime: Date = .distantPast
-    private var lastSceneResult: String = ""
 
     static let allWhitelistedClasses: Set<String> = ["person", "car", "truck", "bus", "bicycle", "motorcycle", "dog", "cat", "chair", "table", "door", "stairs"]
 
-    // Setup
     override init() {
         super.init()
         synth.delegate = self
         let audio = AVAudioSession.sharedInstance()
-        // Audio MUST work for this to be accessible.
         try! audio.setCategory(.playback, mode: .spokenAudio, options: [.duckOthers])
         try! audio.setActive(true)
     }
@@ -81,9 +59,8 @@ class SpeechEngine: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
         frameSub = vision?.$lastPayload
             .receive(on: DispatchQueue.main)
             .sink { [weak self] frame in
-                // Only process if the frame isn't nil
-                if frame != nil {
-                    self?.onFrame(frame!)
+                if let frame = frame {
+                    self?.onFrame(frame)
                 }
             }
 
@@ -111,17 +88,14 @@ class SpeechEngine: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
     private func onFrame(_ frame: FramePayload) {
         if !isEnabled { return }
         if let mute = mutedUntil, Date() < mute { return }
-        if AppStateManager.shared.mode == .deaf { return }
 
         var fastCheck:  [DetectedObjectDTO] = []
         var confirmed:  [DetectedObjectDTO] = []
 
         for obj in frame.objects {
-            print("DEBUG: Just saw a \(obj.objectClass) at \(obj.distanceM) meters")
-            
             let maxRange = getMaxRange(for: obj.objectClass)
-            if maxRange == nil { continue }               // not whitelisted
-            if obj.distanceM > maxRange! { continue }     // too far away
+            if maxRange == nil { continue }
+            if obj.distanceM > maxRange! { continue }
             if obj.confidence < getMinConfidence(for: obj.objectClass) { continue }
 
             let seen = (framesSeen[obj.objectId] ?? 0) + 1
@@ -131,29 +105,6 @@ class SpeechEngine: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
             if seen >= 3 { confirmed.append(obj) }
         }
 
-        // Travel
-        // If multiple objects are approaching at > 4 m/s, we are in a vehicle.
-        let highSpeedApproachers = confirmed.filter { $0.velocityMps < -4.0 }
-        if highSpeedApproachers.count >= 2 {
-            travelVelocitySamples.append(1.0)
-        } else {
-            travelVelocitySamples.append(0.0)
-        }
-        if travelVelocitySamples.count > 30 { travelVelocitySamples.removeFirst() }
-        
-        let travelScore = travelVelocitySamples.reduce(0, +) / Double(travelVelocitySamples.count)
-        let newTraveling = travelScore > 0.5
-        if newTraveling != userInVehicle {
-            userInVehicle = newTraveling
-            if userInVehicle {
-                HapticManager.shared.warningVibration()
-                addToQueue("Travel mode active", priority: 100, expiresIn: 2.0)
-            } else {
-                addToQueue("Walking mode active", priority: 100, expiresIn: 2.0)
-            }
-        }
-
-        // Remove objects that are no longer in the frame
         let liveIds = Set(frame.objects.map { $0.objectId })
         var updatedSeen: [String: Int] = [:]
         for (id, count) in framesSeen {
@@ -164,21 +115,10 @@ class SpeechEngine: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
         framesSeen = updatedSeen
         objectCount = confirmed.count
         
-        // Update Global State for Deaf Mode Overlay
         if let topObj = confirmed.sorted(by: { $0.distanceM < $1.distanceM }).first {
             AppStateManager.shared.lastDetection = "\(topObj.objectClass.capitalized) at \(String(format: "%.1f", topObj.distanceM))m"
-            
-            // Haptic feedback for Deaf Mode
-            if AppStateManager.shared.mode == .deaf || AppStateManager.shared.mode == .both {
-                if topObj.distanceM < 1.5 {
-                    HapticManager.shared.playCollisionWarning()
-                } else {
-                    HapticManager.shared.playObjectNearby()
-                }
-            }
         }
         
-        // Crowded Space Logic
         let peopleCount = confirmed.filter { $0.objectClass == "person" }.count
         AppStateManager.shared.peopleInFrame = peopleCount
         if peopleCount >= 4 {
@@ -190,16 +130,11 @@ class SpeechEngine: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
             }
         }
         
-        // Emergency
         let now = Date()
-
-        // Emergency
         var closestDanger: DetectedObjectDTO? = nil
-        let interiorLimit = userInVehicle ? 1.25 : 1.0 
-        
         for obj in fastCheck {
             let isDirectlyAhead = abs(obj.panValue) < 0.45
-            if obj.distanceM <= interiorLimit && isDirectlyAhead && obj.velocityMps < -0.3 {
+            if obj.distanceM <= 1.0 && isDirectlyAhead && obj.velocityMps < -0.3 {
                 if closestDanger == nil || obj.distanceM < closestDanger!.distanceM {
                     closestDanger = obj
                 }
@@ -207,7 +142,6 @@ class SpeechEngine: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
         }
 
         if let danger = closestDanger {
-            print("EMERGENCY: \(danger.objectClass) is too close!")
             alertActive = true
             HapticManager.shared.warningVibration()
             if now.timeIntervalSince(lastCollisionAt) > 3.0 {
@@ -219,11 +153,9 @@ class SpeechEngine: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
             alertActive = false
         }
 
-        // Approaching
         var closestApproaching: DetectedObjectDTO? = nil
         for obj in confirmed {
-            let isApproaching = obj.velocityMps < -0.40
-            if isApproaching {
+            if obj.velocityMps < -0.40 {
                 if closestApproaching == nil || obj.distanceM < closestApproaching!.distanceM {
                     closestApproaching = obj
                 }
@@ -232,10 +164,7 @@ class SpeechEngine: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
 
         if let obj = closestApproaching {
             let cls = obj.objectClass.lowercased()
-            let timeSinceObject = now.timeIntervalSince(lastSpokenAt[obj.objectId] ?? .distantPast)
-            let timeSinceClass  = now.timeIntervalSince(lastClassAt[cls] ?? .distantPast)
-
-            if timeSinceObject >= 5 && timeSinceClass >= 5 {
+            if now.timeIntervalSince(lastSpokenAt[obj.objectId] ?? .distantPast) >= 5 && now.timeIntervalSince(lastClassAt[cls] ?? .distantPast) >= 5 {
                 let text = "\(SpeechEngine.mapToSpokenName(obj.objectClass)), \(directionText(obj.panValue)), \(distText(obj.distanceM)), approaching"
                 addToQueue(text, priority: 80, expiresIn: 1.2)
                 lastSpokenAt[obj.objectId] = now
@@ -243,18 +172,9 @@ class SpeechEngine: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
             }
         }
 
-        // Nearby Static
-        for item in queue {
-            if item.priority >= 80 { return }
-        }
-
-        let verbosity = UserDefaults.standard.string(forKey: "verbosityMode") ?? "normal"
-
-        // Closest static object
         var closestNearby: DetectedObjectDTO? = nil
         for obj in confirmed {
-            let isApproaching = obj.velocityMps < -0.40
-            if !isApproaching {
+            if obj.velocityMps >= -0.40 {
                 if closestNearby == nil || obj.distanceM < closestNearby!.distanceM {
                     closestNearby = obj
                 }
@@ -264,12 +184,7 @@ class SpeechEngine: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
         if let obj = closestNearby {
             let cls  = obj.objectClass.lowercased()
             let prio = getPriority(for: obj.objectClass)
-            if verbosity == "criticalOnly" && prio < 50 { return }
-
-            let timeSinceObject = now.timeIntervalSince(lastSpokenAt[obj.objectId] ?? .distantPast)
-            let timeSinceClass  = now.timeIntervalSince(lastClassAt[cls] ?? .distantPast)
-
-            if timeSinceObject >= 30 && timeSinceClass >= 12 {
+            if now.timeIntervalSince(lastSpokenAt[obj.objectId] ?? .distantPast) >= 30 && now.timeIntervalSince(lastClassAt[cls] ?? .distantPast) >= 12 {
                 let text = "\(SpeechEngine.mapToSpokenName(obj.objectClass)), \(directionText(obj.panValue)), \(distText(obj.distanceM))"
                 addToQueue(text, priority: prio, expiresIn: 2.0)
                 lastSpokenAt[obj.objectId] = now
@@ -278,40 +193,21 @@ class SpeechEngine: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
         }
     }
 
-
     func addToQueue(_ text: String, priority: Int, expiresIn: TimeInterval) {
         for item in queue {
             if item.text == text { return }
         }
-        
-        // Update Global State for UI
         AppStateManager.shared.lastDetection = text
-        
-        // Skip speech if in Deaf mode
-        if AppStateManager.shared.mode == .deaf {
-            return
-        }
-
         queue.append(QueueItem(text: text, priority: priority, addedAt: Date(), expiresIn: expiresIn))
     }
 
     private func drainQueue() {
-        var freshQueue: [QueueItem] = []
-        for item in queue {
-            if Date().timeIntervalSince(item.addedAt) < item.expiresIn {
-                freshQueue.append(item)
-            }
-        }
-        queue = freshQueue
-
+        queue = queue.filter { Date().timeIntervalSince($0.addedAt) < $0.expiresIn }
         if isSpeaking || queue.isEmpty { return }
-
-
         queue.sort { $0.priority > $1.priority }
         let nextItem = queue.removeFirst()
         speakToUser(nextItem.text)
     }
-
 
     private func emergencySpeak(_ text: String) {
         synth.stopSpeaking(at: .immediate)
@@ -321,15 +217,11 @@ class SpeechEngine: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
     }
 
     private func speakToUser(_ text: String) {
-        // Double check mode
-        if AppStateManager.shared.mode == .deaf { return }
-        
         let utterance       = AVSpeechUtterance(string: text)
         utterance.rate      = 0.52
         utterance.voice     = AVSpeechSynthesisVoice(language: "en-US")
         synth.speak(utterance)
     }
-
 
     private func directionText(_ pan: Double) -> String {
         if pan < -0.65 { return "hard left"     }
@@ -341,16 +233,12 @@ class SpeechEngine: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
         return "hard right"
     }
 
-
     private func distText(_ meters: Double) -> String {
         let useImperial = UserDefaults.standard.bool(forKey: "useImperialUnits")
-
         if useImperial {
             let feet = max(2, Int((meters * 3.281).rounded()))
-            if feet == 1 { return "1 foot" }
-            return "\(feet) feet"
+            return feet == 1 ? "1 foot" : "\(feet) feet"
         }
-
         if meters < 2.0 {
             let rounded = max(0.5, (meters * 2).rounded() / 2)
             return String(format: "%.1f meters", rounded)
@@ -358,15 +246,13 @@ class SpeechEngine: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
         return "\(Int(meters.rounded())) meters"
     }
 
-
-    // We hand-coded these priorities based on our testing in the school hallway
     private func getPriority(for label: String) -> Int {
         let name = label.lowercased()
-        if name == "car" || name == "truck" || name == "bus" { return 1 } // Super dangerous
-        if name == "person" || name == "stairs" { return 1 } // High priority
-        if name == "dog" || name == "cat" { return 3 } // Nearby animals
-        if name == "chair" || name == "table" { return 5 } // Static furniture
-        return 10 // Default
+        if name == "car" || name == "truck" || name == "bus" { return 1 }
+        if name == "person" || name == "stairs" { return 1 }
+        if name == "dog" || name == "cat" { return 3 }
+        if name == "chair" || name == "table" { return 5 }
+        return 10
     }
 
     private func getMaxRange(for label: String) -> Double? {
@@ -390,11 +276,9 @@ class SpeechEngine: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
         return 0.50
     }
 
-
     func speechSynthesizer(_ s: AVSpeechSynthesizer, didStart _: AVSpeechUtterance)  { isSpeaking = true  }
     func speechSynthesizer(_ s: AVSpeechSynthesizer, didFinish _: AVSpeechUtterance) { isSpeaking = false }
     func speechSynthesizer(_ s: AVSpeechSynthesizer, didCancel _: AVSpeechUtterance) { isSpeaking = false }
-
 
     func speakImmediate(_ text: String) {
         synth.stopSpeaking(at: .immediate)
@@ -410,10 +294,6 @@ class SpeechEngine: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
         isSpeaking = false
     }
 
-    func setVisionSpeechEnabled(_ on: Bool) { isEnabled = on }
-    func announceSystemMessageOnce(key: String, message: String) { speakImmediate(message) }
-
-    // LiDAR
     func updateLiDARDepth(_ depthMeters: Float) {
         if !isEnabled { return }
         if let mute = mutedUntil, Date() < mute { return }
@@ -425,7 +305,6 @@ class SpeechEngine: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
         lastLiDARDepth = depthMeters
         lastLiDARTime  = now
 
-        // Skip if Vision already labeled this spot
         let recentlySeenObjects = visionSession?.lastPayload?.objects ?? []
         let alreadyIdentified = recentlySeenObjects.contains { obj in
             let distDiff = abs(Double(depthMeters) - obj.distanceM)
@@ -435,12 +314,9 @@ class SpeechEngine: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
         
         if alreadyIdentified { return }
 
-        // Collision logic
-        let minThreshold: Float = userInVehicle ? 1.25 : 0.75
+        let minThreshold: Float = 0.75
         if depthMeters >= minThreshold { return }
-        if userInVehicle && vel > -0.2 { return } 
-        
-        if now.timeIntervalSince(lastLiDARAt) < 2.5 { return }  // shorter cooldown
+        if now.timeIntervalSince(lastLiDARAt) < 2.5 { return }
 
         lastLiDARAt = Date()
         alertActive = true
@@ -455,7 +331,6 @@ class SpeechEngine: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
             addToQueue(text, priority: 95, expiresIn: 1.5) 
         }
     }
-
 
     private static func mapToSpokenName(_ raw: String) -> String {
         let t = raw.lowercased()
@@ -472,10 +347,7 @@ class SpeechEngine: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
         case "table": return "Table"
         case "door": return "Door"
         case "stairs": return "Stairs"
-        default:
-            // Just return the raw name but capitalized
-            return raw.replacingOccurrences(of: "_", with: " ").capitalized
+        default: return raw.replacingOccurrences(of: "_", with: " ").capitalized
         }
     }
-
 }

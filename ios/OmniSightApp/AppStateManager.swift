@@ -13,8 +13,6 @@ import CoreLocation
 
 enum AccessibilityMode: String, CaseIterable {
     case blind = "Blind"
-    case deaf = "Deaf"
-    case both = "Both"
 }
 
 // AppStateManager
@@ -32,23 +30,13 @@ class AppStateManager: ObservableObject {
     @Published var mode: AccessibilityMode = .blind {
         didSet {
             UserDefaults.standard.set(mode.rawValue, forKey: "omnisight_mode")
-            // Update auditory engine if scanning
-            if isScanning {
-                if mode == .deaf || mode == .both {
-                    auditoryEngine.start()
-                } else {
-                    auditoryEngine.stop()
-                }
-            }
+            lastDetection = ""
         }
     }
     @Published var currentRoom: String = ""
     @Published var peopleInFrame: Int = 0
     @Published var lastCrowdWarning: Date = .distantPast
     @Published var lastSurfaceWarning: Date = .distantPast
-    @Published var detectedSign: String = ""
-    @Published var liveCaptions: String = ""
-    @Published var detectedSound: String = ""
     
     // SOS State
     @Published var isSOSActive = false
@@ -58,7 +46,6 @@ class AppStateManager: ObservableObject {
     private let locationManager = CLLocationManager()
 
     let speechEngine = SpeechEngine()
-    let auditoryEngine = AuditoryEngine()
     
     // Unified cameraManager for both Video and LiDAR
     private(set) var cameraManager: OmniPipeline?
@@ -159,15 +146,16 @@ class AppStateManager: ObservableObject {
         if on {
             cameraManager?.start()
             speechEngine.start(vision: session)
-            if mode == .deaf || mode == .both {
-                auditoryEngine.start()
-            }
             speechEngine.speakImmediate("Scanning started")
         } else {
             cameraManager?.stop()
             speechEngine.stop()
-            auditoryEngine.stop()
             session?.clearPayload()
+            
+            // Reset UI states cleanly
+            lastDetection = ""
+            currentRoom = ""
+            
             speechEngine.speakImmediate("Scanning stopped")
         }
 
