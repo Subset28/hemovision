@@ -17,14 +17,15 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y enscript ghostscript
 
-      - name: Combine All Code
+      - name: Combine Code Files
         run: |
+          # Create a clean file without timestamps
           echo "OmniSight - Source Code Submission" > combined_code.txt
-          echo "Generated on $(date)" >> combined_code.txt
           echo "------------------------------------------------" >> combined_code.txt
           
-          # Find all swift, plist, and package files
-          find . -type f \( -name "*.swift" -o -name "Package.swift" -o -name "*.plist" \) -not -path "*/.*" | while read file; do
+          # Only include .swift and Package.swift. Exclude any hidden directories.
+          # Sorted for a consistent table of contents feel.
+          find ios -name "*.swift" -o -name "Package.swift" | sort | while read file; do
             echo "FILE: $file" >> combined_code.txt
             echo "------------------------------------------------" >> combined_code.txt
             cat "$file" >> combined_code.txt
@@ -32,18 +33,13 @@ jobs:
             echo "================================================" >> combined_code.txt
             echo "" >> combined_code.txt
           done
-          
-          # Check if the file is empty
-          if [ ! -s combined_code.txt ]; then
-            echo "Error: No source files found!"
-            exit 1
-          fi
 
       - name: Convert to PDF
         run: |
-          # Use enscript to create a PostScript file, then convert to PDF
-          # We removed -Eswift to ensure it doesn't fail on highlighting
-          enscript -L 66 -p combined_code.ps combined_code.txt
+          # -C: Add line numbers
+          # -j: Add a nice border around each page
+          # -r: Landscape mode (optional, but good for wide code) - keeping portrait for now
+          enscript -C -j -p combined_code.ps combined_code.txt
           ps2pdf combined_code.ps source_code_submission.pdf
 
       - name: Upload PDF Artifact
