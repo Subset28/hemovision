@@ -278,7 +278,7 @@ class SpeechEngine: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
     }
 
 
-    private func addToQueue(_ text: String, priority: Int, expiresIn: TimeInterval) {
+    func addToQueue(_ text: String, priority: Int, expiresIn: TimeInterval) {
         for item in queue {
             if item.text == text { return }
         }
