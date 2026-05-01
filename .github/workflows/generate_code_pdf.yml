@@ -17,15 +17,27 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y highlight wkhtmltopdf
 
-      - name: Create Cover Page
+      - name: Create Student-Style Documentation
         run: |
-          echo "OmniSight - Visual Navigation System" > documentation.txt
-          echo "Category: Software Development (High School)" >> documentation.txt
-          echo "Project Entry: Source Code Documentation" >> documentation.txt
-          echo "================================================" >> documentation.txt
+          # Create a simpler, student-appropriate cover page
+          echo "OmniSight - Visual Navigation App" > documentation.txt
+          echo "Software Development Submission" >> documentation.txt
+          echo "------------------------------------------------" >> documentation.txt
+          echo "Created by: Sight-Seekers Team" >> documentation.txt
+          echo "Date: April 2026" >> documentation.txt
           echo "" >> documentation.txt
-          echo "SOURCE CODE LISTING" >> documentation.txt
-          echo "================================================" >> documentation.txt
+          echo "TABLE OF CONTENTS" >> documentation.txt
+          echo "------------------------------------------------" >> documentation.txt
+          
+          # List files manually for that "hand-organized" look
+          find ios -name "*.swift" -o -name "Package.swift" | sort | while read file; do
+            echo " - $file" >> documentation.txt
+          done
+          
+          echo "" >> documentation.txt
+          echo "------------------------------------------------" >> documentation.txt
+          echo "SOURCE CODE" >> documentation.txt
+          echo "------------------------------------------------" >> documentation.txt
           echo "" >> documentation.txt
 
       - name: Combine All Source Code
@@ -38,9 +50,9 @@ jobs:
             echo "" >> documentation.txt
           done
 
-      - name: Convert to PDF with Clickable TOC
+      - name: Convert to PDF
         run: |
-          # Step 1: Generate high-quality HTML with syntax highlighting and line numbers
+          # Step 1: Use highlight to generate HTML (standard for high schoolers printing from VS Code)
           highlight --out-format=html \
                     --inline-css \
                     --font="Courier" \
@@ -50,9 +62,8 @@ jobs:
                     --input=documentation.txt \
                     --output=source_code.html
           
-          # Step 2: Convert to PDF with an automatic Table of Contents
+          # Step 2: Simple HTML to PDF conversion without the automated TOC generator
           wkhtmltopdf --enable-local-file-access \
-                      toc \
                       source_code.html source_code_submission.pdf
           
       - name: Upload PDF Artifact
