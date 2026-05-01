@@ -26,6 +26,7 @@ class AppStateManager: ObservableObject {
 
     @Published var isScanning     = false
     @Published var modelAvailable = false
+    @Published var lastDetection: String = "Waiting..."
     
     // Pro Features State
     @Published var mode: AccessibilityMode = .blind
