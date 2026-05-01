@@ -17,20 +17,11 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y highlight wkhtmltopdf
 
-      - name: Create Cover Page and TOC
+      - name: Create Cover Page
         run: |
           echo "OmniSight - Visual Navigation System" > documentation.txt
-          echo "Software Development - Source Code Submission" >> documentation.txt
-          echo "================================================" >> documentation.txt
-          echo "" >> documentation.txt
-          echo "TABLE OF CONTENTS" >> documentation.txt
-          echo "------------------------------------------------" >> documentation.txt
-          
-          find ios -name "*.swift" -o -name "Package.swift" | sort | while read file; do
-            echo " - $file" >> documentation.txt
-          done
-          
-          echo "" >> documentation.txt
+          echo "Category: Software Development (High School)" >> documentation.txt
+          echo "Project Entry: Source Code Documentation" >> documentation.txt
           echo "================================================" >> documentation.txt
           echo "" >> documentation.txt
           echo "SOURCE CODE LISTING" >> documentation.txt
@@ -47,9 +38,9 @@ jobs:
             echo "" >> documentation.txt
           done
 
-      - name: Convert to PDF
+      - name: Convert to PDF with Clickable TOC
         run: |
-          # Step 1: Generate high-quality HTML with syntax highlighting
+          # Step 1: Generate high-quality HTML with syntax highlighting and line numbers
           highlight --out-format=html \
                     --inline-css \
                     --font="Courier" \
@@ -59,9 +50,10 @@ jobs:
                     --input=documentation.txt \
                     --output=source_code.html
           
-          # Step 2: Convert HTML to PDF using wkhtmltopdf
-          # We use --enable-local-file-access to ensure it can read the CSS/HTML
-          wkhtmltopdf --enable-local-file-access source_code.html source_code_submission.pdf
+          # Step 2: Convert to PDF with an automatic Table of Contents
+          wkhtmltopdf --enable-local-file-access \
+                      toc \
+                      source_code.html source_code_submission.pdf
           
       - name: Upload PDF Artifact
         uses: actions/upload-artifact@v4
