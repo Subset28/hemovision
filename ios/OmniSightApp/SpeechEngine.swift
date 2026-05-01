@@ -1,5 +1,5 @@
 // OmniSight - Visual Navigation System
-// Personal Project - Humanized Codebase
+// Personal Project - Source Code
 
 
 import OmniSightKit
@@ -10,15 +10,15 @@ import Combine
 import Foundation
 
 // OmniSight Speech Engine
-// This part handles the voice and says what the AI sees!
+// This module manages text-to-speech feedback for detected objects.
 // Levels: 1=Emergency, 2=Approaching, 3=Nearby
 
 // We removed the masterConfig dictionary and moved it to functions 
-// because it's easier to read and change during testing!
+// because it's easier to read and change during testing.
 
 class SpeechEngine: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
 
-    // THE SHARED INSTANCE (DO NOT REMOVE!)
+    // Shared instance for application-wide access
     static let shared = SpeechEngine()
 
     @Published private(set) var alertActive: Bool = false

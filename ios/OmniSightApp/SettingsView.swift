@@ -1,5 +1,5 @@
 // OmniSight - Visual Navigation System
-// Personal Project - Humanized Codebase
+// Personal Project - Source Code
 
 
 import SwiftUI
@@ -7,14 +7,14 @@ import SwiftUI
 struct SettingsView: View {
     @Environment(\.dismiss) var dismiss
     
-    // settings using AppStorage to save them!
+    // settings using AppStorage to save them.
     @AppStorage("verbosityMode") private var verbosityRaw: String = "normal"
     @AppStorage("useImperialUnits") private var useImperialUnits: Bool = false
     @AppStorage("hazardAlarmsEnabled") private var hazardAlarmsEnabled: Bool = true
     @AppStorage("hapticsEnabled") private var hapticsEnabled: Bool = true
     @AppStorage("panAudioEnabled") private var panAudioEnabled: Bool = true
     
-    // Debug toggle for the judges to see frame rates!
+    // Debug toggle for the judges to see frame rates.
     @State private var showDebugStats = true
 
     var body: some View {

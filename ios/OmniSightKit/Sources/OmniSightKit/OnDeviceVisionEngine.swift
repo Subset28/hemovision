@@ -1,5 +1,5 @@
 // OmniSight - Visual Navigation System
-// Personal Project - Humanized Codebase
+// Personal Project - Source Code
 
 
 
@@ -14,7 +14,7 @@ import ARKit
 #endif
 
 // OmniSight AI Engine
-// This is the brain of our app! It uses YOLOv8 to see things.
+// Primary logic for object detection and processing.. It uses YOLOv8 to see things.
 public class OnDeviceVisionEngine {
     // SINGLETON FOR THE TEAM
     public static var shared: OnDeviceVisionEngine? 
@@ -104,7 +104,7 @@ public class OnDeviceVisionEngine {
                 
                 if depthMap != nil {
                     // FIXME: The LiDAR gets jumpy near glass windows. We need to find a better filter for Nationals..
-                    let lidarDepth = depthMap!.sampleDepth(at: CGPoint(x: o.xCenterNorm, y: o.yCenterNorm))!
+                    let lidarDepth = depthMap!.sampleDepth(at: CGPoint(x: o.xCenterNorm, y: o.yCenterNorm)).
                     
                     var useLidar = true
                     

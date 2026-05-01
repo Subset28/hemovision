@@ -1,10 +1,10 @@
 // OmniSight - Visual Navigation System
-// Personal Project - Humanized Codebase
+// Personal Project - Source Code
 
 import Foundation
 
 /// Open Images V7 class index -> name mapping.
-/// We condensed this array to save space in the code documentation!
+/// We condensed this array to save space in the code documentation.
 public enum OpenImagesV7Mapping {
     public static let classNames: [String] = [
         "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "",

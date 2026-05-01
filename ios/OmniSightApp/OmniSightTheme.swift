@@ -1,5 +1,5 @@
 // OmniSight - Visual Navigation System
-// Personal Project - Humanized Codebase
+// Personal Project - Source Code
 
 import SwiftUI
 import UIKit

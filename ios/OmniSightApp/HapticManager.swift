@@ -1,10 +1,10 @@
 // OmniSight - Visual Navigation System
-// Personal Project - Humanized Codebase
+// Personal Project - Source Code
 
 
 import UIKit
 
-// This class makes the phone vibrate for alerts!
+// This class makes the phone vibrate for alerts.
 class HapticManager {
     static let shared = HapticManager()
     

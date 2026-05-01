@@ -1,5 +1,5 @@
 // OmniSight - Visual Navigation System
-// Personal Project - Humanized Codebase
+// Personal Project - Source Code
 
 
 import OmniSightKit
@@ -31,7 +31,7 @@ class AppStateManager: ObservableObject {
 
     private init() {
         // Load the YOLOv8 model
-        // If this fails, the app is broken anyway!
+        // If this fails, the app is broken anyway.
         let detector = try! CoreMLDetector(modelResourceName: "yolov8m-oiv7", bundle: .main)
         var config = detector.config
         config.allowedClasses = SpeechEngine.allWhitelistedClasses
