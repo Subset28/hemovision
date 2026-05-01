@@ -70,18 +70,27 @@ struct BoundingBoxOverlayView: View {
     }
 }
 
-/// A simple UIViewRepresentable to catch two-finger double-taps.
-struct TwoFingerDoubleTapCapture: UIViewRepresentable {
-    var onDetected: () -> Void
+/// A simple UIViewRepresentable to catch two-finger taps.
+struct OmniGestureCapture: UIViewRepresentable {
+    var onDoubleTap: () -> Void
+    var onTripleTap: () -> Void
 
     func makeUIView(context: Context) -> UIView {
         let view = UIView()
         view.backgroundColor = .clear
         
-        let gesture = UITapGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.handleTap))
-        gesture.numberOfTapsRequired = 2
-        gesture.numberOfTouchesRequired = 2
-        view.addGestureRecognizer(gesture)
+        let doubleTap = UITapGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.handleDoubleTap))
+        doubleTap.numberOfTapsRequired = 2
+        doubleTap.numberOfTouchesRequired = 2
+        view.addGestureRecognizer(doubleTap)
+        
+        let tripleTap = UITapGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.handleTripleTap))
+        tripleTap.numberOfTapsRequired = 3
+        tripleTap.numberOfTouchesRequired = 2
+        view.addGestureRecognizer(tripleTap)
+        
+        // Ensure double tap doesn't fire if triple tap is coming
+        doubleTap.require(toFail: tripleTap)
         
         return view
     }
@@ -89,16 +98,24 @@ struct TwoFingerDoubleTapCapture: UIViewRepresentable {
     func updateUIView(_ uiView: UIView, context: Context) {}
 
     func makeCoordinator() -> Coordinator {
-        Coordinator(onDetected: onDetected)
+        Coordinator(onDoubleTap: onDoubleTap, onTripleTap: onTripleTap)
     }
 
     class Coordinator: NSObject {
-        var onDetected: () -> Void
-        init(onDetected: @escaping () -> Void) {
-            self.onDetected = onDetected
+        var onDoubleTap: () -> Void
+        var onTripleTap: () -> Void
+        
+        init(onDoubleTap: @escaping () -> Void, onTripleTap: @escaping () -> Void) {
+            self.onDoubleTap = onDoubleTap
+            self.onTripleTap = onTripleTap
         }
-        @objc func handleTap() {
-            onDetected()
+        
+        @objc func handleDoubleTap() {
+            onDoubleTap()
+        }
+        
+        @objc func handleTripleTap() {
+            onTripleTap()
         }
     }
 }

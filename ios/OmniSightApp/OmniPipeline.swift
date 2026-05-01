@@ -8,6 +8,8 @@ import OmniSightKit
 import ARKit
 import Foundation
 import Combine
+import Vision
+import OmniSightKit
 
 // Unified ARKit Pipeline
 // Handles camera frames for YOLO and LiDAR for walls.
@@ -30,11 +32,26 @@ class OmniPipeline: NSObject, ARSessionDelegate, ObservableObject {
     // Published depth for the speech engine to watch
     @Published var middleSensorDist: Float = 999.0
     @Published var isRunning = false
+    
+    // ASL Model
+    private var handPoseRequest = VNDetectHumanHandPoseRequest()
+    private var aslModel: ASLHandPoseClassifier17?
+    
+    private var lastHandPoseTime: Date = .distantPast
+    private var lastSurfaceTime: Date = .distantPast
 
     init(vision: OmniSightSession) {
         self.vision = vision
         super.init()
         arSession.delegate = self
+        
+        // Load ASL Model
+        do {
+            let config = MLModelConfiguration()
+            self.aslModel = try ASLHandPoseClassifier17(configuration: config)
+        } catch {
+            print("ERROR: Could not load ASL Model. Make sure ASLHandPoseClassifier17.mlmodel is added to the project.")
+        }
     }
 
     func start() {
@@ -67,11 +84,61 @@ class OmniPipeline: NSObject, ARSessionDelegate, ObservableObject {
         
         // 2. If LiDAR is available, update the center depth reading
         if OmniPipeline.isSupported, let depthMap = frame.sceneDepth?.depthMap {
-            let depth = depthMap.sampleDepth(at: CGPoint(x: 0.5, y: 0.5)) ?? 999.0
-            print("LiDAR DEBUG: middle distance is \(depth) meters")
-            DispatchQueue.main.async {
-                self.middleSensorDist = depth
+            let centerDepth = depthMap.sampleDepth(at: CGPoint(x: 0.5, y: 0.5)) ?? 999.0
+            
+            // Feature 5: Surface Change / Stairs Warning
+            // Sample depth at the bottom of the frame (where the ground is)
+            let groundDepth = depthMap.sampleDepth(at: CGPoint(x: 0.5, y: 0.85)) ?? 999.0
+            
+            let now = Date()
+            // If the ground suddenly "disappears" (drop off)
+            if groundDepth > centerDepth + 1.5 && groundDepth < 5.0 {
+                if now.timeIntervalSince(lastSurfaceTime) > 3.0 {
+                    lastSurfaceTime = now
+                    HapticManager.shared.playSurfaceDropoff()
+                    AppStateManager.shared.speechEngine.speakImmediate("Step or drop-off detected, slow down")
+                }
             }
+
+            DispatchQueue.main.async {
+                self.middleSensorDist = centerDepth
+            }
+        }
+        
+        // 3. ASL / Hand Pose Detection (Feature 3)
+        let now = Date()
+        if now.timeIntervalSince(lastHandPoseTime) > 0.5 {
+            lastHandPoseTime = now
+            detectHandPose(frame: frame)
+        }
+    }
+
+    private func detectHandPose(frame: ARFrame) {
+        let handler = VNImageRequestHandler(cvPixelBuffer: frame.capturedImage, orientation: .right, options: [:])
+        do {
+            try handler.perform([handPoseRequest])
+            guard let observation = handPoseRequest.results?.first else { 
+                DispatchQueue.main.async { AppStateManager.shared.detectedSign = "" }
+                return 
+            }
+            
+            // Get landmarks and pass to ML model
+            if let model = aslModel {
+                let poseData = try observation.keypointsMultiArray()
+                let prediction = try model.prediction(poses: poseData)
+                
+                DispatchQueue.main.async {
+                    if AppStateManager.shared.detectedSign != prediction.label {
+                        AppStateManager.shared.detectedSign = prediction.label
+                        AppStateManager.shared.lastDetection = "Signed: \(prediction.label)"
+                        if AppStateManager.shared.mode == .both {
+                            AppStateManager.shared.speechEngine.speakImmediate(prediction.label)
+                        }
+                    }
+                }
+            }
+        } catch {
+            print("Hand Pose Error: \(error)")
         }
     }
 }

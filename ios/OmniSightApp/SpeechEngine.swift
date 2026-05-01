@@ -8,6 +8,7 @@ import OmniSightKit
 import AVFoundation
 import Combine
 import Foundation
+import Vision
 
 // OmniSight Speech Engine
 // This module manages text-to-speech feedback for detected objects.
@@ -56,6 +57,9 @@ class SpeechEngine: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
     private var framesSeen: [String: Int] = [:]
     
     private var lastLiDARTime:  Date  = .distantPast
+    
+    private var lastSceneClassTime: Date = .distantPast
+    private var lastSceneResult: String = ""
 
     static let allWhitelistedClasses: Set<String> = ["person", "car", "truck", "bus", "bicycle", "motorcycle", "dog", "cat", "chair", "table", "door", "stairs"]
 
@@ -158,6 +162,39 @@ class SpeechEngine: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
         }
         framesSeen = updatedSeen
         objectCount = confirmed.count
+        
+        // Update Global State for Deaf Mode Overlay
+        if let topObj = confirmed.sorted(by: { $0.distanceM < $1.distanceM }).first {
+            AppStateManager.shared.lastDetection = "\(topObj.objectClass.capitalized) at \(String(format: "%.1f", topObj.distanceM))m"
+            
+            // Haptic feedback for Deaf Mode
+            if AppStateManager.shared.mode == .deaf || AppStateManager.shared.mode == .both {
+                if topObj.distanceM < 1.5 {
+                    HapticManager.shared.playCollisionWarning()
+                } else {
+                    HapticManager.shared.playObjectNearby()
+                }
+            }
+        }
+        
+        // Crowded Space Logic
+        let peopleCount = confirmed.filter { $0.objectClass == "person" }.count
+        AppStateManager.shared.peopleInFrame = peopleCount
+        if peopleCount >= 4 {
+            let now = Date()
+            if now.timeIntervalSince(AppStateManager.shared.lastCrowdWarning) > 15.0 {
+                AppStateManager.shared.lastCrowdWarning = now
+                HapticManager.shared.warningVibration()
+                addToQueue("Busy area ahead, proceed with caution", priority: 10, expiresIn: 5.0)
+            }
+        }
+        
+        // Scene Classification Logic (Run every 10 seconds)
+        let now = Date()
+        if now.timeIntervalSince(lastSceneClassTime) > 10.0 {
+            lastSceneClassTime = now
+            classifyScene(pixelBuffer: frame.pixelBuffer)
+        }
 
         let now = Date()
 
@@ -251,6 +288,15 @@ class SpeechEngine: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
         for item in queue {
             if item.text == text { return }
         }
+        
+        // Update Global State for UI
+        AppStateManager.shared.lastDetection = text
+        
+        // Skip speech if in Deaf mode
+        if AppStateManager.shared.mode == .deaf {
+            return
+        }
+
         queue.append(QueueItem(text: text, priority: priority, addedAt: Date(), expiresIn: expiresIn))
     }
 
@@ -280,6 +326,9 @@ class SpeechEngine: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
     }
 
     private func speakToUser(_ text: String) {
+        // Double check mode
+        if AppStateManager.shared.mode == .deaf { return }
+        
         let utterance       = AVSpeechUtterance(string: text)
         utterance.rate      = 0.52
         utterance.voice     = AVSpeechSynthesisVoice(language: "en-US")
@@ -432,5 +481,24 @@ class SpeechEngine: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
             // Just return the raw name but capitalized
             return raw.replacingOccurrences(of: "_", with: " ").capitalized
         }
+    }
+
+    private func classifyScene(pixelBuffer: CVPixelBuffer) {
+        let request = VNClassifyImageRequest { [weak self] request, error in
+            guard let results = request.results as? [VNClassificationObservation],
+                  let topResult = results.first else { return }
+            
+            let scene = topResult.identifier.replacingOccurrences(of: "_", with: " ")
+            if scene != self?.lastSceneResult {
+                self?.lastSceneResult = scene
+                DispatchQueue.main.async {
+                    AppStateManager.shared.currentRoom = scene
+                }
+                self?.addToQueue("You appear to be in a \(scene)", priority: 50, expiresIn: 10.0)
+            }
+        }
+        
+        let handler = VNImageRequestHandler(cvPixelBuffer: pixelBuffer, options: [:])
+        try? handler.perform([request])
     }
 }

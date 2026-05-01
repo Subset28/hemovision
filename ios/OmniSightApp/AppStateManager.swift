@@ -9,6 +9,13 @@ import Foundation
 import SwiftUI
 import ARKit
 import Combine
+import CoreLocation
+
+enum AccessibilityMode: String, CaseIterable {
+    case blind = "Blind"
+    case deaf = "Deaf"
+    case both = "Both"
+}
 
 // AppStateManager
 // Central controller for the app. 
@@ -19,6 +26,21 @@ class AppStateManager: ObservableObject {
 
     @Published var isScanning     = false
     @Published var modelAvailable = false
+    
+    // Pro Features State
+    @Published var mode: AccessibilityMode = .blind
+    @Published var currentRoom: String = ""
+    @Published var peopleInFrame: Int = 0
+    @Published var lastCrowdWarning: Date = .distantPast
+    @Published var lastSurfaceWarning: Date = .distantPast
+    @Published var detectedSign: String = ""
+    
+    // SOS State
+    @Published var isSOSActive = false
+    @Published var sosCountdown = 5
+    @Published var lastLocation: String = "Unknown Location"
+    private var sosTimer: Timer?
+    private let locationManager = CLLocationManager()
 
     let speechEngine = SpeechEngine()
     
@@ -35,6 +57,62 @@ class AppStateManager: ObservableObject {
         let detector = try! CoreMLDetector(modelResourceName: "yolov8m-oiv7", bundle: .main)
         var config = detector.config
         config.allowedClasses = SpeechEngine.allWhitelistedClasses
+        
+        // Load saved mode if exists
+        if let savedMode = UserDefaults.standard.string(forKey: "omnisight_mode"),
+           let mode = AccessibilityMode(rawValue: savedMode) {
+            self.mode = mode
+        }
+        
+        setupLocation()
+    }
+    
+    private func setupLocation() {
+        locationManager.requestWhenInUseAuthorization()
+        locationManager.desiredAccuracy = kCLLocationAccuracyBest
+        locationManager.startUpdatingLocation()
+    }
+    
+    func triggerSOS() {
+        if isSOSActive { return }
+        isSOSActive = true
+        sosCountdown = 5
+        HapticManager.shared.playEmergencyBuzz()
+        
+        // Get current coordinates
+        if let loc = locationManager.location {
+            lastLocation = "\(String(format: "%.5f", loc.coordinate.latitude)), \(String(format: "%.5f", loc.coordinate.longitude))"
+        }
+        
+        sosTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] timer in
+            guard let self = self else { return }
+            if self.sosCountdown > 1 {
+                self.sosCountdown -= 1
+                self.speechEngine.speakImmediate("\(self.sosCountdown)")
+            } else {
+                self.sosCountdown = 0
+                timer.invalidate()
+                self.executeSOS()
+            }
+        }
+    }
+    
+    func cancelSOS() {
+        isSOSActive = false
+        sosTimer?.invalidate()
+        sosTimer = nil
+        speechEngine.speakImmediate("SOS Cancelled")
+    }
+    
+    private func executeSOS() {
+        let message = "EMERGENCY: I need help. My current location is \(lastLocation). Sent via OmniSight."
+        speechEngine.speakImmediate("Emergency mode. Your location is \(lastLocation). Sending message.")
+        
+        // Open SMS URL Scheme
+        if let url = URL(string: "sms:911&body=\(message.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? "")") {
+            UIApplication.shared.open(url)
+        }
+    }
         
         let engine = OnDeviceVisionEngine(detector: detector)
         engine.config = config // Apply the filtered config

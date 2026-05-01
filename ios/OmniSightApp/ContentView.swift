@@ -92,10 +92,24 @@ struct ContentView: View {
                     .frame(maxHeight: .infinity, alignment: .top)
             }
 
-            // Settings Button
+            // Controls Overlay
             VStack {
                 HStack {
+                    // New Accessibility Mode Picker
+                    Picker("Mode", selection: Binding(
+                        get: { app.mode },
+                        set: { app.setMode($0) }
+                    )) {
+                        ForEach(AccessibilityMode.allCases, id: \.self) { mode in
+                            Text(mode.rawValue).tag(mode)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                    .background(.ultraThinMaterial)
+                    .cornerRadius(8)
+                    
                     Spacer()
+                    
                     Button {
                         showingSettings = true
                     } label: {
@@ -106,6 +120,31 @@ struct ContentView: View {
                     }
                     .accessibilityLabel("Settings")
                 }
+                
+                if app.mode == .deaf || app.mode == .both {
+                    VStack {
+                        if !app.currentRoom.isEmpty {
+                            Text(app.currentRoom.capitalized)
+                                .font(.headline)
+                                .padding(12)
+                                .background(.black.opacity(0.6))
+                                .cornerRadius(12)
+                                .padding(.top, 20)
+                        }
+                        
+                        Spacer()
+                        
+                        Text(app.lastDetection)
+                            .font(.system(size: 44, weight: .black))
+                            .multilineTextAlignment(.center)
+                            .padding()
+                            .background(.black.opacity(0.8))
+                            .cornerRadius(20)
+                            .padding(.bottom, 140)
+                            .foregroundColor(.white)
+                    }
+                }
+                
                 Spacer()
             }
             .padding()
@@ -116,8 +155,42 @@ struct ContentView: View {
                 scanDock
             }
         }
+            // SOS Overlay
+            if app.isSOSActive {
+                ZStack {
+                    Color.red.ignoresSafeArea()
+                    
+                    VStack(spacing: 40) {
+                        Image(systemName: "exclamationmark.shield.fill")
+                            .font(.system(size: 100))
+                            .foregroundColor(.white)
+                        
+                        Text("EMERGENCY SOS")
+                            .font(.system(size: 40, weight: .black))
+                            .foregroundColor(.white)
+                        
+                        Text("\(app.sosCountdown)")
+                            .font(.system(size: 120, weight: .bold))
+                            .foregroundColor(.white)
+                        
+                        Button {
+                            app.cancelSOS()
+                        } label: {
+                            Text("CANCEL")
+                                .font(.title.bold())
+                                .foregroundColor(.red)
+                                .padding(.horizontal, 40)
+                                .padding(.vertical, 20)
+                                .background(Capsule().fill(.white))
+                        }
+                    }
+                }
+                .transition(.opacity)
+                .zIndex(100)
+            }
+        }
         .background {
-            TwoFingerDoubleTapCapture {
+            OmniGestureCapture(onDoubleTap: {
                 hearing.muteFor(seconds: 10)
                 withAnimation(.easeInOut(duration: 0.2)) {
                     speechMutedBanner = true
@@ -127,7 +200,9 @@ struct ContentView: View {
                         speechMutedBanner = false
                     }
                 }
-            }
+            }, onTripleTap: {
+                app.triggerSOS()
+            })
         }
         .tint(OmniSightTheme.accent)
         .preferredColorScheme(.dark)

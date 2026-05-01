@@ -35,4 +35,34 @@ class HapticManager {
         heavy.impactOccurred()
         notification.notificationOccurred(.error)
     }
+
+    func playObjectNearby() {
+        // Single tap for deaf mode
+        medium.impactOccurred()
+    }
+
+    func playCollisionWarning() {
+        // Double tap for deaf mode
+        heavy.impactOccurred()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+            self.heavy.impactOccurred()
+        }
+    }
+
+    func playEmergencyBuzz() {
+        // Long buzz for emergency
+        notification.notificationOccurred(.error)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+            self.notification.notificationOccurred(.error)
+        }
+    }
+
+    func playSurfaceDropoff() {
+        // Rapid triple pulse for stairs/curbs
+        for i in 0..<3 {
+            DispatchQueue.main.asyncAfter(deadline: .now() + Double(i) * 0.15) {
+                self.medium.impactOccurred()
+            }
+        }
+    }
 }
