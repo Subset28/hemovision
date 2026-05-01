@@ -15,29 +15,55 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y enscript ghostscript
+          sudo apt-get install -y highlight ghostscript
+
+      - name: Create Cover Page and TOC
+        run: |
+          echo "OmniSight - Visual Navigation System" > documentation.txt
+          echo "2026 Software Development - Source Code Submission" >> documentation.txt
+          echo "================================================" >> documentation.txt
+          echo "" >> documentation.txt
+          echo "TABLE OF CONTENTS" >> documentation.txt
+          echo "------------------------------------------------" >> documentation.txt
+          
+          # List all files for the TOC
+          find ios -name "*.swift" -o -name "Package.swift" | sort | while read file; do
+            echo " - $file" >> documentation.txt
+          done
+          
+          echo "" >> documentation.txt
+          echo "================================================" >> documentation.txt
+          echo "" >> documentation.txt
+          echo "RAW SOURCE CODE" >> documentation.txt
+          echo "================================================" >> documentation.txt
+          echo "" >> documentation.txt
 
       - name: Combine All Source Code
         run: |
-          # Create a clean file. No external headers or timestamps.
-          touch combined_code.txt
-          
-          # Include EVERY .swift file and Package.swift.
-          # We use // MARK: for separators to keep the file valid as raw Swift code.
+          # Append every file to the documentation
           find ios -name "*.swift" -o -name "Package.swift" | sort | while read file; do
-            echo "// MARK: - $file" >> combined_code.txt
-            echo "" >> combined_code.txt
-            cat "$file" >> combined_code.txt
-            echo "" >> combined_code.txt
-            echo "" >> combined_code.txt
+            echo "// MARK: - $file" >> documentation.txt
+            echo "" >> documentation.txt
+            cat "$file" >> documentation.txt
+            echo "" >> documentation.txt
+            echo "" >> documentation.txt
           done
 
-      - name: Convert to PDF
+      - name: Convert to PDF with Syntax Highlighting
         run: |
-          # -C: Add line numbers (essential for competition review)
-          # -j: Add a page border
-          enscript -C -j -p combined_code.ps combined_code.txt
-          ps2pdf combined_code.ps source_code_submission.pdf
+          # Use 'highlight' for professional syntax coloring and line numbers
+          # --syntax=swift ensures it looks like real code
+          # --out-format=latex or xhtml is usually better, but ps -> pdf is fast
+          highlight --out-format=ps \
+                    --font="Courier" \
+                    --font-size=10 \
+                    --line-numbers \
+                    --syntax=swift \
+                    --doc-title="OmniSight Source Code" \
+                    --input=documentation.txt \
+                    --output=source_code.ps
+          
+          ps2pdf source_code.ps source_code_submission.pdf
 
       - name: Upload PDF Artifact
         uses: actions/upload-artifact@v4
