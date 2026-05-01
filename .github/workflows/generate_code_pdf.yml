@@ -23,8 +23,13 @@ jobs:
           touch combined_code.txt
           
           # Only include .swift and Package.swift.
-          # Use // MARK comments for file separation so it remains "executable" code.
+          # EXCLUDE OpenImagesV7Mapping.swift because it is just 600 lines of string data.
           find ios -name "*.swift" -o -name "Package.swift" | sort | while read file; do
+            if [[ "$file" == *"OpenImagesV7Mapping.swift"* ]]; then
+              echo "// Skipping data file: $file"
+              continue
+            fi
+            
             echo "// MARK: - $file" >> combined_code.txt
             echo "" >> combined_code.txt
             cat "$file" >> combined_code.txt
@@ -36,7 +41,6 @@ jobs:
         run: |
           # -C: Add line numbers for readability
           # -j: Add a nice border around each page
-          # No extra headers, just the raw content from the file
           enscript -C -j -p combined_code.ps combined_code.txt
           ps2pdf combined_code.ps source_code_submission.pdf
 
