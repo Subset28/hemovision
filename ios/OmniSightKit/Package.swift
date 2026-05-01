@@ -1,6 +1,3 @@
-// OmniSight - Visual Navigation System
-// Personal Project - Humanized Codebase
-
 // swift-tools-version: 5.9
 import PackageDescription
 
