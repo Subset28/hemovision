@@ -189,13 +189,7 @@ class SpeechEngine: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
             }
         }
         
-        // Scene Classification Logic (Run every 10 seconds)
-        let now = Date()
-        if now.timeIntervalSince(lastSceneClassTime) > 10.0 {
-            lastSceneClassTime = now
-            classifyScene(pixelBuffer: frame.pixelBuffer)
-        }
-
+        // Emergency
         let now = Date()
 
         // Emergency
@@ -483,22 +477,4 @@ class SpeechEngine: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
         }
     }
 
-    private func classifyScene(pixelBuffer: CVPixelBuffer) {
-        let request = VNClassifyImageRequest { [weak self] request, error in
-            guard let results = request.results as? [VNClassificationObservation],
-                  let topResult = results.first else { return }
-            
-            let scene = topResult.identifier.replacingOccurrences(of: "_", with: " ")
-            if scene != self?.lastSceneResult {
-                self?.lastSceneResult = scene
-                DispatchQueue.main.async {
-                    AppStateManager.shared.currentRoom = scene
-                }
-                self?.addToQueue("You appear to be in a \(scene)", priority: 50, expiresIn: 10.0)
-            }
-        }
-        
-        let handler = VNImageRequestHandler(cvPixelBuffer: pixelBuffer, options: [:])
-        try? handler.perform([request])
-    }
 }

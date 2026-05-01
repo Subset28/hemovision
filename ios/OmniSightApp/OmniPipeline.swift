@@ -39,6 +39,8 @@ class OmniPipeline: NSObject, ARSessionDelegate, ObservableObject {
     
     private var lastHandPoseTime: Date = .distantPast
     private var lastSurfaceTime: Date = .distantPast
+    private var lastSceneClassTime: Date = .distantPast
+    private var lastSceneResult: String = ""
 
     init(vision: OmniSightSession) {
         self.vision = vision
@@ -111,6 +113,31 @@ class OmniPipeline: NSObject, ARSessionDelegate, ObservableObject {
             lastHandPoseTime = now
             detectHandPose(frame: frame)
         }
+        
+        // 4. Scene Classification (Feature 2)
+        if now.timeIntervalSince(lastSceneClassTime) > 10.0 {
+            lastSceneClassTime = now
+            classifyScene(pixelBuffer: frame.capturedImage)
+        }
+    }
+
+    private func classifyScene(pixelBuffer: CVPixelBuffer) {
+        let request = VNClassifyImageRequest { [weak self] request, error in
+            guard let results = request.results as? [VNClassificationObservation],
+                  let topResult = results.first else { return }
+            
+            let scene = topResult.identifier.replacingOccurrences(of: "_", with: " ")
+            if scene != self?.lastSceneResult {
+                self?.lastSceneResult = scene
+                DispatchQueue.main.async {
+                    AppStateManager.shared.currentRoom = scene
+                    AppStateManager.shared.speechEngine.addToQueue("You appear to be in a \(scene)", priority: 50, expiresIn: 10.0)
+                }
+            }
+        }
+        
+        let handler = VNImageRequestHandler(cvPixelBuffer: pixelBuffer, options: [:])
+        try? handler.perform([request])
     }
 
     private func detectHandPose(frame: ARFrame) {
