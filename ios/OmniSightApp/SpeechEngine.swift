@@ -381,7 +381,7 @@ class SpeechEngine: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
         lastLiDARDepth = depthMeters
         lastLiDARTime  = now
 
-        // Skip if AI already labeled this spot
+        // Skip if Vision already labeled this spot
         let recentlySeenObjects = visionSession?.lastPayload?.objects ?? []
         let alreadyIdentified = recentlySeenObjects.contains { obj in
             let distDiff = abs(Double(depthMeters) - obj.distanceM)

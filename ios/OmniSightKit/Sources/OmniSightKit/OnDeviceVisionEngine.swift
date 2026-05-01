@@ -13,7 +13,7 @@ import Vision
 import ARKit
 #endif
 
-// OmniSight AI Engine
+// OmniSight Vision Engine
 // Primary logic for object detection and processing.. It uses YOLOv8 to see things.
 public class OnDeviceVisionEngine {
     // SINGLETON FOR THE TEAM
