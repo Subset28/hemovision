@@ -17,19 +17,14 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y enscript ghostscript
 
-      - name: Combine Code Files
+      - name: Combine All Source Code
         run: |
-          # Create a clean file. No headers, just the raw code.
+          # Create a clean file. No external headers or timestamps.
           touch combined_code.txt
           
-          # Only include .swift and Package.swift.
-          # EXCLUDE OpenImagesV7Mapping.swift because it is just 600 lines of string data.
+          # Include EVERY .swift file and Package.swift.
+          # We use // MARK: for separators to keep the file valid as raw Swift code.
           find ios -name "*.swift" -o -name "Package.swift" | sort | while read file; do
-            if [[ "$file" == *"OpenImagesV7Mapping.swift"* ]]; then
-              echo "// Skipping data file: $file"
-              continue
-            fi
-            
             echo "// MARK: - $file" >> combined_code.txt
             echo "" >> combined_code.txt
             cat "$file" >> combined_code.txt
@@ -39,8 +34,8 @@ jobs:
 
       - name: Convert to PDF
         run: |
-          # -C: Add line numbers for readability
-          # -j: Add a nice border around each page
+          # -C: Add line numbers (essential for competition review)
+          # -j: Add a page border
           enscript -C -j -p combined_code.ps combined_code.txt
           ps2pdf combined_code.ps source_code_submission.pdf
 
