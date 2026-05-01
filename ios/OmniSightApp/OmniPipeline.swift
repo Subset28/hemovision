@@ -41,6 +41,10 @@ class OmniPipeline: NSObject, ARSessionDelegate, ObservableObject {
     private var lastSurfaceTime: Date = .distantPast
     private var lastSceneClassTime: Date = .distantPast
     private var lastSceneResult: String = ""
+    
+    // Vision threading protection
+    private let visionQueue = DispatchQueue(label: "com.omnisight.vision", qos: .userInitiated)
+    private var isVisionBusy = false
 
     init(vision: OmniSightSession) {
         self.vision = vision
@@ -109,15 +113,25 @@ class OmniPipeline: NSObject, ARSessionDelegate, ObservableObject {
         
         // 3. ASL / Hand Pose Detection (Feature 3)
         let now = Date()
-        if now.timeIntervalSince(lastHandPoseTime) > 0.5 {
-            lastHandPoseTime = now
-            detectHandPose(frame: frame)
-        }
-        
-        // 4. Scene Classification (Feature 2)
-        if now.timeIntervalSince(lastSceneClassTime) > 10.0 {
-            lastSceneClassTime = now
-            classifyScene(pixelBuffer: frame.capturedImage)
+        if !isVisionBusy {
+            if now.timeIntervalSince(lastHandPoseTime) > 0.5 {
+                lastHandPoseTime = now
+                let pixelBuffer = frame.capturedImage
+                visionQueue.async { [weak self] in
+                    self?.isVisionBusy = true
+                    self?.detectHandPose(pixelBuffer: pixelBuffer)
+                    self?.isVisionBusy = false
+                }
+            } else if now.timeIntervalSince(lastSceneClassTime) > 10.0 {
+                // 4. Scene Classification (Feature 2)
+                lastSceneClassTime = now
+                let pixelBuffer = frame.capturedImage
+                visionQueue.async { [weak self] in
+                    self?.isVisionBusy = true
+                    self?.classifyScene(pixelBuffer: pixelBuffer)
+                    self?.isVisionBusy = false
+                }
+            }
         }
     }
 
@@ -140,8 +154,8 @@ class OmniPipeline: NSObject, ARSessionDelegate, ObservableObject {
         try? handler.perform([request])
     }
 
-    private func detectHandPose(frame: ARFrame) {
-        let handler = VNImageRequestHandler(cvPixelBuffer: frame.capturedImage, orientation: .right, options: [:])
+    private func detectHandPose(pixelBuffer: CVPixelBuffer) {
+        let handler = VNImageRequestHandler(cvPixelBuffer: pixelBuffer, orientation: .right, options: [:])
         do {
             try handler.perform([handPoseRequest])
             guard let observation = handPoseRequest.results?.first else { 
