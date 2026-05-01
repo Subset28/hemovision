@@ -154,36 +154,12 @@ struct ContentView: View {
             
             // SOS Overlay
             if app.isSOSActive {
-                ZStack {
-                    Color.red.ignoresSafeArea()
-                    
-                    VStack(spacing: 40) {
-                        Image(systemName: "exclamationmark.shield.fill")
-                            .font(.system(size: 100))
-                            .foregroundColor(.white)
-                        
-                        Text("EMERGENCY SOS")
-                            .font(.system(size: 40, weight: .black))
-                            .foregroundColor(.white)
-                        
-                        Text("\(app.sosCountdown)")
-                            .font(.system(size: 120, weight: .bold))
-                            .foregroundColor(.white)
-                        
-                        Button {
-                            app.cancelSOS()
-                        } label: {
-                            Text("CANCEL")
-                                .font(.title.bold())
-                                .foregroundColor(.red)
-                                .padding(.horizontal, 40)
-                                .padding(.vertical, 20)
-                                .background(Capsule().fill(.white))
-                        }
-                    }
-                }
-                .transition(.opacity)
-                .zIndex(100)
+                sosOverlay
+            }
+            
+            // Auditory Awareness Overlay (Feature 6)
+            if app.mode == .deaf || app.mode == .both {
+                auditoryOverlay
             }
         }
         .background {
@@ -264,6 +240,64 @@ struct ContentView: View {
             .padding(.horizontal, 24)
             .padding(.bottom, 40)
         }
+    }
+    
+    private var sosOverlay: some View {
+        ZStack {
+            Color.red.ignoresSafeArea()
+            VStack(spacing: 40) {
+                Image(systemName: "exclamationmark.shield.fill")
+                    .font(.system(size: 100))
+                    .foregroundColor(.white)
+                Text("EMERGENCY SOS")
+                    .font(.system(size: 40, weight: .black))
+                    .foregroundColor(.white)
+                Text("\(app.sosCountdown)")
+                    .font(.system(size: 120, weight: .bold))
+                    .foregroundColor(.white)
+                Button { app.cancelSOS() } label: {
+                    Text("CANCEL")
+                        .font(.title.bold())
+                        .foregroundColor(.red)
+                        .padding(.horizontal, 40)
+                        .padding(.vertical, 20)
+                        .background(Capsule().fill(.white))
+                }
+            }
+        }
+        .transition(.opacity)
+        .zIndex(100)
+    }
+
+    private var auditoryOverlay: some View {
+        VStack {
+            // Sound Detection Alert
+            if !app.detectedSound.isEmpty {
+                Text(app.detectedSound)
+                    .font(.headline.bold())
+                    .foregroundColor(.white)
+                    .padding()
+                    .frame(maxWidth: .infinity)
+                    .background(RoundedRectangle(cornerRadius: 12).fill(.orange))
+                    .padding(.top, 60)
+                    .transition(.move(edge: .top).combined(with: .opacity))
+            }
+            
+            Spacer()
+            
+            // Live Captions
+            if !app.liveCaptions.isEmpty {
+                Text(app.liveCaptions)
+                    .font(.title3.bold())
+                    .foregroundColor(.white)
+                    .padding()
+                    .background(RoundedRectangle(cornerRadius: 16).fill(.black.opacity(0.7)))
+                    .padding(.bottom, 100)
+                    .frame(maxWidth: 320)
+            }
+        }
+        .padding(.horizontal)
+        .allowsHitTesting(false)
     }
 }
 

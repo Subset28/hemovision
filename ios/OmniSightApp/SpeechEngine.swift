@@ -111,6 +111,7 @@ class SpeechEngine: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
     private func onFrame(_ frame: FramePayload) {
         if !isEnabled { return }
         if let mute = mutedUntil, Date() < mute { return }
+        if AppStateManager.shared.mode == .deaf { return }
 
         var fastCheck:  [DetectedObjectDTO] = []
         var confirmed:  [DetectedObjectDTO] = []

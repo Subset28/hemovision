@@ -93,16 +93,17 @@ class OmniPipeline: NSObject, ARSessionDelegate, ObservableObject {
             let centerDepth = depthMap.sampleDepth(at: CGPoint(x: 0.5, y: 0.5)) ?? 999.0
             
             // Feature 5: Surface Change / Stairs Warning
-            // Sample depth at the bottom of the frame (where the ground is)
-            let groundDepth = depthMap.sampleDepth(at: CGPoint(x: 0.5, y: 0.85)) ?? 999.0
-            
-            let now = Date()
-            // If the ground suddenly "disappears" (drop off)
-            if groundDepth > centerDepth + 1.5 && groundDepth < 5.0 {
-                if now.timeIntervalSince(lastSurfaceTime) > 3.0 {
-                    lastSurfaceTime = now
-                    HapticManager.shared.playSurfaceDropoff()
-                    AppStateManager.shared.speechEngine.speakImmediate("Step or drop-off detected, slow down")
+            if AppStateManager.shared.mode != .deaf {
+                let groundDepth = depthMap.sampleDepth(at: CGPoint(x: 0.5, y: 0.85)) ?? 999.0
+                
+                let now = Date()
+                // If the ground suddenly "disappears" (drop off)
+                if groundDepth > centerDepth + 1.5 && groundDepth < 5.0 {
+                    if now.timeIntervalSince(lastSurfaceTime) > 3.0 {
+                        lastSurfaceTime = now
+                        HapticManager.shared.playSurfaceDropoff()
+                        AppStateManager.shared.speechEngine.speakImmediate("Step or drop-off detected, slow down")
+                    }
                 }
             }
 
