@@ -15,7 +15,7 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y highlight pandoc texlive-latex-base texlive-fonts-recommended
+          sudo apt-get install -y highlight wkhtmltopdf
 
       - name: Create Cover Page and TOC
         run: |
@@ -49,7 +49,7 @@ jobs:
 
       - name: Convert to PDF
         run: |
-          # Step 1: Use highlight to generate a clean HTML version with inline CSS
+          # Step 1: Generate high-quality HTML with syntax highlighting
           highlight --out-format=html \
                     --inline-css \
                     --font="Courier" \
@@ -59,9 +59,9 @@ jobs:
                     --input=documentation.txt \
                     --output=source_code.html
           
-          # Step 2: Use pandoc to convert the HTML to a professional PDF
-          # We use --pdf-engine=pdflatex for high-quality font rendering
-          pandoc source_code.html -o source_code_submission.pdf --pdf-engine=pdflatex
+          # Step 2: Convert HTML to PDF using wkhtmltopdf
+          # We use --enable-local-file-access to ensure it can read the CSS/HTML
+          wkhtmltopdf --enable-local-file-access source_code.html source_code_submission.pdf
           
       - name: Upload PDF Artifact
         uses: actions/upload-artifact@v4
