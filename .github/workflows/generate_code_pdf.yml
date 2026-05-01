@@ -19,26 +19,24 @@ jobs:
 
       - name: Combine Code Files
         run: |
-          # Create a clean file without timestamps
-          echo "OmniSight - Source Code Submission" > combined_code.txt
-          echo "------------------------------------------------" >> combined_code.txt
+          # Create a clean file. No headers, just the raw code.
+          touch combined_code.txt
           
-          # Only include .swift and Package.swift. Exclude any hidden directories.
-          # Sorted for a consistent table of contents feel.
+          # Only include .swift and Package.swift.
+          # Use // MARK comments for file separation so it remains "executable" code.
           find ios -name "*.swift" -o -name "Package.swift" | sort | while read file; do
-            echo "FILE: $file" >> combined_code.txt
-            echo "------------------------------------------------" >> combined_code.txt
+            echo "// MARK: - $file" >> combined_code.txt
+            echo "" >> combined_code.txt
             cat "$file" >> combined_code.txt
             echo "" >> combined_code.txt
-            echo "================================================" >> combined_code.txt
             echo "" >> combined_code.txt
           done
 
       - name: Convert to PDF
         run: |
-          # -C: Add line numbers
+          # -C: Add line numbers for readability
           # -j: Add a nice border around each page
-          # -r: Landscape mode (optional, but good for wide code) - keeping portrait for now
+          # No extra headers, just the raw content from the file
           enscript -C -j -p combined_code.ps combined_code.txt
           ps2pdf combined_code.ps source_code_submission.pdf
 
