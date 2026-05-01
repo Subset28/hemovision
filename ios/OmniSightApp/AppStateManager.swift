@@ -29,7 +29,11 @@ class AppStateManager: ObservableObject {
     @Published var lastDetection: String = "Waiting..."
     
     // Pro Features State
-    @Published var mode: AccessibilityMode = .blind
+    @Published var mode: AccessibilityMode = .blind {
+        didSet {
+            UserDefaults.standard.set(mode.rawValue, forKey: "omnisight_mode")
+        }
+    }
     @Published var currentRoom: String = ""
     @Published var peopleInFrame: Int = 0
     @Published var lastCrowdWarning: Date = .distantPast
@@ -157,4 +161,5 @@ class AppStateManager: ObservableObject {
             self.isTransitioning = false
         }
     }
+
 }

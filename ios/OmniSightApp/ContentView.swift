@@ -96,10 +96,7 @@ struct ContentView: View {
             VStack {
                 HStack {
                     // New Accessibility Mode Picker
-                    Picker("Mode", selection: Binding(
-                        get: { app.mode },
-                        set: { app.setMode($0) }
-                    )) {
+                    Picker("Mode", selection: $app.mode) {
                         ForEach(AccessibilityMode.allCases, id: \.self) { mode in
                             Text(mode.rawValue).tag(mode)
                         }
