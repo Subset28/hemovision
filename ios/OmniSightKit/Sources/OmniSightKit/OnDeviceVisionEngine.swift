@@ -173,42 +173,38 @@ public class OnDeviceVisionEngine {
         }
     }
 
-    /// Evaluates camera health by checking for brightness and focus variance.
+    /// Checks if the camera lens is blocked by measuring brightness in key areas.
     private func checkCameraHealth(pixelBuffer: CVPixelBuffer) -> CameraHealthDTO {
         CVPixelBufferLockBaseAddress(pixelBuffer, .readOnly)
         defer { CVPixelBufferUnlockBaseAddress(pixelBuffer, .readOnly) }
         
+        guard let baseAddress = CVPixelBufferGetBaseAddress(pixelBuffer) else {
+            return CameraHealthDTO(lensStatus: "OK", lensLaplacianVar: 0, lensAnnounce: nil)
+        }
+        
         let width = CVPixelBufferGetWidth(pixelBuffer)
         let height = CVPixelBufferGetHeight(pixelBuffer)
-        let baseAddress = CVPixelBufferGetBaseAddress(pixelBuffer)
         let bytesPerRow = CVPixelBufferGetBytesPerRow(pixelBuffer)
+        let data = baseAddress.assumingMemoryBound(to: UInt8.self)
         
-        // Sample brightness from the center of the frame
-        var totalBrightness: Int = 0
-        let sampleCount = 100
-        let pixelData = baseAddress?.assumingMemoryBound(to: UInt8.self)
+        // Simple Check: Look at 5 spots (Center + 4 Corners)
+        let spots = [
+            (width/2, height/2), (width/4, height/4), (3*width/4, height/4),
+            (width/4, 3*height/4), (3*width/4, 3*height/4)
+        ]
         
-        if let data = pixelData {
-            for i in 0..<sampleCount {
-                let x = width / 2 + (i % 10 - 5) * (width / 20)
-                let y = height / 2 + (i / 10 - 5) * (height / 20)
-                let offset = y * bytesPerRow + x * 4 // Assuming 4 bytes per pixel (BGRA/RGBA)
-                totalBrightness += Int(data[offset])
-            }
+        var totalBrightness = 0
+        for spot in spots {
+            let offset = spot.1 * bytesPerRow + spot.0 * 4
+            totalBrightness += Int(data[offset])
         }
         
-        let avgBrightness = Double(totalBrightness) / Double(sampleCount)
+        let avg = totalBrightness / spots.count
         
-        var status = "OK"
-        var announce: String? = nil
-        
-        if avgBrightness < 5.0 {
-            status = "COVERED"
-            announce = "Camera may be covered. Please check your lens."
-        } else if avgBrightness < 15.0 {
-            status = "LOW_LIGHT"
+        if avg < 10 {
+            return CameraHealthDTO(lensStatus: "COVERED", lensLaplacianVar: 0, lensAnnounce: "Camera lens is blocked")
         }
         
-        return CameraHealthDTO(lensStatus: status, lensLaplacianVar: 0, lensAnnounce: announce)
+        return CameraHealthDTO(lensStatus: "OK", lensLaplacianVar: 0, lensAnnounce: nil)
     }
 }

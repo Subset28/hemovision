@@ -20,9 +20,9 @@ We chose **Swift** and the **Apple Vision/ARKit** ecosystem for its tight integr
 - **SpeechEngine**: A priority-based auditory interface that "triages" announcements so the user isn't overwhelmed.
 
 ## 3. Engineering Innovations
-- **Time-to-Collision (TTC)**: Instead of simple distance, we use physics-based prediction ($T = D/V$) to warn of approaching hazards.
-- **Ghost Object Persistence**: We implemented "Dead Reckoning" to predict object movement even when the camera lens is momentarily blocked or blurred.
-- **Lens Health Monitoring**: A safety-critical module that checks the average brightness and signal variance of the camera feed to warn the user of obstructions.
+- **Time to Impact**: Instead of simple distance, we use physics-based prediction ($T = D/S$) to warn of approaching hazards.
+- **Object Prediction**: We implemented a tracking layer that predicts object movement even when the camera lens is momentarily blocked or blurred.
+- **Lens Health Monitoring**: A safety-critical module that performs a 5-point brightness check on the camera feed to warn the user of obstructions.
 
 ## 4. Implementation Log
 - **Phase 1 (Spring 2025)**: Initial research into YOLO models and CoreML conversion.

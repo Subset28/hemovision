@@ -185,14 +185,11 @@ class SpeechEngine: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
         for obj in fastCheck {
             let isDirectlyAhead = abs(obj.panValue) < 0.45
             
-            // Calculate Time-to-Collision (TTC)
-            // If distance is 3m and velocity is -1.5m/s, TTC is 2 seconds.
-            let ttc: Double? = obj.velocityMps < -0.1 ? (obj.distanceM / abs(obj.velocityMps)) : nil
+            // Simplified Safety Check:
+            // Warn if object is < 1.0m away OR if it will hit the user in < 1.8 seconds
+            let timeToImpact = obj.velocityMps < -0.1 ? (obj.distanceM / abs(obj.velocityMps)) : 99.0
             
-            let isDangerousDistance = obj.distanceM <= interiorLimit
-            let isDangerousTTC = ttc != nil && ttc! < 1.8 // Warn if collision is < 1.8s away
-            
-            if (isDangerousDistance || isDangerousTTC) && isDirectlyAhead {
+            if isDirectlyAhead && (obj.distanceM < 1.0 || timeToImpact < 1.8) {
                 if closestDanger == nil || obj.distanceM < closestDanger!.distanceM {
                     closestDanger = obj
                 }
