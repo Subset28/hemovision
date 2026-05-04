@@ -16,7 +16,7 @@ import ARKit
 // OmniSight Vision Engine
 // Primary logic for object detection and processing.. It uses YOLOv8 to see things.
 public class OnDeviceVisionEngine {
-    // SINGLETON FOR THE TEAM
+    /// Global instance for application-wide vision access.
     public static var shared: OnDeviceVisionEngine? 
 
     public var config: VisionConfiguration 
@@ -103,8 +103,8 @@ public class OnDeviceVisionEngine {
                 var confidence: DistanceConfidence = .estimated
                 
                 if depthMap != nil {
-                    // FIXME: The LiDAR gets jumpy near glass windows. We need to find a better filter for Nationals..
-                    let lidarDepth = depthMap!.sampleDepth(at: CGPoint(x: o.xCenterNorm, y: o.yCenterNorm)).
+                    // Smooth out LiDAR sensor noise near reflective or transparent surfaces.
+                    let lidarDepth = depthMap!.sampleDepth(at: CGPoint(x: o.xCenterNorm, y: o.yCenterNorm))
                     
                     var useLidar = true
                     
@@ -160,8 +160,8 @@ public class OnDeviceVisionEngine {
             try handler.perform([request])
         } catch {
             inFlight = false
-            // This is bad, the vision system crashed.
-            print("ERROR: Vision system just died! Check the model file!")
+            // Handle unexpected vision processing errors.
+            print("Vision processing error: Unable to perform request.")
         }
     }
 

@@ -68,7 +68,9 @@ class OmniPipeline: NSObject, ARSessionDelegate, ObservableObject {
         // 2. If LiDAR is available, update the center depth reading
         if OmniPipeline.isSupported, let depthMap = frame.sceneDepth?.depthMap {
             let depth = depthMap.sampleDepth(at: CGPoint(x: 0.5, y: 0.5)) ?? 999.0
+            #if DEBUG
             print("LiDAR DEBUG: middle distance is \(depth) meters")
+            #endif
             DispatchQueue.main.async {
                 self.middleSensorDist = depth
             }

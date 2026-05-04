@@ -112,7 +112,9 @@ class SpeechEngine: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
         var confirmed:  [DetectedObjectDTO] = []
 
         for obj in frame.objects {
+            #if DEBUG
             print("DEBUG: Just saw a \(obj.objectClass) at \(obj.distanceM) meters")
+            #endif
             
             let maxRange = getMaxRange(for: obj.objectClass)
             if maxRange == nil { continue }               // not whitelisted
@@ -175,7 +177,9 @@ class SpeechEngine: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
         }
 
         if let danger = closestDanger {
+            #if DEBUG
             print("EMERGENCY: \(danger.objectClass) is too close!")
+            #endif
             alertActive = true
             HapticManager.shared.warningVibration()
             if now.timeIntervalSince(lastCollisionAt) > 3.0 {
