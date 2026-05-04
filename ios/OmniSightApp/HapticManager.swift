@@ -31,8 +31,16 @@ class HapticManager {
     
     func warningVibration() {
         // BIG VIBRATE FOR WHEN YOU ARE GOING TO HIT SOMETHING
-        // DON'T IGNORE THIS
         heavy.impactOccurred()
         notification.notificationOccurred(.error)
+    }
+    
+    func targetLocked() {
+        // Subtle double pulse for when an object is "locked" in the center
+        notification.notificationOccurred(.success)
+    }
+    
+    func itemDiscovered() {
+        medium.impactOccurred(intensity: 0.8)
     }
 }

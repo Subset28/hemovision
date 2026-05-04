@@ -27,6 +27,11 @@ struct OnboardingView: View {
             description: "We prioritize important alerts so you hear about the most dangerous things first.",
             icon: "exclamationmark.triangle.fill"
         ),
+        OnboardingPage(
+            title: "Tactical Radar",
+            description: "A top-down spatial map helps you visualize exactly where objects are located around you.",
+            icon: "dot.radiowaves.left.and.right"
+        ),
     ]
 
     var body: some View {

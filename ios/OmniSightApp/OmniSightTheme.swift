@@ -16,22 +16,21 @@ enum OmniSightTheme {
     static let cornerS: CGFloat = 8
 }
 
-/// A simple panel with a rounded rectangle background.
-struct GlassPanel<Content: View>: View {
-    var padding: CGFloat = 16
+/// A premium glass panel with background blurring (UltraThinMaterial).
+struct PremiumGlassPanel<Content: View>: View {
     var cornerRadius: CGFloat = OmniSightTheme.cornerM
     @ViewBuilder var content: () -> Content
 
     var body: some View {
         content()
-            .padding(padding)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Color.white.opacity(0.1))
+            .padding(16)
+            .background(.ultraThinMaterial)
             .cornerRadius(cornerRadius)
             .overlay(
                 RoundedRectangle(cornerRadius: cornerRadius)
-                    .stroke(Color.white.opacity(0.2), lineWidth: 1)
+                    .stroke(.white.opacity(0.15), lineWidth: 0.5)
             )
+            .shadow(color: .black.opacity(0.2), radius: 10, x: 0, y: 5)
     }
 }
 

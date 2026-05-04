@@ -14,6 +14,7 @@ struct ContentView: View {
 
     @State private var speechMutedBanner = false
     @State private var showingSettings = false
+    @State private var showTacticalRadar = true
 
     var body: some View {
         Group {
@@ -92,20 +93,48 @@ struct ContentView: View {
                     .frame(maxHeight: .infinity, alignment: .top)
             }
 
-            // Settings Button
+            // Settings & Tactical Toggle
             VStack {
-                HStack {
+                HStack(alignment: .top) {
+                    Button {
+                        withAnimation(.spring()) {
+                            showTacticalRadar.toggle()
+                        }
+                        HapticManager.shared.smallVibration()
+                    } label: {
+                        Image(systemName: showTacticalRadar ? "dot.radiowaves.left.and.right" : "dot.radiowaves.right")
+                            .font(.title3)
+                            .padding(12)
+                            .background(.ultraThinMaterial)
+                            .clipShape(Circle())
+                    }
+                    .accessibilityLabel("Toggle Radar")
+                    
                     Spacer()
+                    
                     Button {
                         showingSettings = true
+                        HapticManager.shared.smallVibration()
                     } label: {
                         Image(systemName: "gearshape.fill")
-                            .font(.title2)
-                            .padding()
-                            .background(Circle().fill(.black.opacity(0.4)))
+                            .font(.title3)
+                            .padding(12)
+                            .background(.ultraThinMaterial)
+                            .clipShape(Circle())
                     }
                     .accessibilityLabel("Settings")
                 }
+                
+                if showTacticalRadar && app.isScanning {
+                    PremiumGlassPanel {
+                        RadarView(objects: app.session?.lastPayload?.objects ?? [])
+                            .frame(width: 140, height: 140)
+                    }
+                    .transition(.move(edge: .trailing).combined(with: .opacity))
+                    .frame(maxWidth: .infinity, alignment: .trailing)
+                    .padding(.top, 10)
+                }
+                
                 Spacer()
             }
             .padding()
@@ -174,6 +203,7 @@ struct ContentView: View {
         HStack {
             Button {
                 app.setScanning(!app.isScanning)
+                HapticManager.shared.mediumVibration()
             } label: {
                 HStack(spacing: 12) {
                     Image(systemName: app.isScanning ? "stop.fill" : "play.fill")
@@ -182,11 +212,18 @@ struct ContentView: View {
                 .font(.headline.bold())
                 .foregroundStyle(app.isScanning ? .white : .black)
                 .frame(maxWidth: .infinity)
-                .frame(height: 60)
+                .frame(height: 64)
                 .background(
-                    RoundedRectangle(cornerRadius: 20)
-                        .fill(app.isScanning ? Color.red.opacity(0.8) : OmniSightTheme.accent)
+                    ZStack {
+                        if app.isScanning {
+                            Color.red.opacity(0.8)
+                        } else {
+                            OmniSightTheme.accent
+                        }
+                    }
                 )
+                .clipShape(RoundedRectangle(cornerRadius: 24))
+                .shadow(color: (app.isScanning ? Color.red : OmniSightTheme.accent).opacity(0.3), radius: 15, y: 8)
             }
             .disabled(!app.modelAvailable)
             .padding(.horizontal, 24)

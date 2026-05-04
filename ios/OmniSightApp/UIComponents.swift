@@ -49,22 +49,41 @@ struct BoundingBoxOverlayView: View {
                 let color: Color = isHigh ? OmniSightTheme.warmAlert : OmniSightTheme.accent
                 
                 ZStack(alignment: .topLeading) {
-                    Rectangle()
-                        .stroke(color, lineWidth: 2)
+                    // Corner-style bounding box (more technical than a full rectangle)
+                    BoundingBoxCorners(color: color)
                         .frame(width: w, height: h)
                     
-                    Text("\(obj.objectClass.capitalized) \(String(format: "%.1fm", obj.distanceM))")
+                    // Velocity Vector Arrow
+                    if abs(obj.velocityMps) > 0.4 {
+                        VelocityArrow(velocity: obj.velocityMps, color: color)
+                            .offset(x: w/2, y: h/2)
+                    }
+
+                    VStack(alignment: .leading, spacing: 2) {
+                        HStack(spacing: 4) {
+                            Image(systemName: iconForClass(obj.objectClass))
+                            Text(obj.objectClass.capitalized)
+                        }
                         .font(.caption.bold())
-                        .foregroundColor(Color.black)
+                        .foregroundColor(.black)
                         .padding(.horizontal, 6)
                         .padding(.vertical, 3)
                         .background(color)
                         .cornerRadius(4)
-                        .offset(y: -24)
+                        
+                        Text(String(format: "%.1fm", obj.distanceM))
+                            .font(.caption2.bold())
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 4)
+                            .background(Color.black.opacity(0.6))
+                            .cornerRadius(2)
+                    }
+                    .offset(y: -35)
                 }
                 .frame(width: w, height: h)
                 .position(x: cx, y: cy)
                 .shadow(color: Color.black.opacity(0.6), radius: 2, x: 0, y: 1)
+                .animation(.easeInOut(duration: 0.2), value: obj.bbox)
             }
         }
     }
@@ -100,5 +119,62 @@ struct TwoFingerDoubleTapCapture: UIViewRepresentable {
         @objc func handleTap() {
             onDetected()
         }
+    }
+}
+
+// MARK: - Advanced Visuals
+
+struct BoundingBoxCorners: View {
+    let color: Color
+    var body: some View {
+        ZStack {
+            VStack {
+                HStack {
+                    corner.rotationEffect(.degrees(0)); Spacer(); corner.rotationEffect(.degrees(90))
+                }
+                Spacer()
+                HStack {
+                    corner.rotationEffect(.degrees(-90)); Spacer(); corner.rotationEffect(.degrees(180))
+                }
+            }
+        }
+    }
+    
+    private var corner: some View {
+        Path { path in
+            path.move(to: CGPoint(x: 0, y: 10))
+            path.addLine(to: .zero)
+            path.addLine(to: CGPoint(x: 10, y: 0))
+        }
+        .stroke(color, lineWidth: 2)
+        .frame(width: 10, height: 10)
+    }
+}
+
+struct VelocityArrow: View {
+    let velocity: Double
+    let color: Color
+    
+    var body: some View {
+        let isApproaching = velocity < 0
+        Image(systemName: isApproaching ? "chevron.down.circle.fill" : "chevron.up.circle.fill")
+            .font(.system(size: 24))
+            .foregroundColor(color)
+            .opacity(0.8)
+            .scaleEffect(isApproaching ? 1.2 : 0.8)
+            .animation(.easeInOut(duration: 0.5).repeatForever(), value: velocity)
+    }
+}
+
+private func iconForClass(_ cls: String) -> String {
+    switch cls.lowercased() {
+    case "person": return "person.fill"
+    case "car", "truck", "bus": return "car.fill"
+    case "bicycle", "motorcycle": return "bicycle"
+    case "dog", "cat": return "pawprint.fill"
+    case "chair", "table": return "chair.lounge.fill"
+    case "door": return "door.right.hand.closed"
+    case "stairs": return "stair.fill"
+    default: return "questionmark.circle.fill"
     }
 }

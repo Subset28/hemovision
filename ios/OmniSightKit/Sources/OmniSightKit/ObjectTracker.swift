@@ -20,7 +20,8 @@ import CoreGraphics
 public class ObjectTracker {
     private var nextId = 1
     private var tracks: [TrackedObject] = []
-    private let matchThreshold: Double = 0.20  // max screen-distance to be "the same object"
+    private let matchThreshold: Double = 0.22  // Slightly wider for easier matching
+    private let maxGhostFrames: Int = 15       // Keep objects alive for ~1.5s at 10fps
 
     public var onStalePrune: ((Int) -> Void)?
     public init(highPriorityDistanceM: Double) {}
@@ -57,8 +58,13 @@ public class ObjectTracker {
                 let matched = unmatched.remove(at: bestMatchIndex)
                 track.update(with: matched, now: now)
                 newTracks.append(track)
+            } else {
+                // No match found — enter "Ghost Mode"
+                track.enterGhostMode(now: now)
+                if track.ghostCount < maxGhostFrames {
+                    newTracks.append(track)
+                }
             }
-            // If no match found, the object left the frame — just drop it
         }
 
         // Everything left in unmatched is a brand-new object
@@ -88,6 +94,8 @@ public struct TrackedObject {
     public var velocityMps: Double = 0  // negative = getting closer, positive = moving away
     public var priority:    String = "NORMAL"
     public var lastSeen:    TimeInterval
+    public var ghostCount:  Int = 0
+    public var isGhost:     Bool { ghostCount > 0 }
 
     // Used to calculate velocity — we compare current distance to previous distance
     private var prevDistanceM: Double
@@ -110,20 +118,16 @@ public struct TrackedObject {
 
     mutating func update(with det: RawDetection, now: TimeInterval) {
         let timeDelta = now - prevTime
+        ghostCount = 0 // Reset ghosting on successful match
 
-        // Only update velocity if enough time has passed (avoids division by near-zero)
-        if timeDelta > 0.05 {
-            // How much has the distance changed per second?
+        // Only update velocity if enough time has passed
+        if timeDelta > 0.04 {
             let rawVelocity = (det.distanceM - prevDistanceM) / timeDelta
-
-            // Smooth it out with a simple weighted average (reduces sensor noise)
-            // 60% old value + 40% new reading
-            velocityMps   = velocityMps * 0.6 + rawVelocity * 0.4
+            velocityMps   = velocityMps * 0.7 + rawVelocity * 0.3
             prevDistanceM = det.distanceM
             prevTime      = now
         }
 
-        // Update position and size
         xCenterNorm = det.xCenterNorm
         yCenterNorm = det.yCenterNorm
         widthNorm   = det.widthNorm
@@ -132,5 +136,22 @@ public struct TrackedObject {
         distanceM   = det.distanceM
         panValue    = det.panValue
         lastSeen    = now
+    }
+
+    /// Extrapolate position when the object is lost (Dead Reckoning)
+    mutating func enterGhostMode(now: TimeInterval) {
+        let timeDelta = now - prevTime
+        ghostCount += 1
+        
+        if timeDelta > 0.04 {
+            // Predict new distance based on last known velocity
+            distanceM += velocityMps * timeDelta
+            // Sanity check: distance can't be negative
+            distanceM = max(0.1, distanceM)
+            prevTime = now
+            
+            // Confidence decays while ghosting
+            confidence *= 0.9
+        }
     }
 }

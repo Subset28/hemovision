@@ -125,7 +125,13 @@ class SpeechEngine: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
             framesSeen[obj.objectId] = seen
 
             if seen >= 2 { fastCheck.append(obj) }
-            if seen >= 3 { confirmed.append(obj) }
+            if seen == 3 {
+                // New object confirmed for the first time
+                HapticManager.shared.itemDiscovered()
+                confirmed.append(obj)
+            } else if seen > 3 {
+                confirmed.append(obj)
+            }
         }
 
         // Travel
@@ -169,7 +175,15 @@ class SpeechEngine: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
         
         for obj in fastCheck {
             let isDirectlyAhead = abs(obj.panValue) < 0.45
-            if obj.distanceM <= interiorLimit && isDirectlyAhead && obj.velocityMps < -0.3 {
+            
+            // Calculate Time-to-Collision (TTC)
+            // If distance is 3m and velocity is -1.5m/s, TTC is 2 seconds.
+            let ttc: Double? = obj.velocityMps < -0.1 ? (obj.distanceM / abs(obj.velocityMps)) : nil
+            
+            let isDangerousDistance = obj.distanceM <= interiorLimit
+            let isDangerousTTC = ttc != nil && ttc! < 1.8 // Warn if collision is < 1.8s away
+            
+            if (isDangerousDistance || isDangerousTTC) && isDirectlyAhead {
                 if closestDanger == nil || obj.distanceM < closestDanger!.distanceM {
                     closestDanger = obj
                 }
@@ -292,13 +306,13 @@ class SpeechEngine: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
 
 
     private func directionText(_ pan: Double) -> String {
-        if pan < -0.65 { return "hard left"     }
-        if pan < -0.35 { return "left"           }
-        if pan < -0.12 { return "diagonal left"  }
-        if pan <= 0.12 { return "ahead"          }
-        if pan <= 0.35 { return "diagonal right" }
-        if pan <= 0.65 { return "right"          }
-        return "hard right"
+        if pan < -0.75 { return "far left"        }
+        if pan < -0.45 { return "left"            }
+        if pan < -0.15 { return "slightly left"   }
+        if pan <= 0.15 { return "straight ahead"  }
+        if pan <= 0.45 { return "slightly right"  }
+        if pan <= 0.75 { return "right"           }
+        return "far right"
     }
 
 
@@ -322,10 +336,10 @@ class SpeechEngine: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
     // We hand-coded these priorities based on our testing in the school hallway
     private func getPriority(for label: String) -> Int {
         let name = label.lowercased()
-        if name == "car" || name == "truck" || name == "bus" { return 1 } // Super dangerous
-        if name == "person" || name == "stairs" { return 1 } // High priority
-        if name == "dog" || name == "cat" { return 3 } // Nearby animals
-        if name == "chair" || name == "table" { return 5 } // Static furniture
+        if name == "car" || name == "truck" || name == "bus" { return 75 } // Dangerous
+        if name == "person" || name == "stairs" { return 70 } // High priority
+        if name == "dog" || name == "cat" { return 50 } // Nearby animals
+        if name == "chair" || name == "table" { return 30 } // Static furniture
         return 10 // Default
     }
 
