@@ -56,6 +56,7 @@ class SpeechEngine: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
     private var framesSeen: [String: Int] = [:]
     
     private var lastLiDARTime:  Date  = .distantPast
+    private var lastLensWarningAt: Date = .distantPast
 
     static let allWhitelistedClasses: Set<String> = ["person", "car", "truck", "bus", "bicycle", "motorcycle", "dog", "cat", "chair", "table", "door", "stairs"]
 
@@ -107,6 +108,14 @@ class SpeechEngine: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
     private func onFrame(_ frame: FramePayload) {
         if !isEnabled { return }
         if let mute = mutedUntil, Date() < mute { return }
+
+        // Camera Health Check
+        if let health = frame.camera, let warning = health.lensAnnounce {
+            if Date().timeIntervalSince(lastLensWarningAt) > 60.0 {
+                lastLensWarningAt = Date()
+                speakImmediate(warning)
+            }
+        }
 
         var fastCheck:  [DetectedObjectDTO] = []
         var confirmed:  [DetectedObjectDTO] = []

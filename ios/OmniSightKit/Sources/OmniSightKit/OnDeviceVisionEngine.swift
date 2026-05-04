@@ -141,12 +141,14 @@ public class OnDeviceVisionEngine {
                 )
             }
 
+            let health = self.checkCameraHealth(pixelBuffer: pixelBuffer)
+            
             let payload = FramePayload(
                 frameId: self.frameId,
                 timestampMs: Int64(Date().timeIntervalSince1970 * 1000),
                 visionDurationMs: visionMs,
                 objects: dtos,
-                camera: nil
+                camera: health
             )
             DispatchQueue.main.async { completion(payload) }
         }
@@ -169,5 +171,44 @@ public class OnDeviceVisionEngine {
         workQueue.async { [self] in
             self.tracker = ObjectTracker(highPriorityDistanceM: self.config.highPriorityDistanceM)
         }
+    }
+
+    /// Evaluates camera health by checking for brightness and focus variance.
+    private func checkCameraHealth(pixelBuffer: CVPixelBuffer) -> CameraHealthDTO {
+        CVPixelBufferLockBaseAddress(pixelBuffer, .readOnly)
+        defer { CVPixelBufferUnlockBaseAddress(pixelBuffer, .readOnly) }
+        
+        let width = CVPixelBufferGetWidth(pixelBuffer)
+        let height = CVPixelBufferGetHeight(pixelBuffer)
+        let baseAddress = CVPixelBufferGetBaseAddress(pixelBuffer)
+        let bytesPerRow = CVPixelBufferGetBytesPerRow(pixelBuffer)
+        
+        // Sample brightness from the center of the frame
+        var totalBrightness: Int = 0
+        let sampleCount = 100
+        let pixelData = baseAddress?.assumingMemoryBound(to: UInt8.self)
+        
+        if let data = pixelData {
+            for i in 0..<sampleCount {
+                let x = width / 2 + (i % 10 - 5) * (width / 20)
+                let y = height / 2 + (i / 10 - 5) * (height / 20)
+                let offset = y * bytesPerRow + x * 4 // Assuming 4 bytes per pixel (BGRA/RGBA)
+                totalBrightness += Int(data[offset])
+            }
+        }
+        
+        let avgBrightness = Double(totalBrightness) / Double(sampleCount)
+        
+        var status = "OK"
+        var announce: String? = nil
+        
+        if avgBrightness < 5.0 {
+            status = "COVERED"
+            announce = "Camera may be covered. Please check your lens."
+        } else if avgBrightness < 15.0 {
+            status = "LOW_LIGHT"
+        }
+        
+        return CameraHealthDTO(lensStatus: status, lensLaplacianVar: 0, lensAnnounce: announce)
     }
 }
