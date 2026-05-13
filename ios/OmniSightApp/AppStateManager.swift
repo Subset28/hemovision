@@ -44,9 +44,9 @@ class AppStateManager: ObservableObject {
         
         // Initialize the unified cameraManager
         // We force unwrap session because we know it exists here
-        cameraManager = OmniPipeline(vision: session!)
+        cameraManager = OmniPipeline(scannerSession: session!)
         
-        speechEngine.start(vision: session!)
+        speechEngine.start(scanning: session!)
         setupDepthSubscription()
     }
 
@@ -65,7 +65,7 @@ class AppStateManager: ObservableObject {
 
         if on {
             cameraManager?.start()
-            speechEngine.start(vision: session)
+            speechEngine.start(scanning: session)
             speechEngine.speakImmediate("Scanning started")
         } else {
             cameraManager?.stop()

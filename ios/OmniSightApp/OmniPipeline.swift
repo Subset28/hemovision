@@ -14,7 +14,7 @@ import Combine
 // Avoids AVCaptureSession/ARSession conflicts.
 
 class OmniPipeline: NSObject, ARSessionDelegate, ObservableObject {
-    private let vision: OmniSightSession
+    private let scannerSession: OmniSightSession
     
     // The single AR session that drives everything
     let arSession = ARSession()
@@ -31,8 +31,8 @@ class OmniPipeline: NSObject, ARSessionDelegate, ObservableObject {
     @Published var middleSensorDist: Float = 999.0
     @Published var isRunning = false
 
-    init(vision: OmniSightSession) {
-        self.vision = vision
+    init(scannerSession: OmniSightSession) {
+        self.scannerSession = scannerSession
         super.init()
         arSession.delegate = self
     }
@@ -63,7 +63,7 @@ class OmniPipeline: NSObject, ARSessionDelegate, ObservableObject {
     // This is called every time a new camera frame arrives (~60 fps)
     func session(_ session: ARSession, didUpdate frame: ARFrame) {
         // 1. Feed the camera image to the YOLO engine
-        vision.ingest(arFrame: frame)
+        scannerSession.ingest(arFrame: frame)
         
         // 2. If LiDAR is available, update the center depth reading
         if OmniPipeline.isSupported, let depthMap = frame.sceneDepth?.depthMap {
