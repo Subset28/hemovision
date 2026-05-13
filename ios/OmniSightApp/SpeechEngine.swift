@@ -290,11 +290,18 @@ class SpeechEngine: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
 
     private func distText(_ meters: Double) -> String {
         let useImperial = UserDefaults.standard.bool(forKey: "useImperialUnits")
+
         if useImperial {
             let feet = max(2, Int((meters * 3.281).rounded()))
+            if feet == 1 { return "1 foot" }
             return "\(feet) feet"
         }
-        return meters < 2.0 ? String(format: "%.1f meters", meters) : "\(Int(meters.rounded())) meters"
+
+        if meters < 2.0 {
+            let rounded = max(0.5, (meters * 2).rounded() / 2)
+            return String(format: "%.1f meters", rounded)
+        }
+        return "\(Int(meters.rounded())) meters"
     }
 
 
