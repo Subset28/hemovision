@@ -255,20 +255,10 @@ class SpeechEngine: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
     }
 
     private func drainQueue() {
-        var freshQueue: [QueueItem] = []
-        for item in queue {
-            if Date().timeIntervalSince(item.addedAt) < item.expiresIn {
-                freshQueue.append(item)
-            }
-        }
-        queue = freshQueue
-
+        queue = queue.filter { Date().timeIntervalSince($0.addedAt) < $0.expiresIn }
         if isSpeaking || queue.isEmpty { return }
-
-
         queue.sort { $0.priority > $1.priority }
-        let nextItem = queue.removeFirst()
-        speakToUser(nextItem.text)
+        speakToUser(queue.removeFirst().text)
     }
 
 
@@ -288,41 +278,33 @@ class SpeechEngine: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
 
 
     private func directionText(_ pan: Double) -> String {
-        if pan < -0.65 { return "hard left"     }
-        if pan < -0.35 { return "left"           }
-        if pan < -0.12 { return "diagonal left"  }
-        if pan <= 0.12 { return "ahead"          }
-        if pan <= 0.35 { return "diagonal right" }
-        if pan <= 0.65 { return "right"          }
-        return "hard right"
+        if pan < -0.75 { return "far left" }
+        if pan < -0.45 { return "left" }
+        if pan < -0.15 { return "slightly left" }
+        if pan <= 0.15 { return "straight ahead" }
+        if pan <= 0.45 { return "slightly right" }
+        if pan <= 0.75 { return "right" }
+        return "far right"
     }
 
 
     private func distText(_ meters: Double) -> String {
         let useImperial = UserDefaults.standard.bool(forKey: "useImperialUnits")
-
         if useImperial {
             let feet = max(2, Int((meters * 3.281).rounded()))
-            if feet == 1 { return "1 foot" }
             return "\(feet) feet"
         }
-
-        if meters < 2.0 {
-            let rounded = max(0.5, (meters * 2).rounded() / 2)
-            return String(format: "%.1f meters", rounded)
-        }
-        return "\(Int(meters.rounded())) meters"
+        return meters < 2.0 ? String(format: "%.1f meters", meters) : "\(Int(meters.rounded())) meters"
     }
 
 
     // We hand-coded these priorities based on our testing in the school hallway
     private func getPriority(for label: String) -> Int {
         let name = label.lowercased()
-        if name == "car" || name == "truck" || name == "bus" { return 1 } // Super dangerous
-        if name == "person" || name == "stairs" { return 1 } // High priority
-        if name == "dog" || name == "cat" { return 3 } // Nearby animals
-        if name == "chair" || name == "table" { return 5 } // Static furniture
-        return 10 // Default
+        if ["car", "truck", "bus"].contains(name) { return 75 }
+        if ["person", "stairs"].contains(name) { return 70 }
+        if ["chair", "table"].contains(name) { return 30 }
+        return 10
     }
 
     private func getMaxRange(for label: String) -> Double? {
@@ -330,20 +312,15 @@ class SpeechEngine: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
         switch name {
         case "person": return 6.0
         case "car", "truck", "bus": return 12.0
-        case "bicycle", "motorcycle": return 8.0
-        case "dog", "cat": return 5.0
         case "chair", "table": return 4.0
-        case "door": return 5.0
         case "stairs": return 6.0
-        default: return nil
+        case "door": return 5.0
+        default: return 5.0
         }
     }
 
     private func getMinConfidence(for label: String) -> Double {
-        let name = label.lowercased()
-        if name == "bicycle" || name == "motorcycle" { return 0.45 }
-        if name == "chair" || name == "table" { return 0.60 }
-        return 0.50
+        return ["chair", "table"].contains(label.lowercased()) ? 0.60 : 0.50
     }
 
 
@@ -414,23 +391,6 @@ class SpeechEngine: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
 
 
     private static func mapToSpokenName(_ raw: String) -> String {
-        let t = raw.lowercased()
-        switch t {
-        case "person": return "Person"
-        case "car": return "Car"
-        case "truck": return "Truck"
-        case "bus": return "Bus"
-        case "bicycle": return "Bike"
-        case "motorcycle": return "Motorcycle"
-        case "dog": return "Dog"
-        case "cat": return "Cat"
-        case "chair": return "Chair"
-        case "table": return "Table"
-        case "door": return "Door"
-        case "stairs": return "Stairs"
-        default:
-            // Just return the raw name but capitalized
-            return raw.replacingOccurrences(of: "_", with: " ").capitalized
-        }
+        return raw.replacingOccurrences(of: "_", with: " ").capitalized
     }
 }
