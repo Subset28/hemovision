@@ -11,8 +11,7 @@ import Foundation
 // This manages the voice feedback for the objects we find.
 // We tried a few different "levels" but settled on: 1=Emergency, 2=Approaching, 3=Nearby
 
-// NOTE: Me and my partner removed the masterConfig dictionary and moved it 
-// into functions because it was way easier to debug during our hallway tests.
+// Configuration moved to functions for better debugging during field testing.
 
 class SpeechEngine: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
     static let shared = SpeechEngine()
@@ -109,7 +108,7 @@ class SpeechEngine: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
         var confirmed:  [DetectedObjectDTO] = []
 
         for obj in frame.objects {
-            // Debug print for when we are testing with the laptop plugged in
+            // Debug log for active scanning
             print("DEBUG: Just saw a \(obj.objectClass) at \(obj.distanceM) meters")
             
             let maxRange = getMaxRange(for: obj.objectClass)
@@ -120,13 +119,13 @@ class SpeechEngine: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
             let seen = (framesSeen[obj.objectId] ?? 0) + 1
             framesSeen[obj.objectId] = seen
 
-            // We require seeing an object for a few frames so we don't get "ghost" detections
+            // Multi-frame confirmation to prevent false positives
             if seen >= 2 { fastCheck.append(obj) }
             if seen >= 3 { confirmed.append(obj) }
         }
 
-        // Travel Mode Detection
-        // We figured out that if 2+ objects are moving fast, we're probably in a car
+        // Automated Travel Mode
+        // Determines if the user is in a vehicle based on object velocity
         let highSpeedApproachers = confirmed.filter { $0.velocityMps < -4.0 }
         if highSpeedApproachers.count >= 2 {
             travelVelocitySamples.append(1.0)
