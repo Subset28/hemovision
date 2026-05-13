@@ -138,15 +138,15 @@ extension FramePayload {
 
 // MARK: - Configuration
 
-public struct VisionConfiguration: Sendable {
+public struct ScannerConfiguration: Sendable {
     public var confidenceThreshold: Float = 0.4
     public var minEmitInterval: TimeInterval = 0.05
     public var highPriorityDistanceM: Double = 1.5
     public var allowedClasses: Set<String>? = nil
     
     public init() {}
-    public static var defaultConfiguration: VisionConfiguration {
-        return VisionConfiguration()
+    public static var defaultConfiguration: ScannerConfiguration {
+        return ScannerConfiguration()
     }
 }
 

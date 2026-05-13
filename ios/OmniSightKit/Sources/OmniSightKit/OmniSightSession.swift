@@ -11,9 +11,9 @@ import ImageIO
 /// Orchestrates the scanning system by feeding frames to the engine.
 public class OmniSightSession: ObservableObject {
     @Published public var lastPayload: FramePayload?
-    public var engine: OnDeviceVisionEngine
+    public var engine: OpticalProcessor
 
-    public init(engine: OnDeviceVisionEngine) {
+    public init(engine: OpticalProcessor) {
         self.engine = engine
     }
 

@@ -36,7 +36,7 @@ class AppStateManager: ObservableObject {
         var config = detector.config
         config.allowedClasses = SpeechEngine.allWhitelistedClasses
         
-        let engine = OnDeviceVisionEngine(detector: detector)
+        let engine = OpticalProcessor(detector: detector)
         engine.config = config // Apply the filtered config
         
         session        = OmniSightSession(engine: engine)

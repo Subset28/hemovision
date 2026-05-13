@@ -15,11 +15,11 @@ import ARKit
 
 // OmniSight Optical Processor
 // Primary logic for object detection and processing.. It uses image processing to see things.
-public class OnDeviceVisionEngine {
+public class OpticalProcessor {
     // SINGLETON FOR THE TEAM
-    public static var shared: OnDeviceVisionEngine? 
+    public static var shared: OpticalProcessor? 
 
-    public var config: VisionConfiguration 
+    public var config: ScannerConfiguration 
     private let detector: CoreMLDetector
     private var tracker: ObjectTracker
     private let workQueue: DispatchQueue

@@ -16,10 +16,10 @@ public enum ModelLoadError: Error {
 
 
 public final class CoreMLDetector {
-    public let config: VisionConfiguration
+    public let config: ScannerConfiguration
     private let visionModel: VNCoreMLModel
 
-    public init(modelURL: URL, config: VisionConfiguration = .defaultConfiguration) throws {
+    public init(modelURL: URL, config: ScannerConfiguration = .defaultConfiguration) throws {
         self.config = config
         let modelConfig = MLModelConfiguration()
         modelConfig.computeUnits = .all
@@ -28,7 +28,7 @@ public final class CoreMLDetector {
         self.visionModel = try VNCoreMLModel(for: model)
     }
 
-    public convenience init(modelResourceName: String, bundle: Bundle, config: VisionConfiguration = .defaultConfiguration) throws {
+    public convenience init(modelResourceName: String, bundle: Bundle, config: ScannerConfiguration = .defaultConfiguration) throws {
         let url = bundle.url(forResource: modelResourceName, withExtension: "mlmodelc") ?? 
                   bundle.url(forResource: modelResourceName, withExtension: "mlpackage")
         

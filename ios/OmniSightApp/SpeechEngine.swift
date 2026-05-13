@@ -1,4 +1,4 @@
-// OmniSight - Visual Navigation System
+// OmniSight - Optical Navigation System
 // Personal Project - Source Code
 
 
@@ -10,22 +10,22 @@ import Combine
 import Foundation
 
 // OmniSight Speech Engine
-// This module manages text-to-speech feedback for detected objects.
-// Levels: 1=Emergency, 2=Approaching, 3=Nearby
+// This manages the voice feedback for the objects we find.
+// We tried a few different "levels" but settled on: 1=Emergency, 2=Approaching, 3=Nearby
 
-// We removed the masterConfig dictionary and moved it to functions 
-// because it's easier to read and change during testing.
+// NOTE: Me and my partner removed the masterConfig dictionary and moved it 
+// into functions because it was way easier to debug during our hallway tests.
 
 class SpeechEngine: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
 
-    // Shared instance for application-wide access
+    // Singleton so we can use it anywhere in the app
     static let shared = SpeechEngine()
 
     @Published private(set) var alertActive: Bool = false
 
     private let synth     = AVSpeechSynthesizer()
     private var frameSub:   AnyCancellable?
-    private var visionSession: OmniSightSession?
+    private var scanningSession: OmniSightSession?
     private var speakTimer: Timer?
     private var isSpeaking  = false
     private var isEnabled   = false
@@ -41,7 +41,7 @@ class SpeechEngine: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
 
     private var lastLiDARDepth: Float = 0.0
 
-    // This is for the list of things to say
+    // This is the queue for things the app needs to say
     struct QueueItem {
         var text: String
         var priority: Int
@@ -57,6 +57,7 @@ class SpeechEngine: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
     
     private var lastLiDARTime:  Date  = .distantPast
 
+    // These are the only things we want the scanner to actually talk about
     static let allWhitelistedClasses: Set<String> = ["person", "car", "truck", "bus", "bicycle", "motorcycle", "dog", "cat", "chair", "table", "door", "stairs"]
 
     // Setup
@@ -69,12 +70,12 @@ class SpeechEngine: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
         try! audio.setActive(true)
     }
 
-    func start(vision: OmniSightSession?) {
+    func start(scanning: OmniSightSession?) {
         stop()
         isEnabled = true
-        self.visionSession = vision
+        self.scanningSession = scanning
 
-        frameSub = vision?.$lastPayload
+        frameSub = scanning?.$lastPayload
             .receive(on: DispatchQueue.main)
             .sink { [weak self] frame in
                 // Only process if the frame isn't nil
@@ -83,6 +84,7 @@ class SpeechEngine: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
                 }
             }
 
+        // Check the queue every 0.1s to see if we need to say something new
         speakTimer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
             self?.drainQueue()
         }
@@ -92,7 +94,7 @@ class SpeechEngine: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
         isEnabled = false
         frameSub?.cancel()
         frameSub = nil
-        visionSession = nil
+        scanningSession = nil
         speakTimer?.invalidate()
         speakTimer = nil
         synth.stopSpeaking(at: .immediate)
@@ -112,6 +114,7 @@ class SpeechEngine: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
         var confirmed:  [DetectedObjectDTO] = []
 
         for obj in frame.objects {
+            // Debug print for when we are testing with the laptop plugged in
             print("DEBUG: Just saw a \(obj.objectClass) at \(obj.distanceM) meters")
             
             let maxRange = getMaxRange(for: obj.objectClass)
@@ -122,12 +125,13 @@ class SpeechEngine: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
             let seen = (framesSeen[obj.objectId] ?? 0) + 1
             framesSeen[obj.objectId] = seen
 
+            // We require seeing an object for a few frames so we don't get "ghost" detections
             if seen >= 2 { fastCheck.append(obj) }
             if seen >= 3 { confirmed.append(obj) }
         }
 
-        // Travel
-        // If multiple objects are approaching at > 4 m/s, we are in a vehicle.
+        // Travel Mode Detection
+        // We figured out that if 2+ objects are moving fast, we're probably in a car
         let highSpeedApproachers = confirmed.filter { $0.velocityMps < -4.0 }
         if highSpeedApproachers.count >= 2 {
             travelVelocitySamples.append(1.0)
@@ -148,7 +152,7 @@ class SpeechEngine: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
             }
         }
 
-        // Remove objects that are no longer in the frame
+        // Cleanup old IDs
         let liveIds = Set(frame.objects.map { $0.objectId })
         var updatedSeen: [String: Int] = [:]
         for (id, count) in framesSeen {
@@ -161,7 +165,7 @@ class SpeechEngine: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
 
         let now = Date()
 
-        // Emergency
+        // Emergency Warnings
         var closestDanger: DetectedObjectDTO? = nil
         let interiorLimit = userInVehicle ? 1.25 : 1.0 
         
@@ -175,7 +179,6 @@ class SpeechEngine: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
         }
 
         if let danger = closestDanger {
-            print("EMERGENCY: \(danger.objectClass) is too close!")
             alertActive = true
             HapticManager.shared.warningVibration()
             if now.timeIntervalSince(lastCollisionAt) > 3.0 {
@@ -187,7 +190,7 @@ class SpeechEngine: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
             alertActive = false
         }
 
-        // Approaching
+        // Objects Approaching
         var closestApproaching: DetectedObjectDTO? = nil
         for obj in confirmed {
             let isApproaching = obj.velocityMps < -0.40
@@ -211,7 +214,8 @@ class SpeechEngine: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
             }
         }
 
-        // Nearby Static
+        // Nearby Static Objects
+        // Don't interrupt high-priority warnings
         for item in queue {
             if item.priority >= 80 { return }
         }
@@ -297,6 +301,7 @@ class SpeechEngine: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
             return "\(feet) feet"
         }
 
+        // We use 0.5m rounding because the LiDAR can be a bit jumpy
         if meters < 2.0 {
             let rounded = max(0.5, (meters * 2).rounded() / 2)
             return String(format: "%.1f meters", rounded)
@@ -350,10 +355,10 @@ class SpeechEngine: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
         isSpeaking = false
     }
 
-    func setVisionSpeechEnabled(_ on: Bool) { isEnabled = on }
+    func setScanningSpeechEnabled(_ on: Bool) { isEnabled = on }
     func announceSystemMessageOnce(key: String, message: String) { speakImmediate(message) }
 
-    // LiDAR
+    // LiDAR logic
     func updateLiDARDepth(_ depthMeters: Float) {
         if !isEnabled { return }
         if let mute = mutedUntil, Date() < mute { return }
@@ -365,8 +370,8 @@ class SpeechEngine: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
         lastLiDARDepth = depthMeters
         lastLiDARTime  = now
 
-        // Skip if Vision already labeled this spot
-        let recentlySeenObjects = visionSession?.lastPayload?.objects ?? []
+        // Skip if the optical system already labeled this spot
+        let recentlySeenObjects = scanningSession?.lastPayload?.objects ?? []
         let alreadyIdentified = recentlySeenObjects.contains { obj in
             let distDiff = abs(Double(depthMeters) - obj.distanceM)
             let isAhead = abs(obj.panValue) < 0.40
