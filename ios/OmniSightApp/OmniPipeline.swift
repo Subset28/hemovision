@@ -39,7 +39,7 @@ class OmniPipeline: NSObject, ARSessionDelegate, ObservableObject {
             config.frameSemantics = .sceneDepth
         }
         
-        // Smooth out the camera feed for the judges
+        // Enable light estimation for better visibility
         config.isLightEstimationEnabled = true
         
         arSession.run(config, options: [.resetTracking, .removeExistingAnchors])

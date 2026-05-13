@@ -14,7 +14,7 @@ import ARKit
 public class OpticalProcessor {
     public static var shared: OpticalProcessor? 
 
-    public var config: ScannerConfiguration 
+    public var config: ScannerConfiguration
     private let detector: CoreMLDetector
     private var tracker: ObjectTracker
     private let workQueue: DispatchQueue
@@ -98,7 +98,7 @@ public class OpticalProcessor {
                 var confidence: DistanceConfidence = .estimated
                 
                 if depthMap != nil {
-                    // FIXME: The LiDAR gets jumpy near glass windows. We need to find a better filter for Nationals..
+                    // FIXME: The LiDAR gets jumpy near glass windows. Needs better filtering.
                     let lidarDepth = depthMap!.sampleDepth(at: CGPoint(x: o.xCenterNorm, y: o.yCenterNorm)) ?? 999.0
                     
                     var useLidar = true
@@ -152,10 +152,10 @@ public class OpticalProcessor {
                 orientation: orientation,
                 options: [:]
             )
+            inFlight = false
             try handler.perform([request])
         } catch {
             inFlight = false
-            // This is bad, the scanner crashed.
             print("ERROR: Scanner just died! Check the detection files!")
         }
     }

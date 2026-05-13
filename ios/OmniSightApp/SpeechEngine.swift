@@ -11,7 +11,7 @@ import Foundation
 // This manages the voice feedback for the objects we find.
 // We tried a few different "levels" but settled on: 1=Emergency, 2=Approaching, 3=Nearby
 
-// Configuration moved to functions for better debugging during field testing.
+// Configuration moved to functions for better organization.
 
 @MainActor
 class SpeechEngine: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
@@ -305,7 +305,7 @@ class SpeechEngine: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
     }
 
 
-    // We hand-coded these priorities based on our testing in the school hallway
+    // Priorities based on testing in various environments
     private func getPriority(for label: String) -> Int {
         let name = label.lowercased()
         if ["car", "truck", "bus"].contains(name) { return 75 }
