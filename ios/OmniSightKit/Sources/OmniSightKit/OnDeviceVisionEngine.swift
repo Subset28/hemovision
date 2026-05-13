@@ -104,7 +104,7 @@ public class OnDeviceVisionEngine {
                 
                 if depthMap != nil {
                     // FIXME: The LiDAR gets jumpy near glass windows. We need to find a better filter for Nationals..
-                    let lidarDepth = depthMap!.sampleDepth(at: CGPoint(x: o.xCenterNorm, y: o.yCenterNorm)).
+                    let lidarDepth = depthMap!.sampleDepth(at: CGPoint(x: o.xCenterNorm, y: o.yCenterNorm)) ?? 999.0
                     
                     var useLidar = true
                     
