@@ -13,6 +13,7 @@ import Foundation
 
 // Configuration moved to functions for better debugging during field testing.
 
+@MainActor
 class SpeechEngine: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
     static let shared = SpeechEngine()
 

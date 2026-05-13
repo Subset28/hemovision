@@ -12,6 +12,7 @@ import Combine
 // Central controller for the app. 
 // Uses unified ARKit cameraManager to prevent camera freezes.
 
+@MainActor
 class AppStateManager: ObservableObject {
     static let shared = AppStateManager()
 
