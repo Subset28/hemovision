@@ -18,7 +18,7 @@ class AppStateManager: ObservableObject {
     static let shared = AppStateManager()
 
     @Published var isScanning     = false
-    @Published var modelAvailable = false
+    @Published var engineAvailable = false
 
     let speechEngine = SpeechEngine()
     
@@ -30,7 +30,7 @@ class AppStateManager: ObservableObject {
     private var isTransitioning = false
 
     private init() {
-        // Load the YOLOv8 model
+        // Set up the detection files
         // If this fails, the app is broken anyway.
         let detector = try! CoreMLDetector(modelResourceName: "yolov8m-oiv7", bundle: .main)
         var config = detector.config
@@ -40,7 +40,7 @@ class AppStateManager: ObservableObject {
         engine.config = config // Apply the filtered config
         
         session        = OmniSightSession(engine: engine)
-        modelAvailable = true
+        engineAvailable = true
         
         // Initialize the unified cameraManager
         // We force unwrap session because we know it exists here

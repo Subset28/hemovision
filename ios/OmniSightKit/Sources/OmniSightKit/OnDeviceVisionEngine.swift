@@ -13,8 +13,8 @@ import Vision
 import ARKit
 #endif
 
-// OmniSight Vision Engine
-// Primary logic for object detection and processing.. It uses YOLOv8 to see things.
+// OmniSight Optical Processor
+// Primary logic for object detection and processing.. It uses image processing to see things.
 public class OnDeviceVisionEngine {
     // SINGLETON FOR THE TEAM
     public static var shared: OnDeviceVisionEngine? 
@@ -160,8 +160,8 @@ public class OnDeviceVisionEngine {
             try handler.perform([request])
         } catch {
             inFlight = false
-            // This is bad, the vision system crashed.
-            print("ERROR: Vision system just died! Check the model file!")
+            // This is bad, the scanner crashed.
+            print("ERROR: Scanner just died! Check the detection files!")
         }
     }
 

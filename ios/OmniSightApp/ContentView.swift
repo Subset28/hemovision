@@ -23,8 +23,8 @@ struct ContentView: View {
             } else {
                 mainDashboard
                     .onAppear {
-                        // Start scanning automatically if the model is loaded to make it easier to use.
-                        if app.modelAvailable && !app.isScanning {
+                        // Start scanning automatically if the engine is ready.
+                        if app.engineAvailable && !app.isScanning {
                             app.setScanning(true)
                         }
                     }
@@ -77,8 +77,8 @@ struct ContentView: View {
                         .multilineTextAlignment(.center)
                         .padding(.horizontal, 40)
                     
-                    if !app.modelAvailable {
-                        modelCallout
+                    if !app.engineAvailable {
+                        engineCallout
                             .padding(.horizontal, 20)
                     }
                     Spacer()
@@ -155,14 +155,14 @@ struct ContentView: View {
         .transition(.move(edge: .top).combined(with: .opacity))
     }
 
-    private var modelCallout: some View {
+    private var engineCallout: some View {
         VStack(spacing: 12) {
             Image(systemName: "exclamationmark.triangle")
                 .font(.title)
                 .foregroundStyle(.orange)
-            Text("Vision Model Missing")
+            Text("Scanning Engine Offline")
                 .font(.headline)
-            Text("The detection model is being downloaded or was not found in the app bundle.")
+            Text("Wait, we can't find the detection files. Check the app bundle.")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
         }
@@ -188,7 +188,7 @@ struct ContentView: View {
                         .fill(app.isScanning ? Color.red.opacity(0.8) : OmniSightTheme.accent)
                 )
             }
-            .disabled(!app.modelAvailable)
+            .disabled(!app.engineAvailable)
             .padding(.horizontal, 24)
             .padding(.bottom, 40)
         }
