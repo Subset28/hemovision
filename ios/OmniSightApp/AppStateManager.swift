@@ -32,7 +32,7 @@ class AppStateManager: ObservableObject {
     private init() {
         // Set up the detection files
         // If this fails, the app is broken anyway.
-        let detector = try! CoreMLDetector(modelResourceName: "yolov8m-oiv7", bundle: .main)
+        let detector = try! CoreMLDetector(modelResourceName: "ScanningData", bundle: .main)
         var config = detector.config
         config.allowedClasses = SpeechEngine.allWhitelistedClasses
         

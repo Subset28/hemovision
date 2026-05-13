@@ -8,7 +8,7 @@ import CoreVideo
 import Foundation
 import ImageIO
 
-/// Orchestrates the vision cameraManager by feeding frames to the engine.
+/// Orchestrates the scanning system by feeding frames to the engine.
 public class OmniSightSession: ObservableObject {
     @Published public var lastPayload: FramePayload?
     public var engine: OnDeviceVisionEngine
