@@ -1,5 +1,3 @@
-// OmniSight - Visual Navigation System
-// Personal Project - Source Code
 
 
 
@@ -12,7 +10,7 @@ public enum DistanceConfidence: String, Codable, Sendable {
     case measured
 }
 
-// MARK: - Core Detections
+
 
 public struct RawDetection: Codable, Equatable, Sendable {
     public var className: String
@@ -136,7 +134,7 @@ extension FramePayload {
     }
 }
 
-// MARK: - Configuration
+
 
 public struct ScannerConfiguration: Sendable {
     public var confidenceThreshold: Float = 0.4
@@ -150,7 +148,7 @@ public struct ScannerConfiguration: Sendable {
     }
 }
 
-// MARK: - Geometry & Utilities
+
 
 public struct VisionGeometry {
     public static func mapToRect(xCenter: Double, yCenter: Double, width: Double, height: Double, targetRect: CGRect) -> CGRect {
@@ -187,7 +185,7 @@ public class SpeechSynthesizer: NSObject, AVSpeechSynthesizerDelegate {
     }
 }
 
-// MARK: - Extensions
+
 
 extension CVPixelBuffer {
     /// Samples a depth value (Float32) from the pixel buffer at normalized coordinates (0.0 - 1.0).

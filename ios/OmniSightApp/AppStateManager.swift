@@ -1,5 +1,3 @@
-// OmniSight - Visual Navigation System
-// Personal Project - Source Code
 
 
 import OmniSightKit
@@ -17,33 +15,29 @@ import Combine
 class AppStateManager: ObservableObject {
     static let shared = AppStateManager()
 
-    @Published var isScanning     = false
+    @Published var isScanning = false
     @Published var engineAvailable = false
 
     let speechEngine = SpeechEngine()
     
-    // Unified cameraManager for both Video and LiDAR
     private(set) var cameraManager: OmniPipeline?
-    private(set) var session:  OmniSightSession?
+    private(set) var session: OmniSightSession?
 
     private var cameraManagerSub: AnyCancellable?
     private var isTransitioning = false
 
     private init() {
-        // Set up the detection files
         // If this fails, the app is broken anyway.
         let detector = try! CoreMLDetector(modelResourceName: "ScanningData", bundle: .main)
         var config = detector.config
         config.allowedClasses = SpeechEngine.allWhitelistedClasses
         
         let engine = OpticalProcessor(detector: detector)
-        engine.config = config // Apply the filtered config
+        engine.config = config 
         
-        session        = OmniSightSession(engine: engine)
+        session = OmniSightSession(engine: engine)
         engineAvailable = true
         
-        // Initialize the unified cameraManager
-        // We force unwrap session because we know it exists here
         cameraManager = OmniPipeline(scannerSession: session!)
         
         speechEngine.start(scanning: session!)

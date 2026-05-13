@@ -1,5 +1,3 @@
-// OmniSight - Visual Navigation System
-// Personal Project - Source Code
 
 
 import OmniSightKit
@@ -15,11 +13,8 @@ import Combine
 
 class OmniPipeline: NSObject, ARSessionDelegate, ObservableObject {
     private let scannerSession: OmniSightSession
-    
-    // The single AR session that drives everything
     let arSession = ARSession()
     
-    // True if this device has a LiDAR scanner
     static let isSupported: Bool = {
         if #available(iOS 14.0, *) {
             return ARWorldTrackingConfiguration.supportsFrameSemantics(.sceneDepth)
@@ -27,7 +22,6 @@ class OmniPipeline: NSObject, ARSessionDelegate, ObservableObject {
         return false
     }()
 
-    // Published depth for the speech engine to watch
     @Published var middleSensorDist: Float = 999.0
     @Published var isRunning = false
 

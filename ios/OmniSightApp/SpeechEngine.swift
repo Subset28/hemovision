@@ -1,5 +1,3 @@
-// OmniSight - Optical Navigation System
-// Personal Project - Source Code
 
 
 import OmniSightKit
@@ -17,31 +15,28 @@ import Foundation
 // into functions because it was way easier to debug during our hallway tests.
 
 class SpeechEngine: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
-
-    // Singleton so we can use it anywhere in the app
     static let shared = SpeechEngine()
 
     @Published private(set) var alertActive: Bool = false
 
-    private let synth     = AVSpeechSynthesizer()
-    private var frameSub:   AnyCancellable?
+    private let synth = AVSpeechSynthesizer()
+    private var frameSub: AnyCancellable?
     private var scanningSession: OmniSightSession?
     private var speakTimer: Timer?
-    private var isSpeaking  = false
-    private var isEnabled   = false
+    private var isSpeaking = false
+    private var isEnabled = false
     private var mutedUntil: Date?
 
     @Published var objectCount: Int = 0
 
     private var lastSpokenAt: [String: Date] = [:]
-    private var lastClassAt:  [String: Date] = [:]
+    private var lastClassAt: [String: Date] = [:]
 
-    private var userInVehicle: Bool = false
+    private var userInVehicle = false
     private var travelVelocitySamples: [Double] = []
 
     private var lastLiDARDepth: Float = 0.0
 
-    // This is the queue for things the app needs to say
     struct QueueItem {
         var text: String
         var priority: Int
@@ -51,11 +46,11 @@ class SpeechEngine: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
     private var queue: [QueueItem] = []
 
     private var lastCollisionAt: Date = .distantPast
-    private var lastLiDARAt:     Date = .distantPast
+    private var lastLiDARAt: Date = .distantPast
 
     private var framesSeen: [String: Int] = [:]
     
-    private var lastLiDARTime:  Date  = .distantPast
+    private var lastLiDARTime: Date = .distantPast
 
     // These are the only things we want the scanner to actually talk about
     static let allWhitelistedClasses: Set<String> = ["person", "car", "truck", "bus", "bicycle", "motorcycle", "dog", "cat", "chair", "table", "door", "stairs"]

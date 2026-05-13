@@ -1,5 +1,3 @@
-// OmniSight - Visual Navigation System
-// Personal Project - Source Code
 
 
 import SwiftUI

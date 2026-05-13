@@ -1,5 +1,3 @@
-// OmniSight - Visual Navigation System
-// Personal Project - Source Code
 
 
 
@@ -13,10 +11,7 @@ import Vision
 import ARKit
 #endif
 
-// OmniSight Optical Processor
-// Primary logic for object detection and processing.. It uses image processing to see things.
 public class OpticalProcessor {
-    // SINGLETON FOR THE TEAM
     public static var shared: OpticalProcessor? 
 
     public var config: ScannerConfiguration 
@@ -25,7 +20,7 @@ public class OpticalProcessor {
     private let workQueue: DispatchQueue
     
     private var frameId: Int = 0
-    private var inFlight: Bool = false
+    private var inFlight = false
     private var lastEmitTime: TimeInterval = 0
     
     public init(detector: CoreMLDetector) {

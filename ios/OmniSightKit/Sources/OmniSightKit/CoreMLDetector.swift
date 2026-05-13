@@ -1,5 +1,3 @@
-// OmniSight - Visual Navigation System
-// Personal Project - Source Code
 
 
 
@@ -69,7 +67,7 @@ public final class CoreMLDetector {
             let width = Double(rect.width)
             let height = Double(rect.height)
             
-            // Distance estimation using bounding box area (more robust than height alone)
+            // Distance estimate
             let area = width * height
             let distance = max(0.3, 0.35 / sqrt(area))
             let pan = (xCenter - 0.5) * 2.0
