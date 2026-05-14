@@ -42,11 +42,10 @@ jobs:
             cat "$file" >> combined_source.swift
           done
           
-          # Convert to HTML with syntax highlighting, line numbers, and word wrap
+          # Convert to HTML with line numbers and word wrap, but NO colors (--syntax=txt)
           highlight combined_source.swift \
-            --syntax=swift \
+            --syntax=txt \
             -O html \
-            --style=xcode \
             --line-numbers \
             --wrap-simple \
             --font="'Menlo', 'Courier New', monospace" \
