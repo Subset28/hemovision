@@ -39,11 +39,6 @@ jobs:
           echo "Copy of raw, executable code for submission" >> documentation.txt
           echo "Team: Sight-Seekers" >> documentation.txt
           echo "" >> documentation.txt
-          echo "Files included:" >> documentation.txt
-          find ios -name "*.swift" -o -name "Package.swift" | sort | while read file; do
-            echo " - $file" >> documentation.txt
-          done
-          echo "" >> documentation.txt
           echo "Code:" >> documentation.txt
           echo "" >> documentation.txt
 
