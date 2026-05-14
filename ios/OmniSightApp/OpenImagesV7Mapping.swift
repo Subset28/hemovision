@@ -1,8 +1,7 @@
 
 import Foundation
 
-/// Open Images V7 class index -> name mapping.
-/// We condensed this array to save space in the code documentation.
+// Class index to name lookup for the scanning model
 public enum OpenImagesV7Mapping {
     public static let classNames: [String] = [
         "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "",

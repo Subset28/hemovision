@@ -10,7 +10,6 @@ import UIKit
 import ARKit
 
 #if os(iOS)
-/// Renders the ARKit camera preview.
 struct ARViewPreview: UIViewRepresentable {
     let session: ARSession
 
@@ -31,7 +30,6 @@ struct ARViewPreview: UIViewRepresentable {
 }
 #endif
 
-/// Renders bounding boxes over the camera feed.
 struct BoundingBoxOverlayView: View {
     var objects: [DetectedObjectDTO]
     
@@ -68,7 +66,6 @@ struct BoundingBoxOverlayView: View {
     }
 }
 
-/// A simple UIViewRepresentable to catch two-finger double-taps.
 struct TwoFingerDoubleTapCapture: UIViewRepresentable {
     var onDetected: () -> Void
 

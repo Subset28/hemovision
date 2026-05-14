@@ -188,8 +188,7 @@ public class SpeechSynthesizer: NSObject, AVSpeechSynthesizerDelegate {
 
 
 extension CVPixelBuffer {
-    /// Samples a depth value (Float32) from the pixel buffer at normalized coordinates (0.0 - 1.0).
-    /// Returns nil if the coordinates are out of bounds or the buffer cannot be read.
+    // Reads a depth value from normalized coordinates (0.0-1.0). Returns nil if out of range.
     public func sampleDepth(at point: CGPoint) -> Float? {
         CVPixelBufferLockBaseAddress(self, .readOnly)
         defer { CVPixelBufferUnlockBaseAddress(self, .readOnly) }

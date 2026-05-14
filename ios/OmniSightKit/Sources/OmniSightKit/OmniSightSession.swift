@@ -6,7 +6,7 @@ import CoreVideo
 import Foundation
 import ImageIO
 
-/// Orchestrates the scanning system by feeding frames to the engine.
+// Ties together the processor and the frame output
 public class OmniSightSession: ObservableObject {
     @Published public var lastPayload: FramePayload?
     public var engine: OpticalProcessor
@@ -32,7 +32,6 @@ public class OmniSightSession: ObservableObject {
 import ARKit
 
 extension OmniSightSession {
-    /// Ingests a frame from ARKit.
     public func ingest(arFrame: ARFrame) {
         let intrinsics = CameraIntrinsicsReader.read(from: arFrame.camera)
         let image = arFrame.capturedImage

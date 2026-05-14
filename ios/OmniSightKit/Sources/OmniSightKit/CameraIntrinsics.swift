@@ -8,7 +8,7 @@ import Foundation
 import AVFoundation
 #endif
 
-/// Basic camera intrinsic parameters.
+// Stores focal length and frame size for distance math
 public struct CameraIntrinsics: Sendable, Equatable {
     public var focalLengthPx: Double
     public var frameWidth: Int
