@@ -296,12 +296,7 @@ class SpeechEngine: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
             return "\(feet) feet"
         }
 
-        // We use 0.5m rounding because the LiDAR can be a bit jumpy
-        if meters < 2.0 {
-            let rounded = max(0.5, (meters * 2).rounded() / 2)
-            return String(format: "%.1f meters", rounded)
-        }
-        return "\(Int(meters.rounded())) meters"
+        return String(format: "%.1f meters", meters)
     }
 
 
