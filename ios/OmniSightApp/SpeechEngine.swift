@@ -392,7 +392,7 @@ class SpeechEngine: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
         if depthMeters < 0.90 {
             emergencySpeak(text) 
         } else {
-            addToQueue(text, priority: 95, expiresIn: 1.5) 
+            addToQueue(text, priority: 99, expiresIn: 1.5) 
         }
     }
 
