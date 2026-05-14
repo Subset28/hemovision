@@ -2,7 +2,7 @@
 import SwiftUI
 import UIKit
 
-/// Shared theme constants for the application.
+// Shared theme colors and sizes
 enum OmniSightTheme {
     static let accent = Color.mint
     static let warmAlert = Color.orange
@@ -14,7 +14,7 @@ enum OmniSightTheme {
     static let cornerS: CGFloat = 8
 }
 
-/// A simple panel with a rounded rectangle background.
+// A glass-style panel used in the UI
 struct GlassPanel<Content: View>: View {
     var padding: CGFloat = 16
     var cornerRadius: CGFloat = OmniSightTheme.cornerM
@@ -33,7 +33,7 @@ struct GlassPanel<Content: View>: View {
     }
 }
 
-/// A simple wrapper for sharing items.
+// Standard wrapper for the share sheet
 struct ActivityViewController: UIViewControllerRepresentable {
     let activityItems: [Any]
 
