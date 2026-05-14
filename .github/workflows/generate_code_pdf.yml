@@ -19,7 +19,7 @@ jobs:
 
       - name: Build App
         run: |
-          xcodebuild -project ios/OmniSightApp.xcodeproj -scheme OmniSightApp -sdk iphoneos -destination 'generic/platform=iOS' CODE_SIGNING_ALLOWED=NO clean build
+          xcodebuild -project ios/OmniSight/OmniSight.xcodeproj -scheme OmniSight -sdk iphoneos -destination 'generic/platform=iOS' CODE_SIGNING_ALLOWED=NO clean build
 
   make-pdf:
     runs-on: ubuntu-latest
