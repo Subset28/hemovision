@@ -53,8 +53,8 @@ jobs:
             --font-size=10 \
             -o source_code_temp.html
             
-          # Force pure white background in the CSS
-          sed 's/background-color:[^;]*;/background-color: #ffffff;/g' source_code_temp.html > source_code.html
+          # Force the entire page (body) and code block (pre) to be a seamless light blue
+          sed 's/<\/style>/body, pre { background-color: #F0F4FA !important; margin: 0 !important; padding: 0 !important; } <\/style>/g' source_code_temp.html > source_code.html
             
           # Convert HTML to barebones PDF (no headers, no TOC, small margins)
           wkhtmltopdf \
