@@ -46,6 +46,7 @@ jobs:
           highlight combined_source.swift \
             --syntax=txt \
             -O html \
+            --include-style \
             --line-numbers \
             --wrap-simple \
             --font="'Menlo', 'Courier New', monospace" \
@@ -54,6 +55,7 @@ jobs:
             
           # Convert HTML to barebones PDF (no headers, no TOC, clean margins)
           wkhtmltopdf \
+            --enable-local-file-access \
             --margin-top 15mm \
             --margin-bottom 15mm \
             --margin-left 15mm \
