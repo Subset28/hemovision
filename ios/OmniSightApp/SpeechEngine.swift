@@ -162,7 +162,7 @@ class SpeechEngine: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
 
         // Emergency Warnings
         var closestDanger: DetectedObjectDTO? = nil
-        let interiorLimit = userInVehicle ? 1.25 : 1.0 
+        let interiorLimit = userInVehicle ? 1.5 : 1.2 
         
         for obj in fastCheck {
             let isDirectlyAhead = abs(obj.panValue) < 0.45
@@ -376,7 +376,7 @@ class SpeechEngine: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
         if alreadyIdentified { return }
 
         // Collision logic
-        let minThreshold: Float = userInVehicle ? 1.25 : 0.75
+        let minThreshold: Float = userInVehicle ? 1.5 : 1.2
         if depthMeters >= minThreshold { return }
         if userInVehicle && vel > -0.2 { return } 
         
@@ -389,7 +389,7 @@ class SpeechEngine: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
         let dist = distText(Double(depthMeters))
         let text = "Obstacle ahead, \(dist)"
 
-        if depthMeters < 0.60 {
+        if depthMeters < 0.90 {
             emergencySpeak(text) 
         } else {
             addToQueue(text, priority: 95, expiresIn: 1.5) 
