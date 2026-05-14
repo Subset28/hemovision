@@ -28,22 +28,40 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install PDF Tools
-        run: sudo apt-get update && sudo apt-get install -y enscript ghostscript
+      - name: Install Tools
+        run: sudo apt-get update && sudo apt-get install -y highlight wkhtmltopdf
 
-      - name: Combine Code and Convert to PDF
+      - name: Combine Code and Generate PDF
         run: |
-          # Combine all Swift files into a single text file
+          # Create a combined source file with headers
+          > combined_source.swift
           find ios -name "*.swift" -type f | sort | while read file; do
-            echo -e "\n\n// =========================================="
-            echo "// FILE: $file"
-            echo "// =========================================="
-            cat "$file"
-          done > source.txt
+            echo -e "\n\n// ==========================================" >> combined_source.swift
+            echo "// FILE: $file" >> combined_source.swift
+            echo "// ==========================================" >> combined_source.swift
+            cat "$file" >> combined_source.swift
+          done
           
-          # Convert text to PDF with line numbers (-C) and Courier font
-          enscript -C -B --margins=50:50:50:50 -f Courier10 -p output.ps source.txt
-          ps2pdf output.ps source_code_submission.pdf
+          # Convert to HTML with syntax highlighting, line numbers, and word wrap
+          highlight combined_source.swift \
+            --syntax=swift \
+            -O html \
+            --style=xcode \
+            --line-numbers \
+            --wrap-simple \
+            --font="'Menlo', 'Courier New', monospace" \
+            --font-size=10 \
+            -o source_code.html
+            
+          # Convert HTML to barebones PDF (no headers, no TOC, clean margins)
+          wkhtmltopdf \
+            --margin-top 15mm \
+            --margin-bottom 15mm \
+            --margin-left 15mm \
+            --margin-right 15mm \
+            --disable-smart-shrinking \
+            source_code.html \
+            source_code_submission.pdf
           
       - name: Upload PDF
         uses: actions/upload-artifact@v4
