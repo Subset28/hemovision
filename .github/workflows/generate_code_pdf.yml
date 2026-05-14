@@ -1,4 +1,4 @@
-name: Generate Code PDF
+name: Build and Make PDF
 
 on:
   push:
@@ -6,85 +6,63 @@ on:
   workflow_dispatch:
 
 jobs:
-  verify-build:
+  build-app:
     runs-on: macos-latest
     steps:
-      - name: Checkout code
+      - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set up Xcode
+      - name: Setup Xcode
         uses: maxim-lobanov/setup-xcode@v1
         with:
           xcode-version: latest-stable
 
-      - name: Build OmniSight App
+      - name: Build App
         run: |
-          xcodebuild -project ios/OmniSightApp.xcodeproj \
-                     -scheme OmniSightApp \
-                     -sdk iphoneos \
-                     -destination 'generic/platform=iOS' \
-                     CODE_SIGNING_ALLOWED=NO \
-                     clean build
+          xcodebuild -project ios/OmniSightApp.xcodeproj -scheme OmniSightApp -sdk iphoneos -destination 'generic/platform=iOS' CODE_SIGNING_ALLOWED=NO clean build
 
-  build-pdf:
+  make-pdf:
     runs-on: ubuntu-latest
-    needs: verify-build
+    needs: build-app
     steps:
-      - name: Checkout code
+      - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install dependencies
+      - name: Install tools
         run: |
           sudo apt-get update
           sudo apt-get install -y highlight wkhtmltopdf
 
-      - name: Create Student-Style Documentation
+      - name: Make cover page
         run: |
-          echo "OmniSight - Visual Navigation App" > documentation.txt
-          echo "Copy of Raw, Executable Code" >> documentation.txt
-          echo "------------------------------------------------" >> documentation.txt
-          echo "Created by: Sight-Seekers Team" >> documentation.txt
-          echo "Date: April 2026" >> documentation.txt
+          echo "OmniSight App Source Code" > documentation.txt
+          echo "Copy of raw, executable code for submission" >> documentation.txt
+          echo "Team: Sight-Seekers" >> documentation.txt
           echo "" >> documentation.txt
-          echo "VERIFIED SOURCE FILES" >> documentation.txt
-          echo "------------------------------------------------" >> documentation.txt
-          
+          echo "Files included:" >> documentation.txt
           find ios -name "*.swift" -o -name "Package.swift" | sort | while read file; do
             echo " - $file" >> documentation.txt
           done
-          
           echo "" >> documentation.txt
-          echo "------------------------------------------------" >> documentation.txt
-          echo "RAW SOURCE CODE" >> documentation.txt
-          echo "------------------------------------------------" >> documentation.txt
+          echo "Code:" >> documentation.txt
           echo "" >> documentation.txt
 
-      - name: Combine All Source Code
+      - name: Combine code
         run: |
           find ios -name "*.swift" -o -name "Package.swift" | sort | while read file; do
             echo "// FILE: $file" >> documentation.txt
             echo "" >> documentation.txt
             cat "$file" >> documentation.txt
             echo "" >> documentation.txt
-            echo "------------------------------------------------" >> documentation.txt
           done
 
-      - name: Convert to PDF
+      - name: Make PDF
         run: |
-          highlight --out-format=html \
-                    --inline-css \
-                    --font="Courier" \
-                    --font-size=10 \
-                    --line-numbers \
-                    --syntax=swift \
-                    --input=documentation.txt \
-                    --output=source_code.html
+          highlight --out-format=html --inline-css --font="Courier" --font-size=10 --line-numbers --syntax=swift --input=documentation.txt --output=source_code.html
+          wkhtmltopdf --enable-local-file-access source_code.html source_code_submission.pdf
           
-          wkhtmltopdf --enable-local-file-access \
-                      source_code.html source_code_submission.pdf
-          
-      - name: Upload PDF Artifact
+      - name: Upload
         uses: actions/upload-artifact@v4
         with:
-          name: Final Source Code PDF
+          name: Source Code PDF
           path: source_code_submission.pdf
