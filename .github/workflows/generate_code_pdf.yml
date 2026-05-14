@@ -6,8 +6,29 @@ on:
   workflow_dispatch:
 
 jobs:
+  verify-build:
+    runs-on: macos-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+
+      - name: Build OmniSight App
+        run: |
+          xcodebuild -project ios/OmniSightApp.xcodeproj \
+                     -scheme OmniSightApp \
+                     -sdk iphoneos \
+                     -destination 'generic/platform=iOS' \
+                     CODE_SIGNING_ALLOWED=NO \
+                     clean build
+
   build-pdf:
     runs-on: ubuntu-latest
+    needs: verify-build
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -19,40 +40,37 @@ jobs:
 
       - name: Create Student-Style Documentation
         run: |
-          # Create a simpler, student-appropriate cover page
           echo "OmniSight - Visual Navigation App" > documentation.txt
-          echo "Software Development Submission" >> documentation.txt
+          echo "Copy of Raw, Executable Code" >> documentation.txt
           echo "------------------------------------------------" >> documentation.txt
           echo "Created by: Sight-Seekers Team" >> documentation.txt
           echo "Date: April 2026" >> documentation.txt
           echo "" >> documentation.txt
-          echo "TABLE OF CONTENTS" >> documentation.txt
+          echo "VERIFIED SOURCE FILES" >> documentation.txt
           echo "------------------------------------------------" >> documentation.txt
           
-          # List files manually for that "hand-organized" look
           find ios -name "*.swift" -o -name "Package.swift" | sort | while read file; do
             echo " - $file" >> documentation.txt
           done
           
           echo "" >> documentation.txt
           echo "------------------------------------------------" >> documentation.txt
-          echo "SOURCE CODE" >> documentation.txt
+          echo "RAW SOURCE CODE" >> documentation.txt
           echo "------------------------------------------------" >> documentation.txt
           echo "" >> documentation.txt
 
       - name: Combine All Source Code
         run: |
           find ios -name "*.swift" -o -name "Package.swift" | sort | while read file; do
-            echo "// MARK: - $file" >> documentation.txt
+            echo "// FILE: $file" >> documentation.txt
             echo "" >> documentation.txt
             cat "$file" >> documentation.txt
             echo "" >> documentation.txt
-            echo "" >> documentation.txt
+            echo "------------------------------------------------" >> documentation.txt
           done
 
       - name: Convert to PDF
         run: |
-          # Step 1: Use highlight to generate HTML (standard for high schoolers printing from VS Code)
           highlight --out-format=html \
                     --inline-css \
                     --font="Courier" \
@@ -62,12 +80,11 @@ jobs:
                     --input=documentation.txt \
                     --output=source_code.html
           
-          # Step 2: Simple HTML to PDF conversion without the automated TOC generator
           wkhtmltopdf --enable-local-file-access \
                       source_code.html source_code_submission.pdf
           
       - name: Upload PDF Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Source Code PDF
+          name: Final Source Code PDF
           path: source_code_submission.pdf
