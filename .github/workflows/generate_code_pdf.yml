@@ -28,36 +28,11 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install tools
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y highlight wkhtmltopdf
-
-      - name: Make cover page
-        run: |
-          echo "OmniSight App Source Code" > documentation.txt
-          echo "Copy of raw, executable code for submission" >> documentation.txt
-          echo "Team: Sight-Seekers" >> documentation.txt
-          echo "" >> documentation.txt
-          echo "Code:" >> documentation.txt
-          echo "" >> documentation.txt
-
-      - name: Combine code
-        run: |
-          find ios -name "*.swift" -o -name "Package.swift" | sort | while read file; do
-            echo "// FILE: $file" >> documentation.txt
-            echo "" >> documentation.txt
-            cat "$file" >> documentation.txt
-            echo "" >> documentation.txt
-          done
-
-      - name: Make PDF
-        run: |
-          highlight --out-format=html --inline-css --font="Courier" --font-size=10 --syntax=txt --input=documentation.txt --output=source_code.html
-          wkhtmltopdf --enable-local-file-access source_code.html source_code_submission.pdf
+      - name: Generate PDF using repo2pdf
+        run: npx repo2pdf
           
       - name: Upload
         uses: actions/upload-artifact@v4
         with:
           name: Source Code PDF
-          path: source_code_submission.pdf
+          path: repo2pdf.pdf
