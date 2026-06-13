@@ -110,9 +110,6 @@ class SpeechEngine: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
         var confirmed:  [DetectedObjectDTO] = []
 
         for obj in frame.objects {
-            // Debug log for active scanning
-            print("DEBUG: Just saw a \(obj.objectClass) at \(obj.distanceM) meters")
-            
             let maxRange = getMaxRange(for: obj.objectClass)
             if maxRange == nil { continue }               // not whitelisted
             if obj.distanceM > maxRange! { continue }     // too far away
@@ -174,13 +171,14 @@ class SpeechEngine: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
             }
         }
 
-        if let danger = closestDanger {
+        let hazardAlarmsOn = (UserDefaults.standard.object(forKey: "hazardAlarmsEnabled") as? Bool) ?? true
+        if let danger = closestDanger, hazardAlarmsOn {
             alertActive = true
             HapticManager.shared.warningVibration()
             if now.timeIntervalSince(lastCollisionAt) > 3.0 {
                 lastCollisionAt = now
                 let text = "Warning! \(SpeechEngine.mapToSpokenName(danger.objectClass)), \(distText(danger.distanceM))!"
-                emergencySpeak(text)   
+                emergencySpeak(text)
             }
         } else {
             alertActive = false
@@ -378,6 +376,8 @@ class SpeechEngine: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
         
         if now.timeIntervalSince(lastLiDARAt) < 2.5 { return }  // shorter cooldown
 
+        guard (UserDefaults.standard.object(forKey: "hazardAlarmsEnabled") as? Bool) ?? true else { return }
+
         lastLiDARAt = Date()
         alertActive = true
         HapticManager.shared.warningVibration()
@@ -386,9 +386,9 @@ class SpeechEngine: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
         let text = "Obstacle ahead, \(dist)"
 
         if depthMeters < 0.90 {
-            emergencySpeak(text) 
+            emergencySpeak(text)
         } else {
-            addToQueue(text, priority: 99, expiresIn: 1.5) 
+            addToQueue(text, priority: 99, expiresIn: 1.5)
         }
     }
 

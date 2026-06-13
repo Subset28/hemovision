@@ -28,8 +28,7 @@ class HapticManager {
     }
     
     func warningVibration() {
-        // BIG VIBRATE FOR WHEN YOU ARE GOING TO HIT SOMETHING
-        // DON'T IGNORE THIS
+        guard (UserDefaults.standard.object(forKey: "hapticsEnabled") as? Bool) ?? true else { return }
         heavy.impactOccurred()
         notification.notificationOccurred(.error)
     }
