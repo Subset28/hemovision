@@ -82,7 +82,7 @@ class SpeechEngine: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
 
         // Check the queue every 0.1s to see if we need to say something new
         speakTimer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
-            self?.drainQueue()
+            Task { @MainActor [weak self] in self?.drainQueue() }
         }
     }
 
@@ -327,9 +327,15 @@ class SpeechEngine: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
     }
 
 
-    func speechSynthesizer(_ s: AVSpeechSynthesizer, didStart _: AVSpeechUtterance)  { isSpeaking = true  }
-    func speechSynthesizer(_ s: AVSpeechSynthesizer, didFinish _: AVSpeechUtterance) { isSpeaking = false }
-    func speechSynthesizer(_ s: AVSpeechSynthesizer, didCancel _: AVSpeechUtterance) { isSpeaking = false }
+    nonisolated func speechSynthesizer(_ s: AVSpeechSynthesizer, didStart _: AVSpeechUtterance) {
+        Task { @MainActor [weak self] in self?.isSpeaking = true }
+    }
+    nonisolated func speechSynthesizer(_ s: AVSpeechSynthesizer, didFinish _: AVSpeechUtterance) {
+        Task { @MainActor [weak self] in self?.isSpeaking = false }
+    }
+    nonisolated func speechSynthesizer(_ s: AVSpeechSynthesizer, didCancel _: AVSpeechUtterance) {
+        Task { @MainActor [weak self] in self?.isSpeaking = false }
+    }
 
 
     func speakImmediate(_ text: String) {

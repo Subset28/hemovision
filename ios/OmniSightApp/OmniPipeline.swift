@@ -15,6 +15,7 @@ class OmniPipeline: NSObject, ARSessionDelegate, ObservableObject {
     private let scannerSession: OmniSightSession
     let arSession = ARSession()
     private var lastIngestTime: TimeInterval = 0
+    private var lastDepthDispatch: TimeInterval = 0
     private let ingestQueue = DispatchQueue(label: "com.orbconcepts.omnisight.ingest", qos: .userInitiated)
     private var isIngesting = false
     
@@ -36,14 +37,21 @@ class OmniPipeline: NSObject, ARSessionDelegate, ObservableObject {
 
     func start() {
         let config = ARWorldTrackingConfiguration()
-        
-        // Enable LiDAR depth if the device supports it
+
         if OmniPipeline.isSupported {
             config.frameSemantics = .sceneDepth
         }
-        
         config.isLightEstimationEnabled = false
-        
+        config.planeDetection = []
+
+        // Force 30fps: halves tracker CPU/GPU load and frame memory without touching display quality.
+        // ARKit default is 60fps which causes "resource constraints" warnings on loaded devices.
+        let formats = ARWorldTrackingConfiguration.supportedVideoFormats
+        if let fmt = formats.filter({ $0.framesPerSecond == 30 })
+                            .max(by: { $0.imageResolution.width < $1.imageResolution.width }) {
+            config.videoFormat = fmt
+        }
+
         arSession.run(config, options: [.resetTracking, .removeExistingAnchors])
         isRunning = true
     }
@@ -56,12 +64,16 @@ class OmniPipeline: NSObject, ARSessionDelegate, ObservableObject {
 
     // ARSessionDelegate
     
-    // Called ~60fps on ARKit's internal thread. Must return fast or frames pile up.
+    // Called at videoFormat fps on ARKit's internal thread. Must return fast or frames pile up.
     func session(_ session: ARSession, didUpdate frame: ARFrame) {
-        // LiDAR depth -- cheap sample, fine inline
+        // LiDAR depth -- throttle main-thread dispatch to 10fps (was every frame = 60 dispatches/sec)
         if OmniPipeline.isSupported, let depthMap = frame.sceneDepth?.depthMap {
-            let depth = depthMap.sampleDepth(at: CGPoint(x: 0.5, y: 0.5)) ?? 999.0
-            DispatchQueue.main.async { self.middleSensorDist = depth }
+            let now = frame.timestamp
+            if now - lastDepthDispatch >= 0.1 {
+                lastDepthDispatch = now
+                let depth = depthMap.sampleDepth(at: CGPoint(x: 0.5, y: 0.5)) ?? 999.0
+                DispatchQueue.main.async { self.middleSensorDist = depth }
+            }
         }
 
         // ML ingest -- throttled to ~15fps, dispatched off ARKit's thread so frames don't pile up

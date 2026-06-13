@@ -19,6 +19,7 @@ struct ARViewPreview: UIViewRepresentable {
         v.automaticallyUpdatesLighting = false
         v.preferredFramesPerSecond = 30
         v.rendersCameraGrain = false
+        v.antialiasingMode = .none
         return v
     }
 
