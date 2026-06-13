@@ -33,7 +33,6 @@ struct SettingsView: View {
                 Section {
                     Toggle("Hazard Beeps", isOn: $hazardAlarmsEnabled)
                     Toggle("Haptic Feedback", isOn: $hapticsEnabled)
-                    Toggle("Spatial Audio (Pan)", isOn: $panAudioEnabled)
                 } header: {
                     Text("Awareness")
                 } footer: {

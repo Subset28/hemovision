@@ -9,6 +9,7 @@ struct ContentView: View {
     @AppStorage("firstTimeUsingApp") private var firstTimeUsingApp: Bool = true
     @ObservedObject var app = AppStateManager.shared
     @ObservedObject var hearing = AppStateManager.shared.speechEngine
+    @Environment(\.scenePhase) private var scenePhase
 
     @State private var speechMutedBanner = false
     @State private var showingSettings = false
@@ -21,15 +22,18 @@ struct ContentView: View {
             } else {
                 mainDashboard
                     .onAppear {
-                        // Start scanning automatically if the engine is ready.
                         if app.engineAvailable && !app.isScanning {
                             app.setScanning(true)
                         }
                     }
                 }
             }
-            .onDisappear {
-                app.setScanning(false)
+            .onChange(of: scenePhase) { _, newPhase in
+                if newPhase == .active && app.engineAvailable && !app.isScanning && !firstTimeUsingApp {
+                    app.setScanning(true)
+                } else if newPhase == .background {
+                    app.setScanning(false)
+                }
             }
             .sheet(isPresented: $showingSettings) {
                 SettingsView()
