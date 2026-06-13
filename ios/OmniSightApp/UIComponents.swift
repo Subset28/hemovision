@@ -16,9 +16,9 @@ struct ARViewPreview: UIViewRepresentable {
     func makeUIView(context: Context) -> ARSCNView {
         let v = ARSCNView()
         v.session = session
-        v.automaticallyUpdatesLighting = true
-        v.preferredFramesPerSecond = 60
-        v.rendersCameraGrain = true
+        v.automaticallyUpdatesLighting = false
+        v.preferredFramesPerSecond = 30
+        v.rendersCameraGrain = false
         return v
     }
 

@@ -15,8 +15,6 @@ import Foundation
 
 @MainActor
 class SpeechEngine: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
-    static let shared = SpeechEngine()
-
     @Published private(set) var alertActive: Bool = false
 
     private let synth = AVSpeechSynthesizer()
@@ -60,9 +58,12 @@ class SpeechEngine: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
         super.init()
         synth.delegate = self
         let audio = AVAudioSession.sharedInstance()
-        // Audio MUST work for this to be accessible.
-        try! audio.setCategory(.playback, mode: .spokenAudio, options: [.duckOthers])
-        try! audio.setActive(true)
+        do {
+            try audio.setCategory(.playback, mode: .spokenAudio, options: [.duckOthers])
+            try audio.setActive(true)
+        } catch {
+            // TTS will be silent but the app won't crash
+        }
     }
 
     func start(scanning: OmniSightSession?) {

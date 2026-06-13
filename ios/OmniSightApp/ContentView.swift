@@ -43,11 +43,13 @@ struct ContentView: View {
             if app.isScanning {
                 // big camera view
                 #if os(iOS)
-                if let arSession = app.cameraManager?.arSession {
+                if app.cameraPermissionDenied {
+                    cameraPermissionDeniedView
+                } else if let arSession = app.cameraManager?.arSession {
                     ZStack {
                         ARViewPreview(session: arSession)
                             .ignoresSafeArea()
-                        
+
                         BoundingBoxOverlayView(objects: app.session?.lastPayload?.objects ?? [])
                             .ignoresSafeArea()
                     }
@@ -151,6 +153,29 @@ struct ContentView: View {
         .background(Capsule().fill(.black.opacity(0.8)))
         .foregroundStyle(.white)
         .transition(.move(edge: .top).combined(with: .opacity))
+    }
+
+    private var cameraPermissionDeniedView: some View {
+        VStack(spacing: 16) {
+            Image(systemName: "camera.slash.fill")
+                .font(.system(size: 60))
+                .foregroundStyle(.orange)
+            Text("Camera Access Required")
+                .font(.title2.bold())
+            Text("OmniSight needs camera access to detect obstacles. Go to Settings > Privacy > Camera to enable it.")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 32)
+            Button("Open Settings") {
+                if let url = URL(string: UIApplication.openSettingsURLString) {
+                    UIApplication.shared.open(url)
+                }
+            }
+            .buttonStyle(.borderedProminent)
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Camera access required. Open Settings to enable camera permission for OmniSight.")
     }
 
     private var engineCallout: some View {

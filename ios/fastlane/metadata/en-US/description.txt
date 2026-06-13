@@ -1,0 +1,27 @@
+Hearing Through Sight. Seeing Through Sound. 100% Offline.
+
+OmniSight Pro is a real-time environmental awareness app that translates the physical world into spatial audio for people with visual impairments, and turns loud sounds into visual alerts for people who are deaf or hard-of-hearing.
+
+Built by a student team at Orb Concepts, OmniSight Pro earned 2nd place at the Virginia TSA State Conference. We built it to solve a real problem, and now we're bringing it to everyone.
+
+KEY FEATURES
+
+Sight-to-Sound Translation
+Your phone becomes a second set of eyes. OmniSight maps nearby objects to a 3D audio field, adjusting left-right panning and volume based on distance and direction so you can hear exactly where obstacles are -- without looking at a screen.
+
+On-Device AI Vision
+A lightweight model identifies pedestrians, vehicles, furniture, and obstacles in real time. No internet required. No data ever leaves your device.
+
+Collision Prevention
+The app tracks how fast objects are approaching and triggers priority alerts before a collision develops. It watches so you don't have to.
+
+Complete Privacy
+All camera and microphone processing happens entirely on-device. Zero data leakage. Works with no internet connection.
+
+REQUIREMENTS
+
+iPhone 12 Pro or newer recommended for full LiDAR functionality. Core object detection works on any iPhone running iOS 16 or later.
+
+SAFETY NOTE
+
+OmniSight Pro is an assistive tool, not a replacement for white canes, guide dogs, or orientation and mobility training. Distance readings are estimated. Always use personal judgment when navigating.

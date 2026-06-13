@@ -14,6 +14,9 @@ import Combine
 class OmniPipeline: NSObject, ARSessionDelegate, ObservableObject {
     private let scannerSession: OmniSightSession
     let arSession = ARSession()
+    private var lastIngestTime: TimeInterval = 0
+    private let ingestQueue = DispatchQueue(label: "com.orbconcepts.omnisight.ingest", qos: .userInitiated)
+    private var isIngesting = false
     
     static let isSupported: Bool = {
         if #available(iOS 14.0, *) {
@@ -39,8 +42,7 @@ class OmniPipeline: NSObject, ARSessionDelegate, ObservableObject {
             config.frameSemantics = .sceneDepth
         }
         
-        // Enable light estimation for better visibility
-        config.isLightEstimationEnabled = true
+        config.isLightEstimationEnabled = false
         
         arSession.run(config, options: [.resetTracking, .removeExistingAnchors])
         isRunning = true
@@ -54,18 +56,22 @@ class OmniPipeline: NSObject, ARSessionDelegate, ObservableObject {
 
     // ARSessionDelegate
     
-    // This is called every time a new camera frame arrives (~60 fps)
+    // Called ~60fps on ARKit's internal thread. Must return fast or frames pile up.
     func session(_ session: ARSession, didUpdate frame: ARFrame) {
-        // 1. Feed the camera image to the YOLO engine
-        scannerSession.ingest(arFrame: frame)
-        
-        // 2. If LiDAR is available, update the center depth reading
+        // LiDAR depth -- cheap sample, fine inline
         if OmniPipeline.isSupported, let depthMap = frame.sceneDepth?.depthMap {
             let depth = depthMap.sampleDepth(at: CGPoint(x: 0.5, y: 0.5)) ?? 999.0
-            print("LiDAR DEBUG: middle distance is \(depth) meters")
-            DispatchQueue.main.async {
-                self.middleSensorDist = depth
-            }
+            DispatchQueue.main.async { self.middleSensorDist = depth }
+        }
+
+        // ML ingest -- throttled to ~15fps, dispatched off ARKit's thread so frames don't pile up
+        let now = frame.timestamp
+        guard now - lastIngestTime >= 0.067, !isIngesting else { return }
+        lastIngestTime = now
+        isIngesting = true
+        ingestQueue.async { [weak self, frame] in
+            self?.scannerSession.ingest(arFrame: frame)
+            self?.isIngesting = false
         }
     }
 }

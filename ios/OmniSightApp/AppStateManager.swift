@@ -3,13 +3,14 @@
 import OmniSightKit
 
 
+import AVFoundation
 import Foundation
 import SwiftUI
 import ARKit
 import Combine
 
 // AppStateManager
-// Central controller for the app. 
+// Central controller for the app.
 // Uses unified ARKit cameraManager to prevent camera freezes.
 
 @MainActor
@@ -18,9 +19,10 @@ class AppStateManager: ObservableObject {
 
     @Published var isScanning = false
     @Published var engineAvailable = false
+    @Published var cameraPermissionDenied = false
 
     let speechEngine = SpeechEngine()
-    
+
     private(set) var cameraManager: OmniPipeline?
     private(set) var session: OmniSightSession?
 
@@ -28,19 +30,20 @@ class AppStateManager: ObservableObject {
     private var isTransitioning = false
 
     private init() {
-        // If this fails, the app is broken anyway.
-        let detector = try! CoreMLDetector(modelResourceName: "ScanningData", bundle: .main)
+        guard let detector = try? CoreMLDetector(modelResourceName: "ScanningData", bundle: .main) else {
+            return
+        }
         var config = detector.config
         config.allowedClasses = SpeechEngine.allWhitelistedClasses
-        
+
         let engine = OpticalProcessor(detector: detector)
-        engine.config = config 
-        
+        engine.config = config
+
         session = OmniSightSession(engine: engine)
         engineAvailable = true
-        
+
         cameraManager = OmniPipeline(scannerSession: session!)
-        
+
         speechEngine.start(scanning: session!)
         setupDepthSubscription()
     }
@@ -55,6 +58,29 @@ class AppStateManager: ObservableObject {
 
     func setScanning(_ on: Bool) {
         guard !isTransitioning, isScanning != on else { return }
+
+        if on {
+            let status = AVCaptureDevice.authorizationStatus(for: .video)
+            switch status {
+            case .denied, .restricted:
+                cameraPermissionDenied = true
+                return
+            case .notDetermined:
+                AVCaptureDevice.requestAccess(for: .video) { [weak self] granted in
+                    Task { @MainActor in
+                        if granted {
+                            self?.setScanning(true)
+                        } else {
+                            self?.cameraPermissionDenied = true
+                        }
+                    }
+                }
+                return
+            default:
+                cameraPermissionDenied = false
+            }
+        }
+
         isTransitioning = true
         isScanning = on
 

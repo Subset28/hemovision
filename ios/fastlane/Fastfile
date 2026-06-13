@@ -1,0 +1,105 @@
+default_platform(:ios)
+
+platform :ios do
+
+  # ── Auth ──────────────────────────────────────────────────────────────────
+  # Set these env vars before running (or put in .env.secret, never commit):
+  #   ASC_KEY_ID          App Store Connect API key ID
+  #   ASC_ISSUER_ID       Issuer ID from App Store Connect → Users & Access → Keys
+  #   ASC_KEY_FILEPATH    Absolute path to the downloaded .p8 file
+  #
+  # Generate the key at: https://appstoreconnect.apple.com/access/integrations/api
+
+  def asc_api_key
+    app_store_connect_api_key(
+      key_id:        ENV["ASC_KEY_ID"],
+      issuer_id:     ENV["ASC_ISSUER_ID"],
+      key_filepath:  ENV["ASC_KEY_FILEPATH"],
+      duration:      1200,
+      in_house:      false
+    )
+  end
+
+  # ── Build ─────────────────────────────────────────────────────────────────
+  desc "Build release IPA"
+  lane :build do
+    gym(
+      project:           "OmniSight/OmniSight.xcodeproj",
+      scheme:            "OmniSight",
+      configuration:     "Release",
+      export_method:     "app-store",
+      destination:       "generic/platform=iOS",
+      output_directory:  "build",
+      output_name:       "OmniSight.ipa",
+      clean:             true,
+      xcargs:            "-allowProvisioningUpdates"
+    )
+  end
+
+  # ── Push metadata only (no build, no screenshots) ────────────────────────
+  desc "Push metadata to App Store Connect without uploading binary"
+  lane :push_metadata do
+    api_key = asc_api_key
+    deliver(
+      api_key:              api_key,
+      skip_binary_upload:   true,
+      skip_screenshots:     true,
+      skip_metadata:        false,
+      force:                true,
+      submit_for_review:    false,
+      precheck_include_in_app_purchases: false
+    )
+  end
+
+  # ── Upload existing IPA to TestFlight (no rebuild) ───────────────────────
+  desc "Upload pre-built IPA to TestFlight"
+  lane :upload do
+    api_key = asc_api_key
+    pilot(
+      api_key:                           api_key,
+      ipa:                               "build/OmniSight.ipa",
+      skip_waiting_for_build_processing: true,
+      changelog:                         "Initial release"
+    )
+  end
+
+  # ── TestFlight ────────────────────────────────────────────────────────────
+  desc "Build + upload to TestFlight"
+  lane :beta do
+    api_key = asc_api_key
+    build
+    pilot(
+      api_key:                        api_key,
+      skip_waiting_for_build_processing: true,
+      changelog:                      "New build"
+    )
+  end
+
+  # ── App Store ─────────────────────────────────────────────────────────────
+  desc "Build + submit to App Store review"
+  lane :release do
+    api_key = asc_api_key
+    build
+    deliver(
+      api_key:                   api_key,
+      submit_for_review:         true,
+      automatic_release:         false,
+      force:                     true,          # skip HTML preview
+      skip_screenshots:          true,          # add screenshots in ASC manually first
+      skip_metadata:             false,
+      precheck_include_in_app_purchases: false
+    )
+  end
+
+  # ── Increment build number ────────────────────────────────────────────────
+  desc "Bump build number using ASC latest + 1"
+  lane :bump_build do
+    api_key = asc_api_key
+    latest = latest_testflight_build_number(api_key: api_key)
+    increment_build_number(
+      build_number:   latest + 1,
+      xcodeproj:      "OmniSight/OmniSight.xcodeproj"
+    )
+  end
+
+end

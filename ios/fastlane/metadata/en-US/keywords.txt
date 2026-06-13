@@ -1,0 +1,1 @@
+accessibility,spatial audio,object detection,blind,deaf,obstacle,LiDAR,offline,assistive,vision

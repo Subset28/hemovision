@@ -12,18 +12,9 @@ struct SettingsView: View {
     @AppStorage("hapticsEnabled") private var hapticsEnabled: Bool = true
     @AppStorage("panAudioEnabled") private var panAudioEnabled: Bool = true
     
-    // Debug toggle to see processing stats
-    @State private var showDebugStats = true
-
     var body: some View {
         NavigationStack {
             Form {
-                Section {
-                    Toggle("Show Debug Overlays", isOn: $showDebugStats)
-                } header: {
-                    Text("Developer")
-                }
-
                 Section {
                     Picker("Verbosity", selection: $verbosityRaw) {
                         Text("Low Noise").tag("lowNoise")
