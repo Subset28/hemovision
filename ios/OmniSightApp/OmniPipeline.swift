@@ -44,11 +44,13 @@ class OmniPipeline: NSObject, ARSessionDelegate, ObservableObject {
         config.isLightEstimationEnabled = false
         config.planeDetection = []
 
-        // Force 30fps: halves tracker CPU/GPU load and frame memory without touching display quality.
-        // ARKit default is 60fps which causes "resource constraints" warnings on loaded devices.
+        // Force 30fps at ≤1920px: halves tracker load vs default 60fps.
+        // Capped at 1920px — picking max-width 30fps on Pro Max selects 4K formats
+        // that exceed memory budget with sceneDepth enabled, causing instant SIGKILL.
         let formats = ARWorldTrackingConfiguration.supportedVideoFormats
-        if let fmt = formats.filter({ $0.framesPerSecond == 30 })
-                            .max(by: { $0.imageResolution.width < $1.imageResolution.width }) {
+        if let fmt = formats
+            .filter({ $0.framesPerSecond == 30 && $0.imageResolution.width <= 1920 })
+            .max(by: { $0.imageResolution.width < $1.imageResolution.width }) {
             config.videoFormat = fmt
         }
 
