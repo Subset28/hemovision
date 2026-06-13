@@ -26,7 +26,7 @@
     <string>Camera access is required to detect obstacles in your physical environment</string>
     <key>UIRequiredDeviceCapabilities</key>
     <array>
-        <string>arkit</string>
+        <string>video-camera</string>
     </array>
     <key>UISupportedInterfaceOrientations</key>
     <array>
