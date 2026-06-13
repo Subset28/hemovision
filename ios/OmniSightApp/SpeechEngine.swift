@@ -106,6 +106,9 @@ class SpeechEngine: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
         if !isEnabled { return }
         if let mute = mutedUntil, Date() < mute { return }
 
+        let hazardAlarmsOn = (UserDefaults.standard.object(forKey: "hazardAlarmsEnabled") as? Bool) ?? true
+        let hapticsOn      = (UserDefaults.standard.object(forKey: "hapticsEnabled") as? Bool) ?? true
+
         var fastCheck:  [DetectedObjectDTO] = []
         var confirmed:  [DetectedObjectDTO] = []
 
@@ -138,7 +141,7 @@ class SpeechEngine: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
         if newTraveling != userInVehicle {
             userInVehicle = newTraveling
             if userInVehicle {
-                HapticManager.shared.warningVibration()
+                if hapticsOn { HapticManager.shared.warningVibration() }
                 addToQueue("Travel mode active", priority: 100, expiresIn: 2.0)
             } else {
                 addToQueue("Walking mode active", priority: 100, expiresIn: 2.0)
@@ -171,10 +174,9 @@ class SpeechEngine: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
             }
         }
 
-        let hazardAlarmsOn = (UserDefaults.standard.object(forKey: "hazardAlarmsEnabled") as? Bool) ?? true
         if let danger = closestDanger, hazardAlarmsOn {
             alertActive = true
-            HapticManager.shared.warningVibration()
+            if hapticsOn { HapticManager.shared.warningVibration() }
             if now.timeIntervalSince(lastCollisionAt) > 3.0 {
                 lastCollisionAt = now
                 let text = "Warning! \(SpeechEngine.mapToSpokenName(danger.objectClass)), \(distText(danger.distanceM))!"
@@ -376,11 +378,13 @@ class SpeechEngine: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
         
         if now.timeIntervalSince(lastLiDARAt) < 2.5 { return }  // shorter cooldown
 
-        guard (UserDefaults.standard.object(forKey: "hazardAlarmsEnabled") as? Bool) ?? true else { return }
+        let hazardAlarmsOn = (UserDefaults.standard.object(forKey: "hazardAlarmsEnabled") as? Bool) ?? true
+        let hapticsOn      = (UserDefaults.standard.object(forKey: "hapticsEnabled") as? Bool) ?? true
+        guard hazardAlarmsOn else { return }
 
         lastLiDARAt = Date()
         alertActive = true
-        HapticManager.shared.warningVibration()
+        if hapticsOn { HapticManager.shared.warningVibration() }
 
         let dist = distText(Double(depthMeters))
         let text = "Obstacle ahead, \(dist)"
