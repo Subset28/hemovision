@@ -131,7 +131,9 @@ public class OpticalProcessor {
                         distanceConfidence: confidence,
                         panValue: o.panValue,
                         velocityMps: (o.velocityMps * 100).rounded() / 100,
-                        priority: o.priority
+                        priority: o.priority,
+                        matchCount: o.matchCount,
+                        isCoasting: o.state == .coasting
                     )
                 )
             }

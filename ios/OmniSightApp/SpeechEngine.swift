@@ -2,38 +2,56 @@
 
 import OmniSightKit
 
-
 import AVFoundation
 import Combine
 import Foundation
 
-// OmniSight Speech Engine
-// This manages the voice feedback for the objects we find.
-// We tried a few different "levels" but settled on: 1=Emergency, 2=Approaching, 3=Nearby
-
-// Configuration moved to functions for better organization.
+// SpeechEngine — voice feedback controller for OmniSight.
+//
+// Improvements over v1:
+//   • Uses tracker's matchCount/isCoasting from DTO instead of a redundant
+//     local framesSeen dictionary. Coasting tracks (extrapolated position) are
+//     excluded from announcements to avoid stale-location speech.
+//   • SceneContextEngine generates scene-level summaries every 6s ("Two people
+//     ahead, one approaching from the right") so the user gets a holistic view
+//     in busy environments without per-object spam.
+//   • Mode-aware: in .finding(target:) mode all speech is suppressed except
+//     when the target class is detected, at which point it fires at priority 95.
+//   • Emergency TTS rate increased to 0.56 (was 0.52) so warnings arrive faster.
 
 @MainActor
 class SpeechEngine: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
     @Published private(set) var alertActive: Bool = false
+    @Published var objectCount: Int = 0
 
     private let synth = AVSpeechSynthesizer()
     private var frameSub: AnyCancellable?
     private var scanningSession: OmniSightSession?
     private var speakTimer: Timer?
-    private var isSpeaking = false
-    private var isEnabled = false
+    private var isSpeaking  = false
+    private var isEnabled   = false
     private var mutedUntil: Date?
 
-    @Published var objectCount: Int = 0
-
-    private var lastSpokenAt: [String: Date] = [:]
-    private var lastClassAt: [String: Date] = [:]
+    // Per-object and per-class cooldowns
+    private var lastSpokenAt: [String: Date] = [:]  // objectId → last spoken
+    private var lastClassAt:  [String: Date] = [:]  // className → last spoken
 
     private var userInVehicle = false
     private var travelVelocitySamples: [Double] = []
 
     private var lastLiDARDepth: Float = 0.0
+    private var lastCollisionAt: Date = .distantPast
+    private var lastLiDARAt:     Date = .distantPast
+    private var lastLiDARTime:   Date = .distantPast
+
+    // Scene-level summaries (fires every ~6s, replaces per-object listing in calm scenes)
+    private let sceneEngine = SceneContextEngine(cooldown: 6.0)
+    private var lastSceneSummaryAt: Date = .distantPast
+
+    // Current operating mode — set by AppStateManager
+    var mode: AppMode = .navigation
+    // Cooldown for finding-mode "found it" announcements
+    private var lastFindAt: Date = .distantPast
 
     struct QueueItem {
         var text: String
@@ -43,27 +61,19 @@ class SpeechEngine: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
     }
     private var queue: [QueueItem] = []
 
-    private var lastCollisionAt: Date = .distantPast
-    private var lastLiDARAt: Date = .distantPast
+    static let allWhitelistedClasses: Set<String> = [
+        "person", "car", "truck", "bus", "bicycle", "motorcycle",
+        "dog", "cat", "chair", "table", "door", "stairs",
+    ]
 
-    private var framesSeen: [String: Int] = [:]
-    
-    private var lastLiDARTime: Date = .distantPast
+    // MARK: — Setup
 
-    // These are the only things we want the scanner to actually talk about
-    static let allWhitelistedClasses: Set<String> = ["person", "car", "truck", "bus", "bicycle", "motorcycle", "dog", "cat", "chair", "table", "door", "stairs"]
-
-    // Setup
     override init() {
         super.init()
         synth.delegate = self
         let audio = AVAudioSession.sharedInstance()
-        do {
-            try audio.setCategory(.playback, mode: .spokenAudio, options: [.duckOthers])
-            try audio.setActive(true)
-        } catch {
-            // TTS will be silent but the app won't crash
-        }
+        try? audio.setCategory(.playback, mode: .spokenAudio, options: [.duckOthers])
+        try? audio.setActive(true)
     }
 
     func start(scanning: OmniSightSession?) {
@@ -74,13 +84,9 @@ class SpeechEngine: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
         frameSub = scanning?.$lastPayload
             .receive(on: DispatchQueue.main)
             .sink { [weak self] frame in
-                // Only process if the frame isn't nil
-                if frame != nil {
-                    self?.onFrame(frame!)
-                }
+                if let f = frame { self?.onFrame(f) }
             }
 
-        // Check the queue every 0.1s to see if we need to say something new
         speakTimer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
             Task { @MainActor [weak self] in self?.drainQueue() }
         }
@@ -95,150 +101,127 @@ class SpeechEngine: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
         speakTimer = nil
         synth.stopSpeaking(at: .immediate)
         queue.removeAll()
-        framesSeen.removeAll()
         lastSpokenAt.removeAll()
         lastClassAt.removeAll()
         isSpeaking  = false
         alertActive = false
+        sceneEngine.reset()
     }
 
+    // MARK: — Frame processing
+
     private func onFrame(_ frame: FramePayload) {
-        if !isEnabled { return }
+        guard isEnabled else { return }
         if let mute = mutedUntil, Date() < mute { return }
 
         let hazardAlarmsOn = (UserDefaults.standard.object(forKey: "hazardAlarmsEnabled") as? Bool) ?? true
         let hapticsOn      = (UserDefaults.standard.object(forKey: "hapticsEnabled") as? Bool) ?? true
 
+        // Only use actively-detected (non-coasting) objects — coasting tracks have
+        // extrapolated positions and should not trigger new announcements.
+        let activeObjects = frame.objects.filter { !$0.isCoasting }
+
+        // Filter by whitelist + range + confidence
         var fastCheck:  [DetectedObjectDTO] = []
         var confirmed:  [DetectedObjectDTO] = []
 
-        for obj in frame.objects {
-            let maxRange = getMaxRange(for: obj.objectClass)
-            if maxRange == nil { continue }               // not whitelisted
-            if obj.distanceM > maxRange! { continue }     // too far away
-            if obj.confidence < getMinConfidence(for: obj.objectClass) { continue }
-
-            let seen = (framesSeen[obj.objectId] ?? 0) + 1
-            framesSeen[obj.objectId] = seen
-
-            // Multi-frame confirmation to prevent false positives
-            if seen >= 2 { fastCheck.append(obj) }
-            if seen >= 3 { confirmed.append(obj) }
+        for obj in activeObjects {
+            guard let maxRange = getMaxRange(for: obj.objectClass) else { continue }
+            guard obj.distanceM <= maxRange else { continue }
+            guard obj.confidence >= getMinConfidence(for: obj.objectClass) else { continue }
+            if obj.matchCount >= 2 { fastCheck.append(obj) }
+            if obj.matchCount >= 3 { confirmed.append(obj) }
         }
 
-        // Automated Travel Mode
-        // Determines if the user is in a vehicle based on object velocity
+        // — Finding mode: suppress everything except the target —
+        if case .finding(let target) = mode {
+            handleFindingMode(target: target, confirmed: confirmed, hapticsOn: hapticsOn)
+            objectCount = confirmed.count
+            return
+        }
+
+        // — Navigation mode —
+
+        // Automated travel detection
         let highSpeedApproachers = confirmed.filter { $0.velocityMps < -4.0 }
-        if highSpeedApproachers.count >= 2 {
-            travelVelocitySamples.append(1.0)
-        } else {
-            travelVelocitySamples.append(0.0)
-        }
+        travelVelocitySamples.append(highSpeedApproachers.count >= 2 ? 1.0 : 0.0)
         if travelVelocitySamples.count > 30 { travelVelocitySamples.removeFirst() }
-        
         let travelScore = travelVelocitySamples.reduce(0, +) / Double(travelVelocitySamples.count)
         let newTraveling = travelScore > 0.5
         if newTraveling != userInVehicle {
             userInVehicle = newTraveling
-            if userInVehicle {
-                if hapticsOn { HapticManager.shared.warningVibration() }
-                addToQueue("Travel mode active", priority: 100, expiresIn: 2.0)
-            } else {
-                addToQueue("Walking mode active", priority: 100, expiresIn: 2.0)
-            }
+            if hapticsOn { HapticManager.shared.warningVibration() }
+            addToQueue(userInVehicle ? "Travel mode active" : "Walking mode active",
+                       priority: 100, expiresIn: 2.0)
         }
 
-        // Cleanup old IDs
-        let liveIds = Set(frame.objects.map { $0.objectId })
-        var updatedSeen: [String: Int] = [:]
-        for (id, count) in framesSeen {
-            if liveIds.contains(id) {
-                updatedSeen[id] = count
-            }
-        }
-        framesSeen = updatedSeen
         objectCount = confirmed.count
-
         let now = Date()
+        let verbosity = UserDefaults.standard.string(forKey: "verbosityMode") ?? "normal"
 
-        // Emergency Warnings
-        var closestDanger: DetectedObjectDTO? = nil
-        let interiorLimit = userInVehicle ? 1.5 : 1.2 
-        
-        for obj in fastCheck {
-            let isDirectlyAhead = abs(obj.panValue) < 0.45
-            if obj.distanceM <= interiorLimit && isDirectlyAhead && obj.velocityMps < -0.3 {
-                if closestDanger == nil || obj.distanceM < closestDanger!.distanceM {
-                    closestDanger = obj
-                }
-            }
-        }
+        // — Emergency: fast-approaching object directly ahead —
+        let interiorLimit = userInVehicle ? 1.5 : 1.2
+        let danger = fastCheck.filter {
+            abs($0.panValue) < 0.45 && $0.distanceM <= interiorLimit && $0.velocityMps < -0.3
+        }.min(by: { $0.distanceM < $1.distanceM })
 
-        if let danger = closestDanger, hazardAlarmsOn {
+        if let d = danger, hazardAlarmsOn {
             alertActive = true
             if hapticsOn { HapticManager.shared.warningVibration() }
             if now.timeIntervalSince(lastCollisionAt) > 3.0 {
                 lastCollisionAt = now
-                let text = "Warning! \(SpeechEngine.mapToSpokenName(danger.objectClass)), \(distText(danger.distanceM))!"
+                let text = "Warning! \(SpeechEngine.spoken(d.objectClass)), \(distText(d.distanceM))!"
                 emergencySpeak(text)
             }
         } else {
             alertActive = false
         }
 
-        // Objects Approaching
-        var closestApproaching: DetectedObjectDTO? = nil
-        for obj in confirmed {
-            let isApproaching = obj.velocityMps < -0.40
-            if isApproaching {
-                if closestApproaching == nil || obj.distanceM < closestApproaching!.distanceM {
-                    closestApproaching = obj
-                }
-            }
-        }
-
-        if let obj = closestApproaching {
-            let cls = obj.objectClass.lowercased()
-            let timeSinceObject = now.timeIntervalSince(lastSpokenAt[obj.objectId] ?? .distantPast)
-            let timeSinceClass  = now.timeIntervalSince(lastClassAt[cls] ?? .distantPast)
-
-            if timeSinceObject >= 5 && timeSinceClass >= 5 {
-                let text = "\(SpeechEngine.mapToSpokenName(obj.objectClass)), \(directionText(obj.panValue)), \(distText(obj.distanceM)), approaching"
-                addToQueue(text, priority: 80, expiresIn: 1.2)
-                lastSpokenAt[obj.objectId] = now
-                lastClassAt[cls] = now
-            }
-        }
-
-        // Nearby Static Objects
-        // Don't interrupt high-priority warnings
-        for item in queue {
-            if item.priority >= 80 { return }
-        }
-
-        let verbosity = UserDefaults.standard.string(forKey: "verbosityMode") ?? "normal"
-
-        // Closest static object
-        var closestNearby: DetectedObjectDTO? = nil
-        for obj in confirmed {
-            let isApproaching = obj.velocityMps < -0.40
-            if !isApproaching {
-                if closestNearby == nil || obj.distanceM < closestNearby!.distanceM {
-                    closestNearby = obj
-                }
-            }
-        }
-
-        if let obj = closestNearby {
+        // — Approaching objects —
+        if let obj = confirmed.filter({ $0.velocityMps < -0.40 }).min(by: { $0.distanceM < $1.distanceM }) {
             let cls  = obj.objectClass.lowercased()
             let prio = getPriority(for: obj.objectClass)
+
+            let suppressApproaching = verbosity != "normal" && prio < 50
+            if !suppressApproaching {
+                let sinceObj   = now.timeIntervalSince(lastSpokenAt[obj.objectId] ?? .distantPast)
+                let sinceCls   = now.timeIntervalSince(lastClassAt[cls] ?? .distantPast)
+                let classCooldown = getClassCooldown(for: cls, verbosity: verbosity)
+
+                if sinceObj >= 5 && sinceCls >= classCooldown {
+                    let text = "\(SpeechEngine.spoken(obj.objectClass)), \(directionText(obj.panValue)), \(distText(obj.distanceM)), approaching"
+                    addToQueue(text, priority: 80, expiresIn: 1.2)
+                    lastSpokenAt[obj.objectId] = now
+                    lastClassAt[cls] = now
+                }
+            }
+        }
+
+        // — Scene summary (every 6s, replaces per-object listing) —
+        // Fires when no high-priority items are queued, so it doesn't interrupt warnings.
+        let hasHighPriority = queue.contains { $0.priority >= 80 }
+        if !hasHighPriority, let ctx = sceneEngine.update(objects: confirmed, now: now) {
+            let scenePrio = min(ctx.urgency, 60)  // cap below approaching-object priority
+            addToQueue(ctx.summary, priority: scenePrio, expiresIn: 3.0)
+        } else if hasHighPriority {
+            // Don't announce static objects if something important is queued
+            return
+        }
+
+        // — Closest static object (fallback when scene summary didn't fire) —
+        if let obj = confirmed.filter({ $0.velocityMps >= -0.40 }).min(by: { $0.distanceM < $1.distanceM }) {
+            let cls  = obj.objectClass.lowercased()
+            let prio = getPriority(for: obj.objectClass)
+
             if verbosity == "criticalOnly" && prio < 50 { return }
+            if verbosity == "lowNoise"     && prio < 50 { return }
 
-            let timeSinceObject = now.timeIntervalSince(lastSpokenAt[obj.objectId] ?? .distantPast)
-            let timeSinceClass  = now.timeIntervalSince(lastClassAt[cls] ?? .distantPast)
+            let sinceObj  = now.timeIntervalSince(lastSpokenAt[obj.objectId] ?? .distantPast)
+            let sinceCls  = now.timeIntervalSince(lastClassAt[cls] ?? .distantPast)
+            let classCooldown = getClassCooldown(for: cls, verbosity: verbosity)
 
-            if timeSinceObject >= 30 && timeSinceClass >= 12 {
-                let text = "\(SpeechEngine.mapToSpokenName(obj.objectClass)), \(directionText(obj.panValue)), \(distText(obj.distanceM))"
+            if sinceObj >= 30 && sinceCls >= classCooldown {
+                let text = "\(SpeechEngine.spoken(obj.objectClass)), \(directionText(obj.panValue)), \(distText(obj.distanceM))"
                 addToQueue(text, priority: prio, expiresIn: 2.0)
                 lastSpokenAt[obj.objectId] = now
                 lastClassAt[cls] = now
@@ -246,36 +229,51 @@ class SpeechEngine: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
         }
     }
 
+    // MARK: — Finding mode
+
+    private func handleFindingMode(target: String, confirmed: [DetectedObjectDTO], hapticsOn: Bool) {
+        guard let found = confirmed.filter({ $0.objectClass.lowercased() == target.lowercased() })
+                                   .min(by: { $0.distanceM < $1.distanceM }) else { return }
+
+        let now = Date()
+        guard now.timeIntervalSince(lastFindAt) >= 4.0 else { return }
+        lastFindAt = now
+
+        if hapticsOn { HapticManager.shared.warningVibration() }
+        let dir  = directionText(found.panValue)
+        let dist = distText(found.distanceM)
+        addToQueue("Found \(SpeechEngine.spoken(target)), \(dir), \(dist)", priority: 95, expiresIn: 3.0)
+    }
+
+    // MARK: — Queue management
 
     private func addToQueue(_ text: String, priority: Int, expiresIn: TimeInterval) {
-        for item in queue {
-            if item.text == text { return }
-        }
+        guard !queue.contains(where: { $0.text == text }) else { return }
         queue.append(QueueItem(text: text, priority: priority, addedAt: Date(), expiresIn: expiresIn))
     }
 
     private func drainQueue() {
         queue = queue.filter { Date().timeIntervalSince($0.addedAt) < $0.expiresIn }
-        if isSpeaking || queue.isEmpty { return }
+        guard !isSpeaking, !queue.isEmpty else { return }
         queue.sort { $0.priority > $1.priority }
         speakToUser(queue.removeFirst().text)
     }
-
 
     private func emergencySpeak(_ text: String) {
         synth.stopSpeaking(at: .immediate)
         isSpeaking = false
         queue.removeAll()
-        speakToUser(text)
+        speakToUser(text, rate: 0.56)
     }
 
-    private func speakToUser(_ text: String) {
-        let utterance       = AVSpeechUtterance(string: text)
-        utterance.rate      = 0.52
-        utterance.voice     = AVSpeechSynthesisVoice(language: "en-US")
+    private func speakToUser(_ text: String, rate: Float = 0.52) {
+        let utterance  = AVSpeechUtterance(string: text)
+        utterance.rate = rate
+        utterance.voice = AVSpeechSynthesisVoice(language: "en-US")
         synth.speak(utterance)
     }
 
+    // MARK: — Spatial text helpers
 
     private func directionText(_ pan: Double) -> String {
         if pan < -0.75 { return "far left" }
@@ -287,45 +285,51 @@ class SpeechEngine: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
         return "far right"
     }
 
-
     private func distText(_ meters: Double) -> String {
         let useImperial = UserDefaults.standard.bool(forKey: "useImperialUnits")
-
         if useImperial {
             let feet = max(2, Int((meters * 3.281).rounded()))
-            if feet == 1 { return "1 foot" }
-            return "\(feet) feet"
+            return feet == 1 ? "1 foot" : "\(feet) feet"
         }
-
         return String(format: "%.1f meters", meters)
     }
 
+    // MARK: — Priority / range tables
 
-    // Priorities based on testing in various environments
     private func getPriority(for label: String) -> Int {
         let name = label.lowercased()
         if ["car", "truck", "bus"].contains(name) { return 75 }
-        if ["person", "stairs"].contains(name) { return 70 }
-        if ["chair", "table"].contains(name) { return 30 }
+        if ["person", "stairs"].contains(name)    { return 70 }
+        if ["chair", "table"].contains(name)      { return 30 }
         return 10
     }
 
     private func getMaxRange(for label: String) -> Double? {
-        let name = label.lowercased()
-        switch name {
-        case "person": return 6.0
-        case "car", "truck", "bus": return 12.0
-        case "chair", "table": return 4.0
-        case "stairs": return 6.0
-        case "door": return 5.0
-        default: return 5.0
+        switch label.lowercased() {
+        case "person":          return 6.0
+        case "car","truck","bus": return 12.0
+        case "chair","table":   return 4.0
+        case "stairs":          return 6.0
+        case "door":            return 5.0
+        default:                return 5.0
         }
     }
 
     private func getMinConfidence(for label: String) -> Double {
-        return ["chair", "table"].contains(label.lowercased()) ? 0.60 : 0.50
+        ["chair", "table"].contains(label.lowercased()) ? 0.60 : 0.50
     }
 
+    private func getClassCooldown(for cls: String, verbosity: String) -> TimeInterval {
+        let isFurniture = ["chair", "table"].contains(cls)
+        let base: TimeInterval = isFurniture ? 15 : 5
+        return verbosity == "lowNoise" ? base * 2 : base
+    }
+
+    private static func spoken(_ raw: String) -> String {
+        raw.replacingOccurrences(of: "_", with: " ").capitalized
+    }
+
+    // MARK: — AVSpeechSynthesizerDelegate
 
     nonisolated func speechSynthesizer(_ s: AVSpeechSynthesizer, didStart _: AVSpeechUtterance) {
         Task { @MainActor [weak self] in self?.isSpeaking = true }
@@ -337,6 +341,7 @@ class SpeechEngine: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
         Task { @MainActor [weak self] in self?.isSpeaking = false }
     }
 
+    // MARK: — Public API
 
     func speakImmediate(_ text: String) {
         synth.stopSpeaking(at: .immediate)
@@ -355,40 +360,51 @@ class SpeechEngine: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
     func setScanningSpeechEnabled(_ on: Bool) { isEnabled = on }
     func announceSystemMessageOnce(key: String, message: String) { speakImmediate(message) }
 
-    // LiDAR logic
+    func setMode(_ newMode: AppMode) {
+        let changed = mode != newMode
+        mode = newMode
+        if changed {
+            sceneEngine.reset()
+            lastFindAt = .distantPast
+            if case .finding(let t) = newMode {
+                speakImmediate("Finding \(SpeechEngine.spoken(t)). Hold camera up.")
+            } else {
+                speakImmediate("Navigation mode")
+            }
+        }
+    }
+
+    // MARK: — LiDAR obstacle detection
+
     func updateLiDARDepth(_ depthMeters: Float) {
-        if !isEnabled { return }
+        guard isEnabled else { return }
         if let mute = mutedUntil, Date() < mute { return }
-        
+        // Finding mode: still warn about collisions
+
         let now = Date()
-        let dt = now.timeIntervalSince(lastLiDARTime)
+        let dt  = now.timeIntervalSince(lastLiDARTime)
         let vel = (depthMeters - lastLiDARDepth) / Float(max(0.01, dt))
-        
+
         lastLiDARDepth = depthMeters
         lastLiDARTime  = now
 
-        // Skip if the optical system already labeled this spot
-        let recentlySeenObjects = scanningSession?.lastPayload?.objects ?? []
-        let alreadyIdentified = recentlySeenObjects.contains { obj in
-            let distDiff = abs(Double(depthMeters) - obj.distanceM)
-            let isAhead = abs(obj.panValue) < 0.40
-            return distDiff < 0.40 && isAhead && obj.confidence > 0.40
+        // Skip if optical system already identified this spot
+        let recentObjects = scanningSession?.lastPayload?.objects ?? []
+        let alreadyTagged = recentObjects.contains {
+            abs(Double(depthMeters) - $0.distanceM) < 0.40 && abs($0.panValue) < 0.40 && $0.confidence > 0.40
         }
-        
-        if alreadyIdentified { return }
+        if alreadyTagged { return }
 
-        // Collision logic
         let minThreshold: Float = userInVehicle ? 1.5 : 1.2
-        if depthMeters >= minThreshold { return }
-        if userInVehicle && vel > -0.2 { return } 
-        
-        if now.timeIntervalSince(lastLiDARAt) < 2.5 { return }  // shorter cooldown
+        guard depthMeters < minThreshold else { return }
+        if userInVehicle && vel > -0.2 { return }
+        guard now.timeIntervalSince(lastLiDARAt) >= 2.5 else { return }
 
         let hazardAlarmsOn = (UserDefaults.standard.object(forKey: "hazardAlarmsEnabled") as? Bool) ?? true
         let hapticsOn      = (UserDefaults.standard.object(forKey: "hapticsEnabled") as? Bool) ?? true
         guard hazardAlarmsOn else { return }
 
-        lastLiDARAt = Date()
+        lastLiDARAt = now
         alertActive = true
         if hapticsOn { HapticManager.shared.warningVibration() }
 
@@ -400,10 +416,5 @@ class SpeechEngine: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
         } else {
             addToQueue(text, priority: 99, expiresIn: 1.5)
         }
-    }
-
-
-    private static func mapToSpokenName(_ raw: String) -> String {
-        return raw.replacingOccurrences(of: "_", with: " ").capitalized
     }
 }

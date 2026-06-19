@@ -65,6 +65,9 @@ public struct DetectedObjectDTO: Codable, Equatable, Sendable {
     public var panValue: Double
     public var velocityMps: Double
     public var priority: String
+    // Runtime tracking state — excluded from Codable (not in CodingKeys)
+    public var matchCount:  Int  = 1    // consecutive frames this track has been matched
+    public var isCoasting:  Bool = false // true when position is extrapolated, not detected
 
     enum CodingKeys: String, CodingKey {
         case objectId = "object_id"

@@ -12,7 +12,8 @@ struct ContentView: View {
     @Environment(\.scenePhase) private var scenePhase
 
     @State private var speechMutedBanner = false
-    @State private var showingSettings = false
+    @State private var showingSettings   = false
+    @State private var showingFindPicker = false
 
     var body: some View {
         Group {
@@ -114,9 +115,15 @@ struct ContentView: View {
             }
             .padding()
 
-            // Bottom Scan Dock
+            // Scan Status HUD — above the dock
             VStack {
                 Spacer()
+                if app.isScanning {
+                    scanStatusPill
+                        .padding(.bottom, 4)
+                }
+                modePill
+                    .padding(.bottom, 4)
                 scanDock
             }
         }
@@ -135,6 +142,7 @@ struct ContentView: View {
         }
         .tint(OmniSightTheme.accent)
         .preferredColorScheme(.dark)
+        .sheet(isPresented: $showingFindPicker) { findPickerSheet }
     }
 
     // standard legal text
@@ -197,6 +205,73 @@ struct ContentView: View {
         .background(RoundedRectangle(cornerRadius: 16).fill(.white.opacity(0.05)))
     }
 
+    // Mode pill — shows current mode, tap to switch or cancel finding
+    private var modePill: some View {
+        Button {
+            if app.mode.isFinding {
+                app.mode = .navigation
+            } else {
+                showingFindPicker = true
+            }
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: app.mode.isFinding ? "magnifyingglass.circle.fill" : "scope")
+                    .font(.caption.bold())
+                Text(app.mode.isFinding ? app.mode.displayName : "Find Object")
+                    .font(.caption.bold())
+                if app.mode.isFinding {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .foregroundStyle(app.mode.isFinding ? .yellow : .white)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 7)
+            .background(
+                Capsule().fill(app.mode.isFinding ? Color.yellow.opacity(0.2) : Color.white.opacity(0.12))
+            )
+        }
+        .accessibilityLabel(app.mode.isFinding ? "Cancel finding \(app.mode.findingTarget ?? ""). Tap to return to navigation mode." : "Find a specific object. Tap to choose.")
+    }
+
+    // Sheet: pick which object to search for
+    private var findPickerSheet: some View {
+        NavigationStack {
+            List(findableObjects, id: \.self) { obj in
+                Button {
+                    app.mode = .finding(target: obj)
+                    showingFindPicker = false
+                } label: {
+                    Label(obj.replacingOccurrences(of: "_", with: " ").capitalized,
+                          systemImage: iconForObject(obj))
+                }
+                .foregroundStyle(.primary)
+            }
+            .navigationTitle("Find Object")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { showingFindPicker = false }
+                }
+            }
+        }
+        .preferredColorScheme(.dark)
+    }
+
+    private func iconForObject(_ obj: String) -> String {
+        switch obj {
+        case "person":    return "person.fill"
+        case "chair":     return "chair.lounge.fill"
+        case "car", "truck", "bus": return "car.fill"
+        case "bicycle", "motorcycle": return "bicycle"
+        case "door":      return "door.left.hand.open"
+        case "stairs":    return "staircase"
+        case "dog", "cat": return "pawprint.fill"
+        default:          return "viewfinder"
+        }
+    }
+
     private var scanDock: some View {
         HStack {
             Button {
@@ -219,6 +294,29 @@ struct ContentView: View {
             .padding(.horizontal, 24)
             .padding(.bottom, 40)
         }
+    }
+
+    private var scanStatusPill: some View {
+        let objects  = app.session?.lastPayload?.objects ?? []
+        let count    = hearing.objectCount
+        let closest  = objects.min(by: { $0.distanceM < $1.distanceM })
+
+        let label: String = {
+            guard count > 0, let obj = closest else { return "Scanning..." }
+            let dist = String(format: "%.1fm", obj.distanceM)
+            let name = obj.objectClass.capitalized
+            if count == 1 { return "\(name)  \(dist)" }
+            return "\(count) objects  •  \(name) \(dist)"
+        }()
+
+        return Text(label)
+            .font(.caption.bold())
+            .foregroundStyle(.white)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 7)
+            .background(Capsule().fill(.black.opacity(0.6)))
+            .accessibilityLabel(count > 0 ? "\(count) objects detected. Closest: \(label)" : "Scanning")
+            .animation(.easeInOut(duration: 0.2), value: label)
     }
 }
 

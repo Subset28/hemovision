@@ -20,6 +20,9 @@ class AppStateManager: ObservableObject {
     @Published var isScanning = false
     @Published var engineAvailable = false
     @Published var cameraPermissionDenied = false
+    @Published var mode: AppMode = .navigation {
+        didSet { speechEngine.setMode(mode) }
+    }
 
     let speechEngine = SpeechEngine()
 
@@ -28,6 +31,7 @@ class AppStateManager: ObservableObject {
 
     private var cameraManagerSub: AnyCancellable?
     private var isTransitioning = false
+    private var pendingScanStart = false
 
     private init() {
         guard let detector = try? CoreMLDetector(modelResourceName: "ScanningData", bundle: .main) else {
@@ -57,7 +61,12 @@ class AppStateManager: ObservableObject {
     }
 
     func setScanning(_ on: Bool) {
-        guard !isTransitioning, isScanning != on else { return }
+        if isTransitioning {
+            // Debounce window active — record intent so it fires after window closes
+            if on { pendingScanStart = true }
+            return
+        }
+        guard isScanning != on else { return }
 
         if on {
             let status = AVCaptureDevice.authorizationStatus(for: .video)
@@ -98,6 +107,10 @@ class AppStateManager: ObservableObject {
         // 1.5s debounce to protect the camera session
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
             self.isTransitioning = false
+            if self.pendingScanStart {
+                self.pendingScanStart = false
+                self.setScanning(true)
+            }
         }
     }
 }
