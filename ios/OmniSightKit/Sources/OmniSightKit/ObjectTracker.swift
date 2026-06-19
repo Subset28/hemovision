@@ -1,5 +1,4 @@
 
-
 import Foundation
 import CoreGraphics
 
@@ -15,8 +14,26 @@ import CoreGraphics
 //   • Screen-space velocity — during coasting, the predicted position is
 //     extrapolated from the track's historical screen velocity, keeping IoU
 //     matching accurate on re-entry.
+//   • TrackEvent emission — every state transition is returned as a typed event
+//     so callers can instrument metrics and decision logs without coupling the
+//     tracker to any singleton logger.
 //
 // Matching is O(NM log NM) greedy on sorted scores — fine for <20 objects.
+
+// MARK: - TrackEvent
+
+public struct TrackEvent: Sendable {
+    public enum Kind: Sendable {
+        case created(id: String, className: String, initialDistM: Double)
+        case promoted(id: String, className: String, matchCount: Int)
+        case coasting(id: String, className: String, coastFrame: Int)
+        case reidentified(id: String, className: String, iou: Double, coastedFrames: Int)
+        case pruned(id: String, className: String, lifetimeFrames: Int)
+    }
+    public let kind: Kind
+}
+
+// MARK: - ObjectTracker
 
 public class ObjectTracker {
     private var nextId = 1
@@ -30,7 +47,15 @@ public class ObjectTracker {
     public var onStalePrune: ((Int) -> Void)?
     public init(highPriorityDistanceM: Double) {}
 
-    public func update(detections: [RawDetection], now: TimeInterval, frameIndex: Int) -> [TrackedObject] {
+    // Returns (updated tracks, events describing every state transition this frame)
+    public func update(
+        detections: [RawDetection],
+        now: TimeInterval,
+        frameIndex: Int
+    ) -> (tracks: [TrackedObject], events: [TrackEvent]) {
+
+        var events: [TrackEvent] = []
+
         // 1. Predict positions for tracks that missed last frame
         for i in tracks.indices { tracks[i].predictPosition(now: now) }
 
@@ -50,7 +75,7 @@ public class ObjectTracker {
                     let dy = detections[di].yCenterNorm - tracks[ti].predictedY
                     let d = sqrt(dx * dx + dy * dy)
                     guard d < centerFallback else { continue }
-                    // Map [0, centerFallback) → (0, 0.09] so it never beats a real IoU match
+                    // Map [0, centerFallback) → (0, 0.09] so fallback never beats real IoU
                     score = (centerFallback - d) / centerFallback * 0.09
                 }
                 candidates.append(Candidate(ti: ti, di: di, score: score))
@@ -61,31 +86,60 @@ public class ObjectTracker {
         // 3. Greedy assignment — highest score wins each slot
         var usedTracks = Set<Int>()
         var usedDets   = Set<Int>()
-        var matched:   [(Int, Int)] = []
+        var matched:   [(ti: Int, di: Int, score: Double)] = []
 
         for c in candidates {
             guard !usedTracks.contains(c.ti), !usedDets.contains(c.di) else { continue }
             usedTracks.insert(c.ti); usedDets.insert(c.di)
-            matched.append((c.ti, c.di))
+            matched.append((c.ti, c.di, c.score))
         }
 
-        // 4. Update matched tracks
-        for (ti, di) in matched { tracks[ti].update(with: detections[di], now: now) }
+        // 4. Update matched tracks; emit re-identification events for coasting tracks
+        for (ti, di, score) in matched {
+            let wasCoasting  = tracks[ti].state == .coasting
+            let coastedFor   = tracks[ti].coastFrames
+            tracks[ti].update(with: detections[di], now: now)
+            if wasCoasting {
+                events.append(TrackEvent(kind: .reidentified(
+                    id: tracks[ti].objectId,
+                    className: tracks[ti].className,
+                    iou: score,
+                    coastedFrames: coastedFor)))
+            }
+        }
 
-        // 5. Age unmatched tracks; transition to coasting
+        // 5. Age unmatched tracks; emit coasting event on first miss
         for ti in tracks.indices where !usedTracks.contains(ti) {
+            let wasNotCoasting = tracks[ti].state != .coasting
             tracks[ti].coastFrames += 1
-            if tracks[ti].state != .coasting { tracks[ti].state = .coasting }
+            if wasNotCoasting {
+                tracks[ti].state = .coasting
+                events.append(TrackEvent(kind: .coasting(
+                    id: tracks[ti].objectId,
+                    className: tracks[ti].className,
+                    coastFrame: tracks[ti].coastFrames)))
+            }
         }
 
-        // 6. Prune dead tracks
+        // 6. Prune dead tracks; emit pruned events
         let dead = tracks.filter { $0.coastFrames > maxCoastFrames }
-        for t in dead { onStalePrune?(Int(t.objectId) ?? -1) }
+        for t in dead {
+            onStalePrune?(Int(t.objectId) ?? -1)
+            events.append(TrackEvent(kind: .pruned(
+                id: t.objectId,
+                className: t.className,
+                lifetimeFrames: t.matchCount)))
+        }
         tracks = tracks.filter { $0.coastFrames <= maxCoastFrames }
 
-        // 7. Spawn new tracks for unmatched detections (start as tentative)
+        // 7. Spawn new tracks for unmatched detections
         for di in detections.indices where !usedDets.contains(di) {
-            tracks.append(TrackedObject(id: "\(nextId)", detection: detections[di], now: now))
+            let newId = "\(nextId)"
+            events.append(TrackEvent(kind: .created(
+                id: newId,
+                className: detections[di].className,
+                initialDistM: detections[di].distanceM)))
+            tracks.append(TrackedObject(id: newId, detection: detections[di], now: now))
             nextId += 1
         }
 
@@ -93,10 +147,14 @@ public class ObjectTracker {
         for i in tracks.indices {
             if tracks[i].matchCount >= confirmFrames && tracks[i].state == .tentative {
                 tracks[i].state = .confirmed
+                events.append(TrackEvent(kind: .promoted(
+                    id: tracks[i].objectId,
+                    className: tracks[i].className,
+                    matchCount: tracks[i].matchCount)))
             }
         }
 
-        return tracks
+        return (tracks, events)
     }
 
     // IoU on predicted track position vs. raw detection box
@@ -120,11 +178,15 @@ public class ObjectTracker {
     }
 }
 
+// MARK: - Track state
+
 public enum TrackState: Equatable {
     case tentative   // fewer than confirmFrames matches — not yet announced
     case confirmed   // stably tracked
     case coasting    // missed ≤ maxCoastFrames; position is extrapolated
 }
+
+// MARK: - TrackedObject
 
 public struct TrackedObject {
     public let objectId:    String
@@ -147,7 +209,7 @@ public struct TrackedObject {
     public private(set) var predictedX: Double
     public private(set) var predictedY: Double
 
-    // Screen-space velocity (normalized units/second)
+    // Screen-space velocity (normalized units/second) for coasting prediction
     private var vX: Double = 0
     private var vY: Double = 0
 
@@ -175,7 +237,7 @@ public struct TrackedObject {
         predictedY  = detection.yCenterNorm
     }
 
-    // Linear extrapolation from screen velocity — called each frame before matching
+    // Linear extrapolation from screen velocity — called before matching each frame
     mutating func predictPosition(now: TimeInterval) {
         guard coastFrames > 0 else { return }
         let dt = now - lastSeen
@@ -186,11 +248,9 @@ public struct TrackedObject {
     mutating func update(with det: RawDetection, now: TimeInterval) {
         let dt = now - prevTime
         if dt > 0.03 {
-            // Depth velocity (negative = approaching the camera)
             let rawV = (det.distanceM - prevDist) / dt
             velocityMps = velocityMps * 0.6 + rawV * 0.4
 
-            // Screen velocity EMA for coasting prediction
             let rawVX = (det.xCenterNorm - prevX) / dt
             let rawVY = (det.yCenterNorm - prevY) / dt
             vX = vX * 0.7 + rawVX * 0.3

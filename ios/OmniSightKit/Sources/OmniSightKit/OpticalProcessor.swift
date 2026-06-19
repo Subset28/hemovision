@@ -87,9 +87,15 @@ public class OpticalProcessor {
             
             self.frameId += 1
             let t1 = CACurrentMediaTime()
-            let mapped = self.tracker.update(detections: raw, now: t1, frameIndex: self.frameId)
+            let (mapped, trackEvents) = self.tracker.update(detections: raw, now: t1, frameIndex: self.frameId)
             self.lastEmitTime = t1
             let visionMs = max(0, min(1_000_000, Int((t1 - t0) * 1000)))
+
+            // Instrument: record frame latency and emit track state events
+            let latencyMs = (t1 - t0) * 1000
+            PerformanceMonitor.shared.recordFrame(latencyMs: latencyMs)
+            DecisionLog.shared.recordTrackEvents(trackEvents)
+            PerformanceMonitor.shared.recordTrackEvents(trackEvents)
 
             var dtos: [DetectedObjectDTO] = []
 

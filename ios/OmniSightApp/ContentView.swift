@@ -2,7 +2,7 @@
 
 import OmniSightKit
 
-
+import Combine
 import SwiftUI
 
 struct ContentView: View {
@@ -11,9 +11,14 @@ struct ContentView: View {
     @ObservedObject var hearing = AppStateManager.shared.speechEngine
     @Environment(\.scenePhase) private var scenePhase
 
+    @AppStorage("debugModeEnabled") private var debugModeEnabled = false
+
     @State private var speechMutedBanner = false
     @State private var showingSettings   = false
     @State private var showingFindPicker = false
+    @State private var debugLines: [String] = []
+    @State private var debugLatency = ""
+    private let debugRefreshTimer = Timer.publish(every: 0.5, on: .main, in: .common).autoconnect()
 
     var body: some View {
         Group {
@@ -90,6 +95,15 @@ struct ContentView: View {
                 }
             }
             
+            // Debug overlay — shown when debugModeEnabled, lists recent decisions + latency
+            if debugModeEnabled {
+                debugOverlay
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                    .padding(.top, 60)
+                    .padding(.horizontal, 12)
+                    .allowsHitTesting(false)
+            }
+
             // Mute Banner
             if speechMutedBanner {
                 mutedBanner
@@ -143,6 +157,16 @@ struct ContentView: View {
         .tint(OmniSightTheme.accent)
         .preferredColorScheme(.dark)
         .sheet(isPresented: $showingFindPicker) { findPickerSheet }
+        .onReceive(debugRefreshTimer) { _ in refreshDebugOverlay() }
+    }
+
+    private func refreshDebugOverlay() {
+        guard debugModeEnabled else { return }
+        let entries = DecisionLog.shared.entries
+        debugLines = entries.suffix(5).reversed().map { $0.formatted }
+        let report = PerformanceMonitor.shared.report()
+        debugLatency = String(format: "p50 %.0fms  p95 %.0fms  suppress %.0f%%",
+            report.latencyP50Ms, report.latencyP95Ms, report.ttsSuppressedRatio * 100)
     }
 
     // standard legal text
@@ -203,6 +227,30 @@ struct ContentView: View {
         }
         .padding()
         .background(RoundedRectangle(cornerRadius: 16).fill(.white.opacity(0.05)))
+    }
+
+    // Debug overlay — decision log + live latency. Non-interactive, updates at 2fps.
+    private var debugOverlay: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            if !debugLatency.isEmpty {
+                Text(debugLatency)
+                    .font(.system(size: 9, weight: .bold, design: .monospaced))
+                    .foregroundStyle(.green)
+                    .padding(.horizontal, 6).padding(.vertical, 2)
+                    .background(Color.black.opacity(0.7))
+                    .cornerRadius(4)
+            }
+            ForEach(Array(debugLines.enumerated()), id: \.offset) { _, line in
+                Text(line)
+                    .font(.system(size: 9, design: .monospaced))
+                    .foregroundStyle(.white.opacity(0.85))
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                    .padding(.horizontal, 6).padding(.vertical, 1)
+                    .background(Color.black.opacity(0.6))
+                    .cornerRadius(3)
+            }
+        }
     }
 
     // Mode pill — shows current mode, tap to switch or cancel finding

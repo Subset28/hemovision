@@ -39,7 +39,18 @@ public class SceneContextEngine {
         lastSig = sig
         lastAt  = now
         let ctx = buildContext(objects: objects, changed: changed)
-        return (changed || ctx.urgency > 50) ? ctx : nil
+
+        if changed || ctx.urgency > 50 {
+            PerformanceMonitor.shared.sceneUpdates += 1
+            DecisionLog.shared.log(layer: .scene, decision: "Updated",
+                detail: "\"\(ctx.summary)\" (density=\(ctx.density.rawValue), urgency=\(ctx.urgency))")
+            return ctx
+        } else {
+            PerformanceMonitor.shared.sceneSuppressed += 1
+            DecisionLog.shared.log(layer: .scene, decision: "Suppressed",
+                detail: "signature unchanged (objects: \(objects.count))")
+            return nil
+        }
     }
 
     // Immediate summary, bypassing cooldown (use for mode transitions).
