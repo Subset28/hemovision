@@ -53,14 +53,6 @@ public class SceneContextEngine {
         }
     }
 
-    // Immediate summary, bypassing cooldown (use for mode transitions).
-    public func forceSummarize(objects: [DetectedObjectDTO]) -> SceneContext {
-        lastAt  = Date()
-        let ctx = buildContext(objects: objects, changed: true)
-        lastSig = signature(of: objects)
-        return ctx
-    }
-
     public func reset() {
         lastAt  = .distantPast
         lastSig = ""
@@ -159,16 +151,11 @@ public class SceneContextEngine {
     }
 
     private func distString(_ m: Double) -> String {
-        let useImperial = UserDefaults.standard.bool(forKey: "useImperialUnits")
-        if useImperial {
-            let ft = max(1, Int((m * 3.281).rounded()))
-            return ft == 1 ? "1 foot" : "\(ft) feet"
-        }
-        return String(format: "%.1f meters", m)
+        formatDistance(m, imperial: UserDefaults.standard.bool(forKey: "useImperialUnits"))
     }
 
     private func isHazard(_ cls: String) -> Bool {
-        ["person", "car", "truck", "bus", "bicycle", "motorcycle", "stairs", "dog"].contains(cls.lowercased())
+        hazardClasses.contains(cls.lowercased())
     }
 
     private func humanName(_ cls: String) -> String {

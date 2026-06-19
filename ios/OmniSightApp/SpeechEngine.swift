@@ -441,12 +441,7 @@ class SpeechEngine: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
     }
 
     private func distText(_ meters: Double) -> String {
-        let useImperial = UserDefaults.standard.bool(forKey: "useImperialUnits")
-        if useImperial {
-            let feet = max(2, Int((meters * 3.281).rounded()))
-            return feet == 1 ? "1 foot" : "\(feet) feet"
-        }
-        return String(format: "%.1f meters", meters)
+        formatDistance(meters, imperial: UserDefaults.standard.bool(forKey: "useImperialUnits"))
     }
 
     // MARK: - Priority / range tables
@@ -510,9 +505,6 @@ class SpeechEngine: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
         queue.removeAll()
         isSpeaking = false
     }
-
-    func setScanningSpeechEnabled(_ on: Bool) { isEnabled = on }
-    func announceSystemMessageOnce(key: String, message: String) { speakImmediate(message) }
 
     func setMode(_ newMode: AppMode) {
         guard mode != newMode else { return }

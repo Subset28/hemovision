@@ -43,7 +43,4 @@ let findableObjects: [String] = [
     "dog", "cat", "bottle", "backpack", "suitcase", "fire hydrant",
 ]
 
-// Hazard-class objects — used by hazardPriority mode and SceneContextEngine
-let hazardClasses: Set<String> = [
-    "person", "car", "truck", "bus", "bicycle", "motorcycle", "stairs", "dog",
-]
+// hazardClasses — defined in OmniSightKit (public let hazardClasses) and imported via OmniSightKit

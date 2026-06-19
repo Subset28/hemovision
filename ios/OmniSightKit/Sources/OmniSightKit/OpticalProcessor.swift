@@ -12,8 +12,6 @@ import ARKit
 #endif
 
 public class OpticalProcessor {
-    public static var shared: OpticalProcessor? 
-
     public var config: ScannerConfiguration
     private let detector: CoreMLDetector
     private var tracker: ObjectTracker
@@ -104,19 +102,8 @@ public class OpticalProcessor {
                 var confidence: DistanceConfidence = .estimated
                 
                 if depthMap != nil {
-                    // FIXME: The LiDAR gets jumpy near glass windows. Needs better filtering.
-                    let lidarDepth = depthMap!.sampleDepth(at: CGPoint(x: o.xCenterNorm, y: o.yCenterNorm)) ?? 999.0
-                    
-                    var useLidar = true
-                    
-                    if let allowed = config.allowedClasses, allowed.contains("tree") || allowed.contains("building") {
-                        let isNature = o.className.lowercased() == "tree" || o.className.lowercased() == "building"
-                        if isNature && lidarDepth < 2.0 && o.distanceM > 4.0 {
-                            useLidar = false 
-                        }
-                    }
-
-                    if useLidar {
+                    // LiDAR can be noisy near glass/mirrors; use as override only when available.
+                    if let lidarDepth = depthMap!.sampleDepth(at: CGPoint(x: o.xCenterNorm, y: o.yCenterNorm)) {
                         distance = Double(lidarDepth)
                         confidence = .measured
                     }
@@ -148,8 +135,7 @@ public class OpticalProcessor {
                 frameId: self.frameId,
                 timestampMs: Int64(Date().timeIntervalSince1970 * 1000),
                 visionDurationMs: visionMs,
-                objects: dtos,
-                camera: nil
+                objects: dtos
             )
             DispatchQueue.main.async { completion(payload) }
         }
@@ -160,7 +146,8 @@ public class OpticalProcessor {
                 orientation: orientation,
                 options: [:]
             )
-            inFlight = false
+            // Vision calls the completion synchronously inside perform(); inFlight
+            // is reset there. The catch block below handles the throw path.
             try handler.perform([request])
         } catch {
             inFlight = false

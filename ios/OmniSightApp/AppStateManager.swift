@@ -60,6 +60,13 @@ class AppStateManager: ObservableObject {
             }
     }
 
+    func enableDemoMode() {
+        PerformanceMonitor.shared.resetSession()
+        PerformanceMonitor.shared.isEnabled = true
+        DecisionLog.shared.isEnabled = true
+        speechEngine.speakImmediate("Demo mode. Instruments enabled.")
+    }
+
     func setScanning(_ on: Bool) {
         if isTransitioning {
             // Debounce window active — record intent so it fires after window closes

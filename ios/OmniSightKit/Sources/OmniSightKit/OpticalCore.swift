@@ -82,46 +82,40 @@ public struct DetectedObjectDTO: Codable, Equatable, Sendable {
     }
 }
 
-public struct CameraHealthDTO: Codable, Equatable, Sendable {
-    public var lensStatus: String
-    public var lensLaplacianVar: Double
-    public var lensAnnounce: String?
-
-    enum CodingKeys: String, CodingKey {
-        case lensStatus = "lens_status"
-        case lensLaplacianVar = "lens_laplacian_var"
-        case lensAnnounce = "lens_announce"
-    }
-
-    public init(lensStatus: String, lensLaplacianVar: Double, lensAnnounce: String?) {
-        self.lensStatus = lensStatus
-        self.lensLaplacianVar = lensLaplacianVar
-        self.lensAnnounce = lensAnnounce
-    }
-}
-
 public struct FramePayload: Codable, Equatable, Sendable {
     public var frameId: Int
     public var timestampMs: Int64
     public var visionDurationMs: Int
     public var objects: [DetectedObjectDTO]
-    public var camera: CameraHealthDTO?
 
     enum CodingKeys: String, CodingKey {
         case frameId = "frame_id"
         case timestampMs = "timestamp_ms"
         case visionDurationMs = "vision_duration_ms"
         case objects
-        case camera
     }
 
-    public init(frameId: Int, timestampMs: Int64, visionDurationMs: Int, objects: [DetectedObjectDTO], camera: CameraHealthDTO? = nil) {
+    public init(frameId: Int, timestampMs: Int64, visionDurationMs: Int, objects: [DetectedObjectDTO]) {
         self.frameId = frameId
         self.timestampMs = timestampMs
         self.visionDurationMs = visionDurationMs
         self.objects = objects
-        self.camera = camera
     }
+}
+
+// Objects that warrant elevated TTS priority and hazard-mode filtering.
+// Single definition — used by SceneContextEngine (Kit) and SpeechEngine (App).
+public let hazardClasses: Set<String> = [
+    "person", "car", "truck", "bus", "bicycle", "motorcycle", "stairs", "dog",
+]
+
+// Distance formatter — single source of truth for metric/imperial output.
+public func formatDistance(_ meters: Double, imperial: Bool) -> String {
+    if imperial {
+        let feet = max(1, Int((meters * 3.281).rounded()))
+        return feet == 1 ? "1 foot" : "\(feet) feet"
+    }
+    return String(format: "%.1f meters", meters)
 }
 
 extension FramePayload {
