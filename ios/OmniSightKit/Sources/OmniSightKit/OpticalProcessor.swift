@@ -100,7 +100,7 @@ public class OpticalProcessor {
             for o in mapped {
                 var distance = o.distanceM
                 var confidence: DistanceConfidence = .estimated
-                
+
                 if depthMap != nil {
                     // LiDAR can be noisy near glass/mirrors; use as override only when available.
                     if let lidarDepth = depthMap!.sampleDepth(at: CGPoint(x: o.xCenterNorm, y: o.yCenterNorm)) {
@@ -108,6 +108,12 @@ public class OpticalProcessor {
                         confidence = .measured
                     }
                 }
+
+                let isHazard = hazardClasses.contains(o.className.lowercased())
+                let vel = o.velocityMps
+                let highPriority = distance <= 1.2                           // imminent collision threshold
+                    || (isHazard && distance <= 3.0)                         // hazard class in navigation range
+                    || (vel < -0.5 && distance < 4.0)                       // anything approaching fast
 
                 dtos.append(
                     DetectedObjectDTO(
@@ -124,7 +130,7 @@ public class OpticalProcessor {
                         distanceConfidence: confidence,
                         panValue: o.panValue,
                         velocityMps: (o.velocityMps * 100).rounded() / 100,
-                        priority: o.priority,
+                        priority: highPriority ? "HIGH" : "NORMAL",
                         matchCount: o.matchCount,
                         isCoasting: o.state == .coasting
                     )
