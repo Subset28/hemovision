@@ -137,6 +137,8 @@ class SpeechEngine: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
         alertActive = false
         sceneEngine.reset()
         travelVelocitySamples.removeAll()
+        crowdModeActive = false
+        lastCrowdAt     = .distantPast
     }
 
     // MARK: - Frame pipeline
