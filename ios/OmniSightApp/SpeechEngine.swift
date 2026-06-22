@@ -256,7 +256,7 @@ class SpeechEngine: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
             return
         }
 
-        let text = "\(Self.spoken(obj.objectClass)), \(dirText(obj.panValue)), \(distText(obj.distanceM)), approaching"
+        let text = "\(Self.spoken(obj.objectClass)), \(dirText(obj.panValue)), \(distText(obj.distanceM)), \(approachVerb(obj.velocityMps))"
         addToQueue(text, priority: 80, expiresIn: 1.2, reason: "approaching objectId=\(obj.objectId)")
         lastSpokenAt[obj.objectId] = now
         lastClassAt[cls]           = now
@@ -438,6 +438,12 @@ class SpeechEngine: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
         if pan <= 0.45 { return "slightly right" }
         if pan <= 0.75 { return "right" }
         return "far right"
+    }
+
+    private func approachVerb(_ mps: Double) -> String {
+        if mps < -1.5 { return "closing fast" }
+        if mps < -0.6 { return "approaching" }
+        return "moving closer"
     }
 
     private func distText(_ meters: Double) -> String {
