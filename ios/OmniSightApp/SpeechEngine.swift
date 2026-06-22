@@ -51,6 +51,10 @@ class SpeechEngine: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
     // Scene summarizer
     private let sceneEngine = SceneContextEngine(cooldown: 6.0)
 
+    // Crowd density state
+    private var crowdModeActive = false
+    private var lastCrowdAt: Date = .distantPast
+
     // Finding mode cooldown
     private var lastFindAt: Date = .distantPast
 
@@ -158,9 +162,19 @@ class SpeechEngine: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
 
         updateTravelMode(analysis.confirmed, settings: settings)
         detectEmergency(analysis: analysis, settings: settings)
-        queueApproaching(analysis: analysis, settings: settings)
-        queueSceneSummary(analysis: analysis)
-        queueStaticObject(analysis: analysis, settings: settings)
+        queueCrowdDensity(analysis: analysis)
+
+        // When in a crowd, suppress individual person announcements — TTS would
+        // flood with "person left / person right / person ahead" every few seconds.
+        let active = crowdModeActive
+        let thinned = active ? FrameAnalysis(
+            fastCheck: analysis.fastCheck.filter { $0.objectClass.lowercased() != "person" },
+            confirmed:  analysis.confirmed.filter  { $0.objectClass.lowercased() != "person" }
+        ) : analysis
+
+        queueApproaching(analysis: thinned, settings: settings)
+        queueSceneSummary(analysis: thinned)
+        queueStaticObject(analysis: thinned, settings: settings)
     }
 
     // MARK: - Filter step
@@ -315,6 +329,24 @@ class SpeechEngine: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
         addToQueue(text, priority: prio, expiresIn: 2.0, reason: "static objectId=\(obj.objectId)")
         lastSpokenAt[obj.objectId] = now
         lastClassAt[cls]           = now
+    }
+
+    // MARK: - Crowd density
+
+    private func queueCrowdDensity(analysis: FrameAnalysis) {
+        let persons = analysis.confirmed.filter {
+            $0.objectClass.lowercased() == "person" && $0.distanceM <= 4.0
+        }
+        let count = persons.count
+        crowdModeActive = count >= 3
+
+        guard crowdModeActive else { return }
+        let now = Date()
+        guard now.timeIntervalSince(lastCrowdAt) >= 10.0 else { return }
+        lastCrowdAt = now
+
+        let text = count >= 6 ? "Dense crowd, \(count) people" : "Crowd ahead, \(count) people"
+        addToQueue(text, priority: 72, expiresIn: 3.0, reason: "crowd count=\(count)")
     }
 
     // MARK: - Finding mode
