@@ -75,17 +75,32 @@ class SpeechEngine: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
     // MARK: - Settings snapshot (read once per frame)
 
     private struct Settings {
-        let verbosity:      String
-        let hazardAlarmsOn: Bool
-        let hapticsOn:      Bool
-        let useImperial:    Bool
+        let verbosity:          String
+        let hazardAlarmsOn:     Bool
+        let hapticsOn:          Bool
+        let useImperial:        Bool
+        let emergencyDistanceM: Double
+        let rangeMultiplier:    Double
+        let sceneCooldown:      TimeInterval
+        let speechRate:         Float
+        let disabledClasses:    Set<String>
 
         init() {
             let ud = UserDefaults.standard
-            verbosity      = ud.string(forKey: "verbosityMode") ?? "normal"
-            hazardAlarmsOn = (ud.object(forKey: "hazardAlarmsEnabled") as? Bool) ?? true
-            hapticsOn      = (ud.object(forKey: "hapticsEnabled") as? Bool) ?? true
-            useImperial    = ud.bool(forKey: "useImperialUnits")
+            verbosity          = ud.string(forKey: "verbosityMode") ?? "normal"
+            hazardAlarmsOn     = (ud.object(forKey: "hazardAlarmsEnabled") as? Bool) ?? true
+            hapticsOn          = (ud.object(forKey: "hapticsEnabled") as? Bool) ?? true
+            useImperial        = ud.bool(forKey: "useImperialUnits")
+            emergencyDistanceM = ud.object(forKey: "emergencyDistanceM") as? Double ?? 1.2
+            rangeMultiplier    = ud.object(forKey: "rangeMultiplier")    as? Double ?? 1.0
+            sceneCooldown      = ud.object(forKey: "sceneCooldown")      as? Double ?? 6.0
+            let storedRate     = Float(ud.double(forKey: "speechRate"))
+            speechRate         = storedRate > 0.1 ? storedRate : 0.52
+            let allClasses     = ["person","car","truck","bus","bicycle","motorcycle",
+                                  "dog","cat","chair","table","door","stairs"]
+            disabledClasses    = Set(allClasses.filter {
+                !(ud.object(forKey: "classEnabled_\($0)") as? Bool ?? true)
+            })
         }
     }
 
@@ -148,7 +163,8 @@ class SpeechEngine: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
         if let mute = mutedUntil, Date() < mute { return }
 
         let settings  = Settings()
-        let analysis  = filterObjects(frame.objects)
+        sceneEngine.cooldown = settings.sceneCooldown
+        let analysis  = filterObjects(frame.objects, settings: settings)
         objectCount   = analysis.confirmed.count
 
         switch mode {
@@ -181,19 +197,19 @@ class SpeechEngine: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
 
     // MARK: - Filter step
 
-    private func filterObjects(_ objects: [DetectedObjectDTO]) -> FrameAnalysis {
+    private func filterObjects(_ objects: [DetectedObjectDTO], settings: Settings) -> FrameAnalysis {
         var fastCheck: [DetectedObjectDTO] = []
         var confirmed: [DetectedObjectDTO] = []
 
         for obj in objects {
-            // Skip coasting tracks — their position is extrapolated, not measured
             if obj.isCoasting {
                 DecisionLog.shared.log(layer: .tts, decision: "Skipped coasting",
                     detail: "objectId=\(obj.objectId) class=\(obj.objectClass)")
                 continue
             }
-            guard let maxRange = maxRange(for: obj.objectClass) else { continue }
-            guard obj.distanceM <= maxRange else { continue }
+            if settings.disabledClasses.contains(obj.objectClass.lowercased()) { continue }
+            guard let base = maxRange(for: obj.objectClass) else { continue }
+            guard obj.distanceM <= base * settings.rangeMultiplier else { continue }
             guard obj.confidence >= minConfidence(for: obj.objectClass) else { continue }
 
             if obj.matchCount >= 2 { fastCheck.append(obj) }
@@ -222,7 +238,7 @@ class SpeechEngine: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
 
     private func detectEmergency(analysis: FrameAnalysis, settings: Settings) {
         guard settings.hazardAlarmsOn else { return }
-        let limit = userInVehicle ? 1.5 : 1.2
+        let limit = userInVehicle ? settings.emergencyDistanceM + 0.3 : settings.emergencyDistanceM
 
         let danger = analysis.fastCheck.filter {
             abs($0.panValue) < 0.45 && $0.distanceM <= limit && $0.velocityMps < -0.3
@@ -459,9 +475,10 @@ class SpeechEngine: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
         speakToUser(text, rate: 0.56)
     }
 
-    private func speakToUser(_ text: String, rate: Float = 0.52) {
+    private func speakToUser(_ text: String, rate: Float? = nil) {
         let utt  = AVSpeechUtterance(string: text)
-        utt.rate = rate
+        let stored = Float(UserDefaults.standard.double(forKey: "speechRate"))
+        utt.rate = rate ?? (stored > 0.1 ? stored : 0.52)
         utt.voice = AVSpeechSynthesisVoice(language: "en-US")
         synth.speak(utt)
     }

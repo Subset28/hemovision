@@ -25,7 +25,7 @@ public class SceneContextEngine {
         public let changed:  Bool   // false ⟹ suppress even if cooldown elapsed
     }
 
-    private let cooldown: TimeInterval
+    public var cooldown: TimeInterval
     private var lastAt:   Date   = .distantPast
     private var lastSig:  String = ""
 
