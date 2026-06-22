@@ -81,8 +81,9 @@ class AppStateManager: ObservableObject {
 
     func setScanning(_ on: Bool) {
         if isTransitioning {
-            // Debounce window active — record intent so it fires after window closes
-            if on { pendingScanStart = true }
+            // Debounce window active — record intent so it fires after window closes.
+            // Clear on stop so a pending start doesn't restart against the user's intent.
+            pendingScanStart = on
             return
         }
         guard isScanning != on else { return }

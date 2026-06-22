@@ -2,34 +2,35 @@
 
 import UIKit
 
-// This class makes the phone vibrate for alerts.
 class HapticManager {
     static let shared = HapticManager()
-    
-    private let light = UIImpactFeedbackGenerator(style: .light)
-    private let medium = UIImpactFeedbackGenerator(style: .medium)
-    private let heavy = UIImpactFeedbackGenerator(style: .heavy)
+
+    private let light        = UIImpactFeedbackGenerator(style: .light)
+    private let medium       = UIImpactFeedbackGenerator(style: .medium)
     private let notification = UINotificationFeedbackGenerator()
-    
+
+    private var hapticsEnabled: Bool {
+        (UserDefaults.standard.object(forKey: "hapticsEnabled") as? Bool) ?? true
+    }
+
     private init() {
         light.prepare()
         medium.prepare()
-        heavy.prepare()
         notification.prepare()
     }
-    
+
     func smallVibration() {
-        // small vibrate
+        guard hapticsEnabled else { return }
         light.impactOccurred()
     }
-    
+
     func mediumVibration() {
+        guard hapticsEnabled else { return }
         medium.impactOccurred()
     }
-    
+
     func warningVibration() {
-        guard (UserDefaults.standard.object(forKey: "hapticsEnabled") as? Bool) ?? true else { return }
-        heavy.impactOccurred()
+        guard hapticsEnabled else { return }
         notification.notificationOccurred(.error)
     }
 }

@@ -10,6 +10,9 @@ import Vision
 // the same crosswalk type re-announces correctly.
 // Throttled to 1 fps — does not run on every camera frame.
 //
+// All state mutations run on a private serial queue to prevent data races
+// between ARKit's camera thread (process) and the OCR completion path.
+//
 // Color fallback intentionally omitted: averaging the frame's upper region
 // produces false positives on bright outdoor scenes (sky, sunlit walls).
 // OCR on text-based signs is reliable and fails safe (silence on no match).
@@ -22,6 +25,8 @@ class CrosswalkDetector {
     }
 
     var onSignalChange: ((Signal) -> Void)?
+
+    private let queue = DispatchQueue(label: "com.orbconcepts.omnisight.crosswalk", qos: .utility)
 
     private let textRequest: VNRecognizeTextRequest = {
         let r = VNRecognizeTextRequest()
@@ -37,13 +42,12 @@ class CrosswalkDetector {
     private var confirmed: Signal = .unknown
 
     func process(pixelBuffer: CVPixelBuffer, timestamp: TimeInterval) {
-        guard timestamp - lastRunTime >= 1.0 else { return }
-        lastRunTime = timestamp
-        let retained = pixelBuffer
-        CVPixelBufferRetain(retained)
-        DispatchQueue.global(qos: .utility).async { [weak self] in
-            self?.runDetection(on: retained)
-            CVPixelBufferRelease(retained)
+        // Capture pixelBuffer in the closure — Swift ARC retains it for the duration
+        // of runDetection; no manual retain/release needed.
+        queue.async { [weak self] in
+            guard let self, timestamp - self.lastRunTime >= 1.0 else { return }
+            self.lastRunTime = timestamp
+            self.runDetection(on: pixelBuffer)
         }
     }
 
@@ -51,9 +55,7 @@ class CrosswalkDetector {
         let handler = VNImageRequestHandler(cvPixelBuffer: pixelBuffer, options: [:])
         try? handler.perform([textRequest])
         let raw = textResult()
-        DispatchQueue.main.async { [weak self] in
-            self?.integrate(raw)
-        }
+        integrate(raw)
     }
 
     // MARK: - Text detection
@@ -67,20 +69,26 @@ class CrosswalkDetector {
 
         let words = joined.components(separatedBy: .whitespacesAndNewlines)
 
-        // Check don't-walk phrases before standalone WALK to avoid substring collision
-        if joined.contains("DON'T WALK") || joined.contains("DONT WALK") { return .dontWalk }
+        // OCR may return a curly apostrophe (') or straight (') — check both.
+        // Check don't-walk phrases before standalone WALK to avoid substring collision.
+        if joined.contains("DON'T WALK") || joined.contains("DON\u{2019}T WALK") ||
+           joined.contains("DONT WALK") { return .dontWalk }
         if words.contains("WAIT") { return .dontWalk }
         if words.contains("WALK") { return .walk }
         return .unknown
     }
 
-    // MARK: - Confirmation gate
+    // MARK: - Confirmation gate (runs on self.queue)
 
     private func integrate(_ raw: Signal) {
         if raw == .unknown {
             unknownStreak += 1
-            // After 5 consecutive unknowns (~5s), reset so the next sign re-announces
-            if unknownStreak >= 5 { confirmed = .unknown }
+            // After 5 consecutive unknowns (~5s), reset so the next sign re-announces.
+            // Reset unknownStreak so hysteresis is effective on re-entry.
+            if unknownStreak >= 5 {
+                confirmed = .unknown
+                unknownStreak = 0
+            }
             streak = 0
             lastRaw = .unknown
             return
@@ -95,6 +103,9 @@ class CrosswalkDetector {
         }
         guard streak >= 2, raw != confirmed else { return }
         confirmed = raw
-        onSignalChange?(raw)
+        let signal = confirmed
+        DispatchQueue.main.async { [weak self] in
+            self?.onSignalChange?(signal)
+        }
     }
 }

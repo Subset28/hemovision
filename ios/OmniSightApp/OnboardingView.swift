@@ -28,33 +28,44 @@ struct OnboardingView: View {
     ]
 
     var body: some View {
-        VStack {
-            TabView(selection: $currentPage) {
-                ForEach(0..<pages.count, id: \.self) { i in
-                    OnboardingContent(page: pages[i])
-                        .tag(i)
+        GeometryReader { geo in
+            VStack(spacing: 0) {
+                TabView(selection: $currentPage) {
+                    ForEach(0..<pages.count, id: \.self) { i in
+                        OnboardingContent(page: pages[i], availableHeight: geo.size.height)
+                            .tag(i)
+                    }
                 }
-            }
-            .tabViewStyle(.page)
-            
-            Button(action: {
-                if currentPage < pages.count - 1 {
-                    currentPage += 1
-                } else {
-                    firstTimeUsingApp = false
+                .tabViewStyle(.page)
+                .frame(height: geo.size.height - buttonAreaHeight(geo))
+
+                Button(action: {
+                    if currentPage < pages.count - 1 {
+                        withAnimation { currentPage += 1 }
+                    } else {
+                        firstTimeUsingApp = false
+                    }
+                }) {
+                    Text(currentPage == pages.count - 1 ? "Get Started" : "Continue")
+                        .bold()
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, geo.size.height < 600 ? 12 : 16)
+                        .background(Color.mint)
+                        .foregroundColor(.black)
+                        .cornerRadius(12)
                 }
-            }) {
-                Text(currentPage == pages.count - 1 ? "Get Started" : "Continue")
-                    .bold()
-                    .frame(maxWidth: .infinity)
-                    .padding()
-                    .background(Color.mint)
-                    .foregroundColor(.black)
-                    .cornerRadius(12)
+                .padding(.horizontal)
+                .padding(.bottom, geo.safeAreaInsets.bottom > 0 ? geo.safeAreaInsets.bottom : 16)
+                .padding(.top, 8)
             }
-            .padding()
         }
         .background(Color.black.ignoresSafeArea())
+    }
+
+    private func buttonAreaHeight(_ geo: GeometryProxy) -> CGFloat {
+        let bottomPad = geo.safeAreaInsets.bottom > 0 ? geo.safeAreaInsets.bottom : 16
+        let btnHeight: CGFloat = geo.size.height < 600 ? 46 : 54
+        return btnHeight + 8 + 16 + bottomPad
     }
 }
 
@@ -66,21 +77,36 @@ private struct OnboardingPage {
 
 private struct OnboardingContent: View {
     let page: OnboardingPage
+    let availableHeight: CGFloat
+
+    // Scale the icon down on small screens so nothing overflows
+    private var iconSize: CGFloat {
+        availableHeight < 600 ? 56 : 80
+    }
 
     var body: some View {
-        VStack(spacing: 20) {
-            Image(systemName: page.icon)
-                .font(.system(size: 80))
-                .foregroundColor(.mint)
-            
-            Text(page.title)
-                .font(.title)
-                .bold()
-            
-            Text(page.description)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal)
+        ScrollView {
+            VStack(spacing: availableHeight < 600 ? 12 : 20) {
+                Spacer(minLength: availableHeight < 600 ? 24 : 40)
+
+                Image(systemName: page.icon)
+                    .font(.system(size: iconSize))
+                    .foregroundColor(.mint)
+
+                Text(page.title)
+                    .font(availableHeight < 600 ? .title2 : .title)
+                    .bold()
+                    .minimumScaleFactor(0.8)
+
+                Text(page.description)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal)
+                    .minimumScaleFactor(0.85)
+
+                Spacer(minLength: availableHeight < 600 ? 16 : 40)
+            }
         }
+        .scrollDisabled(availableHeight >= 600)
         .foregroundColor(.white)
     }
 }

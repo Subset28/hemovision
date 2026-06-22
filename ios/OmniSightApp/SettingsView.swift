@@ -194,10 +194,12 @@ struct SettingsView: View {
         for (cls, _) in classes {
             UserDefaults.standard.set(true, forKey: "classEnabled_\(cls)")
         }
+        NotificationCenter.default.post(name: .classSettingsReset, object: nil)
     }
 }
 
-// Separate view so each row has its own @AppStorage binding
+// Separate view so each row can hold its own state for the dynamic UserDefaults key.
+// Listens for classSettingsReset to refresh when the user taps "Reset to Defaults".
 private struct ClassToggleRow: View {
     let className: String
     let icon: String
@@ -219,7 +221,14 @@ private struct ClassToggleRow: View {
         .onChange(of: enabled) { _, val in
             UserDefaults.standard.set(val, forKey: "classEnabled_\(className)")
         }
+        .onReceive(NotificationCenter.default.publisher(for: .classSettingsReset)) { _ in
+            enabled = UserDefaults.standard.object(forKey: "classEnabled_\(className)") as? Bool ?? true
+        }
     }
+}
+
+extension Notification.Name {
+    static let classSettingsReset = Notification.Name("OmniSightClassSettingsReset")
 }
 
 // Benchmark result sheet

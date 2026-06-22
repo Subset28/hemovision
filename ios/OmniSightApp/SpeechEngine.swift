@@ -50,16 +50,21 @@ class SpeechEngine: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
 
     // Scene summarizer
     private let sceneEngine = SceneContextEngine(cooldown: 6.0)
+    private var lastCooldown: TimeInterval = 6.0
 
     // Crowd density state
     private var crowdModeActive = false
-    private var lastCrowdAt: Date = .distantPast
+    private var lastCrowdAt:    Date = .distantPast
+    private var crowdExitAt:    Date = .distantPast
 
     // Finding mode cooldown
     private var lastFindAt: Date = .distantPast
 
     // Current mode
     var mode: AppMode = .navigation
+
+    // Last snapshotted speech rate — updated each frame, used by drainQueue
+    private var currentSpeechRate: Float = 0.52
 
     // TTS queue
     struct QueueItem {
@@ -96,11 +101,9 @@ class SpeechEngine: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
             sceneCooldown      = ud.object(forKey: "sceneCooldown")      as? Double ?? 6.0
             let storedRate     = Float(ud.double(forKey: "speechRate"))
             speechRate         = storedRate > 0.1 ? storedRate : 0.52
-            let allClasses     = ["person","car","truck","bus","bicycle","motorcycle",
-                                  "dog","cat","chair","table","door","stairs"]
-            disabledClasses    = Set(allClasses.filter {
+            disabledClasses    = SpeechEngine.allWhitelistedClasses.filter {
                 !(ud.object(forKey: "classEnabled_\($0)") as? Bool ?? true)
-            })
+            }
         }
     }
 
@@ -154,6 +157,7 @@ class SpeechEngine: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
         travelVelocitySamples.removeAll()
         crowdModeActive = false
         lastCrowdAt     = .distantPast
+        crowdExitAt     = .distantPast
     }
 
     // MARK: - Frame pipeline
@@ -162,10 +166,22 @@ class SpeechEngine: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
         guard isEnabled else { return }
         if let mute = mutedUntil, Date() < mute { return }
 
-        let settings  = Settings()
-        sceneEngine.cooldown = settings.sceneCooldown
-        let analysis  = filterObjects(frame.objects, settings: settings)
-        objectCount   = analysis.confirmed.count
+        let settings = Settings()
+        currentSpeechRate = settings.speechRate
+        if settings.sceneCooldown != lastCooldown {
+            lastCooldown = settings.sceneCooldown
+            sceneEngine.cooldown = settings.sceneCooldown
+        }
+
+        // Speech-filtered analysis respects class-disable toggles for announcements.
+        let analysis = filterObjects(frame.objects, settings: settings)
+        objectCount  = analysis.confirmed.count
+
+        // Emergency detection always runs in all modes, on hazard-class objects
+        // that bypass the class-disable filter — so turning off "person" in class
+        // toggles doesn't silently disable collision alarms.
+        let safetyAnalysis = filterForEmergency(frame.objects, settings: settings)
+        detectEmergency(analysis: safetyAnalysis, settings: settings)
 
         switch mode {
         case .finding(let target):
@@ -179,7 +195,6 @@ class SpeechEngine: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
         }
 
         updateTravelMode(analysis.confirmed, settings: settings)
-        detectEmergency(analysis: analysis, settings: settings)
         queueCrowdDensity(analysis: analysis)
 
         // When in a crowd, suppress individual person announcements — TTS would
@@ -218,6 +233,22 @@ class SpeechEngine: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
         return FrameAnalysis(fastCheck: fastCheck, confirmed: confirmed)
     }
 
+    // Safety filter: hazard classes only, no class-disable gate.
+    // Used exclusively by detectEmergency so disabled class toggles never suppress
+    // collision alarms — matching the promise in Settings footer.
+    private func filterForEmergency(_ objects: [DetectedObjectDTO], settings: Settings) -> FrameAnalysis {
+        var fastCheck: [DetectedObjectDTO] = []
+        for obj in objects {
+            if obj.isCoasting { continue }
+            guard hazardClasses.contains(obj.objectClass.lowercased()) else { continue }
+            guard let base = maxRange(for: obj.objectClass) else { continue }
+            guard obj.distanceM <= base * settings.rangeMultiplier else { continue }
+            guard obj.confidence >= minConfidence(for: obj.objectClass) else { continue }
+            if obj.matchCount >= 2 { fastCheck.append(obj) }
+        }
+        return FrameAnalysis(fastCheck: fastCheck, confirmed: [])
+    }
+
     // MARK: - Travel mode
 
     private func updateTravelMode(_ confirmed: [DetectedObjectDTO], settings: Settings) {
@@ -228,7 +259,7 @@ class SpeechEngine: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
         let nowTraveling = score > 0.5
         if nowTraveling != userInVehicle {
             userInVehicle = nowTraveling
-            if settings.hapticsOn { HapticManager.shared.warningVibration() }
+            if settings.hapticsOn { HapticManager.shared.smallVibration() }
             addToQueue(userInVehicle ? "Travel mode active" : "Walking mode active",
                        priority: 100, expiresIn: 2.0, reason: "mode transition")
         }
@@ -322,16 +353,10 @@ class SpeechEngine: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
         let cls  = obj.objectClass.lowercased()
         let prio = priority(for: obj.objectClass)
 
-        if settings.verbosity == "criticalOnly" && prio < 50 {
+        if settings.verbosity != "normal" && prio < 50 {
             PerformanceMonitor.shared.ttsSuppressed += 1
             DecisionLog.shared.log(layer: .tts, decision: "Suppressed static",
-                detail: "class=\(cls), verbosity=criticalOnly, priority=\(prio)<50")
-            return
-        }
-        if settings.verbosity == "lowNoise" && prio < 50 {
-            PerformanceMonitor.shared.ttsSuppressed += 1
-            DecisionLog.shared.log(layer: .tts, decision: "Suppressed static",
-                detail: "class=\(cls), verbosity=lowNoise, priority=\(prio)<50")
+                detail: "class=\(cls), verbosity=\(settings.verbosity), priority=\(prio)<50")
             return
         }
 
@@ -360,10 +385,18 @@ class SpeechEngine: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
             $0.objectClass.lowercased() == "person" && $0.distanceM <= 4.0
         }
         let count = persons.count
-        crowdModeActive = count >= 3
+        let now   = Date()
 
-        guard crowdModeActive else { return }
-        let now = Date()
+        if count >= 3 {
+            crowdModeActive = true
+            crowdExitAt = now.addingTimeInterval(5.0)
+        } else if crowdModeActive && now > crowdExitAt {
+            // 5-second hysteresis: don't deactivate immediately when count dips below 3
+            // so a person briefly leaving frame doesn't oscillate person suppression.
+            crowdModeActive = false
+        }
+
+        guard crowdModeActive, count >= 3 else { return }
         guard now.timeIntervalSince(lastCrowdAt) >= 10.0 else { return }
         lastCrowdAt = now
 
@@ -379,7 +412,7 @@ class SpeechEngine: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
         let now = Date()
         guard now.timeIntervalSince(lastFindAt) >= 4.0 else { return }
         lastFindAt = now
-        if settings.hapticsOn { HapticManager.shared.warningVibration() }
+        if settings.hapticsOn { HapticManager.shared.mediumVibration() }
         let dir  = dirText(found.panValue)
         let dist = distText(found.distanceM)
         addToQueue("Found \(Self.spoken(target)), \(dir), \(dist)", priority: 95, expiresIn: 3.0,
@@ -393,9 +426,6 @@ class SpeechEngine: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
     // Optimized for dense urban / traffic crossing scenarios.
 
     private func handleHazardPriority(analysis: FrameAnalysis, settings: Settings) {
-        // Always run emergency detection
-        detectEmergency(analysis: analysis, settings: settings)
-
         let hazards = analysis.confirmed.filter { hazardClasses.contains($0.objectClass.lowercased()) }
 
         // Suppress non-hazard objects — log the suppression
@@ -477,8 +507,7 @@ class SpeechEngine: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
 
     private func speakToUser(_ text: String, rate: Float? = nil) {
         let utt  = AVSpeechUtterance(string: text)
-        let stored = Float(UserDefaults.standard.double(forKey: "speechRate"))
-        utt.rate = rate ?? (stored > 0.1 ? stored : 0.52)
+        utt.rate = rate ?? currentSpeechRate
         utt.voice = AVSpeechSynthesisVoice(language: "en-US")
         synth.speak(utt)
     }
@@ -560,7 +589,7 @@ class SpeechEngine: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
         queue.removeAll()
         isSpeaking = false
         speakToUser(text, rate: 0.50)
-        HapticManager.shared.warningVibration()
+        HapticManager.shared.mediumVibration()
     }
 
     func speakImmediate(_ text: String) {
@@ -608,18 +637,18 @@ class SpeechEngine: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
         }
         if alreadyTagged { return }
 
-        let limit: Float = userInVehicle ? 1.5 : 1.2
+        let baseLimit = Float((UserDefaults.standard.object(forKey: "emergencyDistanceM") as? Double) ?? 1.2)
+        let limit: Float = userInVehicle ? baseLimit + 0.3 : baseLimit
         guard depthMeters < limit else { return }
         if userInVehicle && vel > -0.2 { return }
         guard now.timeIntervalSince(lastLiDARAt) >= 2.5 else { return }
 
         let hazardAlarmsOn = (UserDefaults.standard.object(forKey: "hazardAlarmsEnabled") as? Bool) ?? true
-        let hapticsOn      = (UserDefaults.standard.object(forKey: "hapticsEnabled") as? Bool) ?? true
         guard hazardAlarmsOn else { return }
 
         lastLiDARAt = now
         alertActive = true
-        if hapticsOn { HapticManager.shared.warningVibration() }
+        HapticManager.shared.warningVibration()
 
         let dist = distText(Double(depthMeters))
         let text = "Obstacle ahead, \(dist)"
