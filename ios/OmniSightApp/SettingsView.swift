@@ -11,7 +11,7 @@ struct SettingsView: View {
     @AppStorage("useImperialUnits")    private var useImperialUnits:   Bool   = false
     @AppStorage("hazardAlarmsEnabled") private var hazardAlarmsEnabled: Bool  = true
     @AppStorage("hapticsEnabled")      private var hapticsEnabled:     Bool   = true
-    @AppStorage("panAudioEnabled")     private var panAudioEnabled:    Bool   = true
+
     @AppStorage("debugModeEnabled")    private var debugModeEnabled:   Bool   = false
 
     @State private var showBenchResult = false
@@ -35,7 +35,6 @@ struct SettingsView: View {
                 Section {
                     Toggle("Hazard Beeps", isOn: $hazardAlarmsEnabled)
                     Toggle("Haptic Feedback", isOn: $hapticsEnabled)
-                    Toggle("Directional Audio (Pan)", isOn: $panAudioEnabled)
                 } header: { Text("Awareness") }
                   footer: { Text("Alarms sound when objects are too close or approaching fast.") }
 
@@ -95,7 +94,6 @@ struct SettingsView: View {
                         useImperialUnits    = false
                         hazardAlarmsEnabled = true
                         hapticsEnabled      = true
-                        panAudioEnabled     = true
                         debugModeEnabled    = false
                         app.mode            = .navigation
                     } label: { Text("Reset to Defaults") }

@@ -264,8 +264,12 @@ class SpeechEngine: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
         let sinceObj = now.timeIntervalSince(lastSpokenAt[obj.objectId] ?? .distantPast)
         let sinceCls = now.timeIntervalSince(lastClassAt[cls] ?? .distantPast)
         let cd       = classCooldown(for: cls, verbosity: settings.verbosity)
+        let isNew    = lastSpokenAt[obj.objectId] == nil
 
-        guard sinceObj >= 5 && sinceCls >= cd else {
+        // Per-object cooldown always applies. Class cooldown is bypassed for brand-new
+        // objects — otherwise a new hazard appearing right after one of the same class
+        // would be silently suppressed, which is dangerous in traffic.
+        guard sinceObj >= 5 && (sinceCls >= cd || isNew) else {
             PerformanceMonitor.shared.ttsSuppressed += 1
             DecisionLog.shared.log(layer: .tts, decision: "Suppressed approaching",
                 detail: "class=\(cls) objectCD=\(String(format:"%.1f",sinceObj))s<5s, classCD=\(String(format:"%.1f",sinceCls))s<\(cd)s")

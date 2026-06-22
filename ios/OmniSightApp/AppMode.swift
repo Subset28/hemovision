@@ -36,11 +36,12 @@ enum AppMode: Equatable, Hashable {
     var isHazardPriority: Bool { self == .hazardPriority }
 }
 
-// Objects users can actively search for (superset of whitelist, filtered at runtime)
+// Objects users can actively search for — must match allWhitelistedClasses exactly,
+// otherwise OpticalProcessor filters them before they reach finding mode.
 let findableObjects: [String] = [
     "person", "chair", "table", "door", "stairs",
     "car", "truck", "bus", "bicycle", "motorcycle",
-    "dog", "cat", "bottle", "backpack", "suitcase", "fire hydrant",
+    "dog", "cat",
 ]
 
 // hazardClasses — defined in OmniSightKit (public let hazardClasses) and imported via OmniSightKit
