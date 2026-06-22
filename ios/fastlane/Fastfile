@@ -36,14 +36,14 @@ platform :ios do
     )
   end
 
-  # ── Push metadata only (no build, no screenshots) ────────────────────────
-  desc "Push metadata to App Store Connect without uploading binary"
+  # ── Push metadata + screenshots (no build) ───────────────────────────────
+  desc "Push metadata and screenshots to App Store Connect without uploading binary"
   lane :push_metadata do
     api_key = asc_api_key
     deliver(
       api_key:              api_key,
       skip_binary_upload:   true,
-      skip_screenshots:     true,
+      skip_screenshots:     false,
       skip_metadata:        false,
       force:                true,
       submit_for_review:    false,
@@ -59,7 +59,7 @@ platform :ios do
       api_key:                           api_key,
       ipa:                               "build/OmniSight.ipa",
       skip_waiting_for_build_processing: true,
-      changelog:                         "Initial release"
+      changelog:                         "v1.1 — crosswalk detection, crowd awareness, haptic differentiation, 13 bug fixes"
     )
   end
 

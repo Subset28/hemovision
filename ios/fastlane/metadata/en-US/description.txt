@@ -1,27 +1,45 @@
-Hearing Through Sight. Seeing Through Sound. 100% Offline.
+Your iPhone becomes a guide. 100% Offline.
 
-OmniSight Pro is a real-time environmental awareness app that translates the physical world into spatial audio for people with visual impairments, and turns loud sounds into visual alerts for people who are deaf or hard-of-hearing.
+OmniSight is a real-time obstacle awareness app that uses your iPhone camera and on-device AI to identify nearby objects and narrate your surroundings through voice — no internet, no cloud, no data ever leaving your device.
 
-Built by a student team at Orb Concepts, OmniSight Pro earned 2nd place at the Virginia TSA State Conference. We built it to solve a real problem, and now we're bringing it to everyone.
+Built by a student developer for the Virginia TSA State Conference, where it earned 2nd place in Software Development.
 
 KEY FEATURES
 
-Sight-to-Sound Translation
-Your phone becomes a second set of eyes. OmniSight maps nearby objects to a 3D audio field, adjusting left-right panning and volume based on distance and direction so you can hear exactly where obstacles are -- without looking at a screen.
+Real-Time Object Detection
+A lightweight YOLOv8 model identifies pedestrians, vehicles, furniture, animals, and obstacles in real time across 12 object classes. Runs entirely on-device. No account required.
 
-On-Device AI Vision
-A lightweight model identifies pedestrians, vehicles, furniture, and obstacles in real time. No internet required. No data ever leaves your device.
+Spatial Voice Descriptions
+Every announcement tells you both what and where — "Car, slightly left, 3.2 meters, approaching." Direction and distance, every time.
 
-Collision Prevention
-The app tracks how fast objects are approaching and triggers priority alerts before a collision develops. It watches so you don't have to.
+Collision Warnings
+OmniSight tracks how fast objects approach you and fires priority warnings — "Warning! Car, 0.9 meters!" — before a collision can develop. Emergency announcements bypass the speech queue and play immediately.
+
+LiDAR Obstacle Detection
+On iPhone Pro models, LiDAR catches obstacles the camera misses — low furniture, open doors, transparent surfaces — and warns you with "Obstacle ahead, 0.6 meters."
+
+Crosswalk Signal Detection
+The camera reads WALK / DON'T WALK signs in real time using on-device OCR and announces the signal the moment it changes.
+
+Crowd Awareness
+When 3 or more people surround you, OmniSight announces the crowd count and suppresses per-person clutter so you hear the room, not a list.
+
+Haptic Feedback
+Three vibration levels signal urgency — a light tap for mode changes, a medium pulse for crosswalk signals and found objects, a strong burst for collision warnings.
+
+Find Mode
+Looking for a specific object? Switch to Find mode, pick a class (chair, door, person, car…), and OmniSight guides you to the nearest one with direction and distance.
+
+Fully Configurable
+Adjust speech rate, announcement range, emergency warning distance, scene update frequency, and which object classes to announce — all from the Settings screen.
 
 Complete Privacy
-All camera and microphone processing happens entirely on-device. Zero data leakage. Works with no internet connection.
+All camera processing happens on-device. OmniSight never connects to the internet. Camera frames are processed in memory and discarded immediately.
 
 REQUIREMENTS
 
-iPhone 12 Pro or newer recommended for full LiDAR functionality. Core object detection works on any iPhone running iOS 16 or later.
+Requires iOS 17.6 or later. LiDAR features require iPhone 12 Pro or newer Pro model.
 
 SAFETY NOTE
 
-OmniSight Pro is an assistive tool, not a replacement for white canes, guide dogs, or orientation and mobility training. Distance readings are estimated. Always use personal judgment when navigating.
+OmniSight is an assistive tool, not a replacement for white canes, guide dogs, or orientation and mobility training. Distance readings are estimated. Always use personal judgment when navigating.

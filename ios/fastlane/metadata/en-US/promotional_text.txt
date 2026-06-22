@@ -1,1 +1,1 @@
-100% offline obstacle detection and spatial audio. Built by students, awarded 2nd place at Virginia TSA State Conference.
+100% offline obstacle detection and spatial voice guidance. Crosswalk detection, crowd awareness, LiDAR, and Find mode — now in 1.1.

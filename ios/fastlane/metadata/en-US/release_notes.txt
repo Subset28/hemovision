@@ -1,1 +1,12 @@
-Initial release of OmniSight Pro.
+New in 1.1:
+
+• Crosswalk detection — OmniSight now reads WALK / DON'T WALK signals via on-device OCR and announces them instantly
+• Crowd awareness — when 3+ people surround you, the app announces the crowd count and suppresses per-person clutter
+• Visual bounding boxes — color-coded overlays show HIGH-priority objects (orange) vs normal (white) at a glance
+• Haptic differentiation — three vibration levels now signal urgency: light for mode changes, medium for crosswalk/find events, strong for collision warnings
+• Find mode — search for a specific object class; the app guides you to it with direction and distance
+• Settings expanded — speech rate slider, emergency distance picker, announcement range multiplier, per-class enable/disable toggles
+• Safety fix — emergency collision alarms now fire even when an object class is toggled off in Settings
+• Safety fix — collision detection now runs in Find mode (was silently skipped)
+• Safety fix — LiDAR obstacle threshold now respects your Emergency Warning Distance setting
+• Reliability fix — crosswalk detector race condition eliminated; apostrophe variants in "DON'T WALK" handled correctly
