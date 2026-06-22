@@ -498,6 +498,16 @@ class SpeechEngine: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
 
     // MARK: - Public API
 
+    // Crosswalk signals bypass the mute timer — a blind user at a crosswalk
+    // must hear this regardless of whether they muted for another reason.
+    func announceCrosswalk(_ text: String) {
+        synth.stopSpeaking(at: .immediate)
+        queue.removeAll()
+        isSpeaking = false
+        speakToUser(text, rate: 0.50)
+        HapticManager.shared.warningVibration()
+    }
+
     func speakImmediate(_ text: String) {
         synth.stopSpeaking(at: .immediate)
         queue.removeAll()

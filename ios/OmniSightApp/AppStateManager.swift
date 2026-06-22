@@ -50,6 +50,18 @@ class AppStateManager: ObservableObject {
 
         speechEngine.start(scanning: session!)
         setupDepthSubscription()
+        setupCrosswalkSubscription()
+    }
+
+    private func setupCrosswalkSubscription() {
+        cameraManager?.crosswalkDetector.onSignalChange = { [weak self] signal in
+            guard let self else { return }
+            switch signal {
+            case .walk:     self.speechEngine.announceCrosswalk("Walk signal")
+            case .dontWalk: self.speechEngine.announceCrosswalk("Don't walk")
+            case .unknown:  break
+            }
+        }
     }
 
     private func setupDepthSubscription() {

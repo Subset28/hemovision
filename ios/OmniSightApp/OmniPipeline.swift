@@ -29,6 +29,8 @@ class OmniPipeline: NSObject, ARSessionDelegate, ObservableObject {
     @Published var middleSensorDist: Float = 999.0
     @Published var isRunning = false
 
+    let crosswalkDetector = CrosswalkDetector()
+
     init(scannerSession: OmniSightSession) {
         self.scannerSession = scannerSession
         super.init()
@@ -77,6 +79,9 @@ class OmniPipeline: NSObject, ARSessionDelegate, ObservableObject {
                 DispatchQueue.main.async { self.middleSensorDist = depth }
             }
         }
+
+        // Crosswalk signal detection -- throttled internally to 1fps
+        crosswalkDetector.process(pixelBuffer: frame.capturedImage, timestamp: frame.timestamp)
 
         // ML ingest -- throttled to ~15fps, dispatched off ARKit's thread so frames don't pile up
         let now = frame.timestamp
