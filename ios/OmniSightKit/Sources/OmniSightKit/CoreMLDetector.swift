@@ -39,6 +39,7 @@ public final class CoreMLDetector {
         "backpack":     0.50,
         "suitcase":     0.65,
         "bottle":       0.28,
+        "traffic light": 0.90,
     ]
 
     public init(modelURL: URL, config: ScannerConfiguration = .defaultConfiguration) throws {
