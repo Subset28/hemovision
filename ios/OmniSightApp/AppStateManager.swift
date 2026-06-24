@@ -51,6 +51,7 @@ class AppStateManager: ObservableObject {
         speechEngine.start(scanning: session!)
         setupDepthSubscription()
         setupCrosswalkSubscription()
+        setupStepHazardSubscription()
     }
 
     private func setupCrosswalkSubscription() {
@@ -61,6 +62,13 @@ class AppStateManager: ObservableObject {
             case .dontWalk: self.speechEngine.announceCrosswalk("Don't walk")
             case .unknown:  break
             }
+        }
+    }
+
+    private func setupStepHazardSubscription() {
+        cameraManager?.stepHazardDetector.onHazardChange = { [weak self] hazard in
+            guard let self else { return }
+            self.speechEngine.announceStepHazard(hazard)
         }
     }
 
