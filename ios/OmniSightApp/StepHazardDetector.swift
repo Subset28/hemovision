@@ -11,21 +11,23 @@ final class StepHazardDetector {
         case stairsAscending(distanceM: Float?)
     }
 
+    // Set exactly once during init, before the pipeline starts. Serial-queue reads are safe
+    // because initialization completes before the first ARKit frame is delivered.
     var onHazardChange: ((StepHazard) -> Void)?
 
     private let queue = DispatchQueue(label: "com.orbconcepts.omnisight.stephazard", qos: .utility)
-    private var lastHazardAt: Date = .distantPast
+    private var lastHazardAt: TimeInterval = 0
 
     func process(depthMap: CVPixelBuffer?, timestamp: TimeInterval) {
         guard let dm = depthMap else { return }
-        queue.async { [weak self] in
+        queue.async { [weak self, timestamp] in
             guard let self else { return }
             let enabled = (UserDefaults.standard.object(forKey: "stepDetectionEnabled") as? Bool) ?? true
             guard enabled else { return }
-            guard Date().timeIntervalSince(self.lastHazardAt) >= 3.0 else { return }
+            guard timestamp - self.lastHazardAt >= 3.0 else { return }
+            self.lastHazardAt = timestamp
             let hazard = self.analyzeDepth(dm)
             if case .clear = hazard { return }
-            self.lastHazardAt = Date()
             DispatchQueue.main.async { [weak self] in self?.onHazardChange?(hazard) }
         }
     }
@@ -64,7 +66,7 @@ final class StepHazardDetector {
         }
 
         struct Disc { let row: Int; let delta: Float32 }
-        let threshold: Float32 = 0.25  // 25cm — minimum depth jump to register as step/curb
+        let threshold: Float32 = 0.15  // 15cm — catches stair treads (typically 17–18cm)
         var discs: [Disc] = []
 
         for c in 0..<cols {

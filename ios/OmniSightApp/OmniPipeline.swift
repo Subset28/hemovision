@@ -86,7 +86,7 @@ class OmniPipeline: NSObject, ARSessionDelegate, ObservableObject {
 
         // Step hazard detection -- consumes depth map directly
         stepHazardDetector.process(
-            depthMap: OmniPipeline.isSupported ? frame.sceneDepth?.depthMap : nil,
+            depthMap: frame.sceneDepth?.depthMap,
             timestamp: frame.timestamp
         )
 
