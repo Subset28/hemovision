@@ -30,6 +30,7 @@ class OmniPipeline: NSObject, ARSessionDelegate, ObservableObject {
     @Published var isRunning = false
 
     let crosswalkDetector = CrosswalkDetector()
+    let stepHazardDetector = StepHazardDetector()
 
     init(scannerSession: OmniSightSession) {
         self.scannerSession = scannerSession
@@ -82,6 +83,12 @@ class OmniPipeline: NSObject, ARSessionDelegate, ObservableObject {
 
         // Crosswalk signal detection -- throttled internally to 1fps
         crosswalkDetector.process(pixelBuffer: frame.capturedImage, timestamp: frame.timestamp)
+
+        // Step hazard detection -- consumes depth map directly
+        stepHazardDetector.process(
+            depthMap: frame.sceneDepth?.depthMap,
+            timestamp: frame.timestamp
+        )
 
         // ML ingest -- throttled to ~15fps, dispatched off ARKit's thread so frames don't pile up
         let now = frame.timestamp

@@ -592,6 +592,42 @@ class SpeechEngine: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
         HapticManager.shared.mediumVibration()
     }
 
+    // Step hazard alerts bypass the queue — same safety rationale as announceCrosswalk.
+    func announceStepHazard(_ hazard: StepHazardDetector.StepHazard) {
+        let enabled = (UserDefaults.standard.object(forKey: "stepDetectionEnabled") as? Bool) ?? true
+        guard enabled else { return }
+
+        let text: String
+        let useWarning: Bool
+
+        switch hazard {
+        case .clear:
+            return
+        case .stepDown(let dist):
+            text = dist.map { "Step down, \(distText(Double($0)))" } ?? "Step down ahead"
+            useWarning = true
+        case .stepUp(let dist):
+            text = dist.map { "Curb or step up, \(distText(Double($0)))" } ?? "Curb or step up"
+            useWarning = false
+        case .stairsDescending(let dist):
+            text = dist.map { "Stairs descending, \(distText(Double($0)))" } ?? "Stairs descending ahead"
+            useWarning = true
+        case .stairsAscending(let dist):
+            text = dist.map { "Stairs ascending, \(distText(Double($0)))" } ?? "Stairs ascending ahead"
+            useWarning = false
+        }
+
+        synth.stopSpeaking(at: .immediate)
+        queue.removeAll()
+        isSpeaking = false
+        speakToUser(text, rate: 0.50)
+
+        let hapticsOn = (UserDefaults.standard.object(forKey: "hapticsEnabled") as? Bool) ?? true
+        if hapticsOn {
+            useWarning ? HapticManager.shared.warningVibration() : HapticManager.shared.mediumVibration()
+        }
+    }
+
     func speakImmediate(_ text: String) {
         synth.stopSpeaking(at: .immediate)
         queue.removeAll()

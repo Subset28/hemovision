@@ -16,6 +16,7 @@ struct SettingsView: View {
     // Awareness
     @AppStorage("hazardAlarmsEnabled") private var hazardAlarmsEnabled: Bool   = true
     @AppStorage("hapticsEnabled")      private var hapticsEnabled:      Bool   = true
+    @AppStorage("stepDetectionEnabled") private var stepDetectionEnabled: Bool = true
     @AppStorage("emergencyDistanceM")  private var emergencyDistanceM:  Double = 1.2
     @AppStorage("rangeMultiplier")     private var rangeMultiplier:     Double = 1.0
 
@@ -96,6 +97,18 @@ struct SettingsView: View {
                         Text("Extended (1.5×)").tag(1.5)
                     }
                     .pickerStyle(.menu)
+
+                    if OmniPipeline.isSupported {
+                        Toggle("Detect stairs & curbs", isOn: $stepDetectionEnabled)
+                    } else {
+                        HStack {
+                            Text("Detect stairs & curbs")
+                            Spacer()
+                            Text("Requires iPhone Pro (LiDAR)")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
 
                 } header: { Text("Awareness") }
                   footer: {
@@ -187,6 +200,7 @@ struct SettingsView: View {
         sceneCooldown       = 6.0
         hazardAlarmsEnabled = true
         hapticsEnabled      = true
+        stepDetectionEnabled = true
         emergencyDistanceM  = 1.2
         rangeMultiplier     = 1.0
         debugModeEnabled    = false
