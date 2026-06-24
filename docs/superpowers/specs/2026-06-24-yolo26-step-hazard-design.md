@@ -72,10 +72,7 @@ Sample a 10×5 grid across the **bottom 40% of the depth frame** (where floor, c
 - 3+ parallel discontinuities spaced 0.15–0.35m apart → stairs
 - Depth increases away from camera → step **down**; decreases → step **up**
 
-**Non-Pro path:** `VNGenerateDepthImageRequest` (Vision, iOS 17+, on-device Neural Engine, ~30ms).
-- Produces relative depth 0–1 normalized
-- Same grid analysis; thresholds use normalized ratios (0.12 relative change)
-- Capped at 4 fps to control battery draw
+**Non-Pro path:** Not supported in v1.2. `VNGenerateDepthImageRequest` does not exist in the Vision framework. Bundling a CoreML depth model (e.g. MiDaS) is the correct path but adds ~50MB and is deferred to v1.3. On non-LiDAR devices, `stepDetectionEnabled` toggle is hidden and a note reads "Requires iPhone with LiDAR (Pro models)".
 
 ### Output
 
@@ -114,9 +111,9 @@ final class StepHazardDetector {
 }
 ```
 
-- `depthMap` non-nil → LiDAR path
-- `depthMap` nil → Vision depth estimation path
-- Throttles Vision requests internally; LiDAR analysis runs in microseconds
+- `depthMap` non-nil → LiDAR path (Pro models only)
+- `depthMap` nil → returns `.clear` immediately; non-Pro not supported in v1.2
+- LiDAR analysis completes in microseconds (math on float array, no Vision request)
 
 ---
 
@@ -156,13 +153,14 @@ Add `announceStepHazard(_ hazard: StepHazard)`:
 - Formats announcement string from enum case
 - Calls `speakImmediate` with appropriate haptic level
 - No-ops on `.clear`
-- Checks `Settings.shared.stepDetectionEnabled`
+- Checks `stepDetectionEnabled` UserDefaults key
 
 ### `SettingsView.swift`
 
-One new toggle under the existing hazard settings section:
+One new toggle under the existing hazard settings section, **only shown when `OmniPipeline.isSupported` is true** (LiDAR device):
 - Label: "Detect stairs & curbs"
-- Key: `Settings.stepDetectionEnabled` (Bool, default `true`)
+- Key: `stepDetectionEnabled` (UserDefaults `@AppStorage`, Bool, default `true`)
+- When `OmniPipeline.isSupported` is false: show disabled row with label "Requires iPhone Pro (LiDAR)" instead of toggle
 
 ---
 
