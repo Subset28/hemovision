@@ -45,7 +45,7 @@ final class StepHazardDetector {
         guard let base = CVPixelBufferGetBaseAddress(depthMap), width > 0, height > 0 else { return .clear }
 
         let floats = base.assumingMemoryBound(to: Float32.self)
-        let stride = bpr / MemoryLayout<Float32>.size
+        let rowStride = bpr / MemoryLayout<Float32>.size
 
         let cols    = 10
         let rows    = 5
@@ -58,7 +58,7 @@ final class StepHazardDetector {
             for c in 0..<cols {
                 let py = min(height - 1, startY + r * rowStep)
                 let px = min(width  - 1, c * colStep)
-                let v  = floats[py * stride + px]
+                let v  = floats[py * rowStride + px]
                 grid[r][c] = (v > 0 && v.isFinite && v < 20.0) ? v : 0
             }
         }
