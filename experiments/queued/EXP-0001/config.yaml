@@ -1,0 +1,18 @@
+experiment_id: EXP-0001
+experiment_family: threshold_postprocessing
+independent_variable: confidence_threshold (evaluated post-hoc from an existing conf=0.01
+  capture; benchmark/config.py's real conf=0.4 is unchanged)
+controls:
+  model: yolov8m-oiv7.pt (same weights as the canonical baseline)
+  manifest: data/manifests/eval_manifest.jsonl (unchanged)
+  iou_threshold: 0.7
+  imgsz: 640
+configuration: {}
+baseline_run_id: RUN-20260904-002
+validation_requirement: OFFLINE_SIMULATABLE
+estimated_cost:
+  runtime_min: 1
+  gpu_mem_gb: 0
+  cpu: low
+  disk_mb: 1
+  llm_calls: 0

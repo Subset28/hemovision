@@ -13,6 +13,13 @@ benchmark/results/**/failures/
 data/raw/
 data/manifests/*.sqlite
 
+# Phase C research lab — local runtime state, not source (regenerable via
+# research/seed_experiments.py + omnilab experiment runs)
+research/omnilab.db
+research/llm_usage.json
+research/orchestrator_state.json
+.env
+
 # macOS
 .DS_Store
 

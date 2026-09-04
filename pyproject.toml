@@ -12,6 +12,8 @@ dependencies = [
     "requests>=2.32",
     "fiftyone>=1.21.0",
     "torchvision==0.19.1",
+    "psutil>=6.0",
+    "pyyaml>=6.0",
 ]
 
 [dependency-groups]

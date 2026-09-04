@@ -1,0 +1,18 @@
+experiment_id: EXP-0003
+experiment_family: class_confusion
+independent_variable: scoring-time class grouping map (measurement only, not a production
+  change)
+controls:
+  model: yolov8m-oiv7.pt (same weights, same predictions)
+  conf_threshold: 0.4
+  iou_threshold: 0.7
+  manifest: data/manifests/eval_manifest.jsonl (unchanged)
+configuration: {}
+baseline_run_id: RUN-20260904-002
+validation_requirement: OFFLINE_SIMULATABLE
+estimated_cost:
+  runtime_min: 2
+  gpu_mem_gb: 0
+  cpu: low
+  disk_mb: 1
+  llm_calls: 0

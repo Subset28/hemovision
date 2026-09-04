@@ -1,0 +1,25 @@
+# Role -> model routing config for research/llm/router.py.
+# primary is tried first; if it errors/is unavailable, fallback is tried;
+# if both fail (or no API key is configured at all), the router raises
+# LLMUnavailableError and the caller is expected to degrade gracefully.
+#
+# Model IDs are OpenRouter model slugs. Nothing here is called live in
+# Phase C (no OPENROUTER_API_KEY exists in this environment) — this file
+# exists so the plumbing is real and testable via the fake provider in
+# tests/test_llm_router.py.
+
+researcher:
+  primary: anthropic/claude-3.5-sonnet
+  fallback: openai/gpt-4o-mini
+
+experiment_designer:
+  primary: anthropic/claude-3.5-sonnet
+  fallback: openai/gpt-4o-mini
+
+reviewer:
+  primary: openai/gpt-4o
+  fallback: anthropic/claude-3.5-sonnet
+
+analyst:
+  primary: anthropic/claude-3.5-sonnet
+  fallback: openai/gpt-4o-mini

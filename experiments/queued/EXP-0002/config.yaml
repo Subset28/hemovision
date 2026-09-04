@@ -1,0 +1,17 @@
+experiment_id: EXP-0002
+experiment_family: small_object
+independent_variable: 'imgsz (inference-time only: 640 -> 960)'
+controls:
+  model: yolov8m-oiv7.pt (same weights)
+  conf_threshold: 0.4
+  iou_threshold: 0.7
+  manifest: data/manifests/eval_manifest.jsonl (unchanged)
+configuration: {}
+baseline_run_id: RUN-20260904-002
+validation_requirement: OFFLINE_SIMULATABLE
+estimated_cost:
+  runtime_min: 10
+  gpu_mem_gb: 2
+  cpu: medium
+  disk_mb: 5
+  llm_calls: 0
