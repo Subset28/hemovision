@@ -1,0 +1,33 @@
+[project]
+name = "omnisight-benchmark"
+version = "0.1.0"
+description = "Additive, non-production evaluation harness for OmniSight's shipped CV pipeline. Never imported by or coupled to the iOS app."
+requires-python = ">=3.11"
+dependencies = [
+    "numpy>=1.26",
+    "pillow>=10.4",
+    "torch>=2.4",
+    "ultralytics>=8.3",
+    "coremltools>=8.0",
+    "requests>=2.32",
+    "fiftyone>=1.21.0",
+    "torchvision==0.19.1",
+]
+
+[dependency-groups]
+dev = [
+    "matplotlib>=3.11.1",
+    "pytest>=8.3",
+]
+
+[tool.uv]
+package = false
+
+[tool.uv.sources]
+torch = { index = "pytorch-cu124" }
+torchvision = { index = "pytorch-cu124" }
+
+[[tool.uv.index]]
+name = "pytorch-cu124"
+url = "https://download.pytorch.org/whl/cu124"
+explicit = true

@@ -1,0 +1,53 @@
+{
+  "run_id": "RUN-20260904-002",
+  "num_images_evaluated": 380,
+  "overall": {
+    "precision": 0.7342615012106537,
+    "recall": 0.2467453213995118,
+    "f1": 0.3693666260657735,
+    "map50": 0.2010354331597093,
+    "map50_95": 0.16707784463944117,
+    "tp": 1213,
+    "fp": 439,
+    "fn": 3703,
+    "num_gt": 4916,
+    "num_predictions": 1652
+  },
+  "hazard_classes_only": {
+    "precision": 0.8070175438596491,
+    "recall": 0.4804177545691906,
+    "f1": 0.602291325695581,
+    "map50": 0.5822603224286523,
+    "map50_95": 0.49877322633511334,
+    "tp": 368,
+    "fp": 88,
+    "fn": 398,
+    "num_gt": 766,
+    "num_predictions": 456,
+    "miss_rate_proxy": 0.5195822454308094,
+    "note": "miss_rate_proxy = 1 - recall on hazard classes only, computed at the app's conf=0.4 operating point. This is a static-image proxy for the production 'miss rate' \u2014 it cannot capture cross-frame tracker recovery (coasting) which the real app has."
+  },
+  "false_detection_rate_proxy": {
+    "fp_per_image": 1.1552631578947368,
+    "note": "Raw detector false positives per image at conf=0.4, BEFORE any SpeechEngine cooldown/priority/crowd-suppression logic. This is an explicit upper-bound proxy for 'false announcement rate', not the real number a user would hear \u2014 see docs/FAILURE_TAXONOMY.md."
+  },
+  "duplicate_box_rate_proxy": {
+    "duplicate_detections": 95,
+    "note": "Count of predicted boxes matching an already-claimed ground-truth box within the SAME single image (single-frame proxy). This is a different, weaker signal than the production 'duplicate announcement rate', which is a cross-frame tracker/TTS-cooldown phenomenon this static dataset structurally cannot measure."
+  },
+  "latency_ms": {
+    "mean": 24.315346052653215,
+    "p50": 18.01439999962895,
+    "p95": 57.12579999999434,
+    "p99": 65.82259999959206,
+    "min": 13.626799999656214,
+    "max": 1338.1675000000541,
+    "note": "Measured on Windows/CUDA (RTX 3070 Ti), batch=1, single-process Python/PyTorch/ultralytics inference. This is a PROXY ONLY for real on-device Apple Neural Engine latency (computeUnits=.all on iPhone) \u2014 not equivalent. Real on-device numbers require the Mac/iPhone device benchmark described in BENCHMARK_PLAN.md Phase 2."
+  },
+  "not_measurable_with_this_benchmark": [
+    "detection_stability (requires video/frame-sequence temporal continuity)",
+    "tts_announcement_latency (requires the real SpeechEngine + device)",
+    "lidar_spatial_usefulness (requires LiDAR-equipped device + real depth data)",
+    "cross_frame_duplicate_announcement_rate (requires the SORT tracker + TTS cooldowns)"
+  ]
+}

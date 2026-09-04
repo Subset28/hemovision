@@ -1,0 +1,27 @@
+{
+  "note": "Verifies reports/baseline/Baseline_Report.md's occlusion-dominance claim against the manifest's raw IsOccluded flags, and quantifies how much 'occlusion' tagging is confounded by/co-occurring with small size and clutter \u2014 because benchmark/evaluate.py::_classify_failure checks IsOccluded BEFORE small-object/clutter for a missed detection and returns on first match, so small_object and clutter counts in failures.jsonl UNDER-count how often those factors are also present on an occlusion-tagged box.",
+  "current_taxonomy_counts": {
+    "occlusion": 1923,
+    "small_object": 957,
+    "clutter": 646,
+    "missed_detection_no_specific_reason": 177,
+    "total_failures": 4142
+  },
+  "check_1_tag_correctness": {
+    "occlusion_tagged_total": 1923,
+    "confirmed_IsOccluded_true_in_manifest": 1923,
+    "mismatches": 0,
+    "mismatch_examples": [],
+    "verdict": "PASS \u2014 every 'occlusion' failure record's underlying GT box genuinely has IsOccluded=True in the manifest (this is tautological by construction of _classify_failure's priority order, not evidence the flag is meaningful beyond what Open Images annotators marked \u2014 see check_2 and the limitation note below)."
+  },
+  "check_2_confound_with_size_and_clutter": {
+    "occlusion_tagged_total": 1923,
+    "also_small_object_lt_2pct_area": 1077,
+    "also_small_object_pct": 56.0,
+    "also_cluttered_gt8_boxes": 1706,
+    "also_cluttered_pct": 88.7,
+    "also_both_small_and_cluttered": 987,
+    "interpretation": "A large fraction of 'occlusion'-tagged failures are ALSO small and/or in cluttered images. Because the current priority order labels these as 'occlusion' only (small_object/clutter are never assigned when IsOccluded is True), the reported occlusion counts (see current_taxonomy_counts above) should NOT be read as 'this many failures are caused by occlusion specifically' \u2014 they mean 'this many failures involve a box Open Images annotators flagged occluded, many of which are ALSO small or in cluttered scenes'. The taxonomy's own priority order (occlusion checked first) is a genuine modeling choice, not a bug, but it structurally cannot separate occlusion's independent causal contribution from size/clutter's \u2014 Open Images' IsOccluded is a coarse binary flag with no severity gradation, so this benchmark cannot measure 'how occluded' a box is, only whether an annotator ticked the box."
+  },
+  "limitation": "IsOccluded is a coarse, binary, human-annotated flag from Open Images V7 with no severity/percentage-occluded information. It cannot distinguish 'barely clipped by a doorframe' from '90% hidden behind another person'. This benchmark's occlusion accounting is therefore a real, verified signal (check_1 passes) but a LIMITED one: it establishes correlation between annotator-flagged occlusion and missed detections, not a clean, confound-free causal estimate of occlusion's effect size independent of object size/scene clutter (check_2)."
+}

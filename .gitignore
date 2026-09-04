@@ -1,0 +1,21 @@
+# Python / uv (benchmark tooling)
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+uv.lock.tmp
+
+# benchmark artifacts / weights / large data (not committed — regenerated or fetched, licensed per docs/DATASETS.md)
+benchmark/models/*.pt
+benchmark/models/*.onnx
+benchmark/results/**/predictions.jsonl
+benchmark/results/**/failures/
+data/raw/
+data/manifests/*.sqlite
+
+# macOS
+.DS_Store
+
+# Xcode user state (not the shared project itself)
+ios/OmniSight/OmniSight.xcodeproj/xcuserdata/
+ios/OmniSight/OmniSight.xcodeproj/project.xcworkspace/xcuserdata/

@@ -1,0 +1,27 @@
+# Label alignment spot-check
+# Format: sample_id | GT: <class> bbox=[x,y,w,h] | Pred: <class> conf=.. IoU=.. [MATCH|NO MATCH]
+# MATCH = same class name AND IoU >= 0.5 against the single best-overlapping prediction of ANY class in that image (not necessarily the same class as GT — shown deliberately so class-mismatch bugs would be visible).
+
+oiv7-30df404554a59c74 | GT: Person bbox=[0.7156, 0.4938, 0.05, 0.2208] | Pred: Person conf=0.51 IoU=0.75 [MATCH]
+oiv7-5a6f76adceec9d57 | GT: Person bbox=[0.0926, 0.1486, 0.2, 0.5344] | Pred: Bicycle conf=0.68 IoU=0.28 [NO MATCH — nearest pred: Bicycle conf=0.68 IoU=0.28]
+oiv7-aef199d66371e318 | GT: Person bbox=[0.0, 0.1748, 1.0, 0.3009] | Pred: Car conf=0.83 IoU=0.29 [NO MATCH — nearest pred: Car conf=0.83 IoU=0.29]
+oiv7-591eff0709a14d1c | GT: Person bbox=[0.4071, 0.2769, 0.2456, 0.2489] | Pred: Person conf=0.48 IoU=0.65 [MATCH]
+oiv7-591eff0709a14d1c | GT: Person bbox=[0.5022, 0.2695, 0.2124, 0.3034] | Pred: Person conf=0.48 IoU=0.67 [MATCH]
+oiv7-36f08c7bb481ba25 | GT: Stairs bbox=[0.2875, 0.4359, 0.3688, 0.5625] | Pred: Man conf=0.55 IoU=0.42 [NO MATCH — nearest pred: Man conf=0.55 IoU=0.42]
+oiv7-36f08c7bb481ba25 | GT: Stairs bbox=[0.4917, 0.3844, 0.5062, 0.5359] | Pred: Stairs conf=0.75 IoU=0.77 [MATCH]
+oiv7-43279ad5d74d5f67 | GT: Stairs bbox=[0.0672, 0.3729, 0.1688, 0.625] | Pred: NONE in image | [NO MATCH — no predictions at all]
+oiv7-2a0f8b40b7b25bcc | GT: Stairs bbox=[0.2812, 0.3234, 0.5417, 0.6766] | Pred: Stairs conf=0.62 IoU=0.54 [MATCH]
+oiv7-ce442e81fded4107 | GT: Stairs bbox=[0.5575, 0.2102, 0.2109, 0.3872] | Pred: Bed conf=0.66 IoU=0.09 [NO MATCH — nearest pred: Bed conf=0.66 IoU=0.09]
+oiv7-c001dcbe47cd2276 | GT: Dog bbox=[0.1388, 0.3052, 0.1388, 0.2232] | Pred: Dog conf=0.75 IoU=0.51 [MATCH]
+oiv7-6ed26b4012c71a5b | GT: Dog bbox=[0.3528, 0.4567, 0.1425, 0.1635] | Pred: Dog conf=0.68 IoU=0.30 [NO MATCH — nearest pred: Dog conf=0.68 IoU=0.30]
+oiv7-64a73e4068f7238e | GT: Dog bbox=[0.0949, 0.288, 0.7417, 0.4549] | Pred: Dog conf=0.92 IoU=0.97 [MATCH]
+oiv7-aef199d66371e318 | GT: Car bbox=[0.0, 0.1527, 0.9661, 0.7301] | Pred: Car conf=0.83 IoU=0.77 [MATCH]
+oiv7-aef199d66371e318 | GT: Car bbox=[0.0427, 0.2389, 0.0515, 0.0686] | Pred: Car conf=0.83 IoU=0.00 [NO MATCH — nearest pred: Car conf=0.83 IoU=0.00]
+oiv7-aef199d66371e318 | GT: Car bbox=[0.1399, 0.219, 0.0309, 0.0973] | Pred: Car conf=0.83 IoU=0.00 [NO MATCH — nearest pred: Car conf=0.83 IoU=0.00]
+oiv7-5a6f76adceec9d57 | GT: Bicycle bbox=[0.0265, 0.4967, 0.4162, 0.3215] | Pred: Bicycle conf=0.68 IoU=0.61 [MATCH]
+oiv7-5a6f76adceec9d57 | GT: Bicycle bbox=[0.1544, 0.4146, 0.4956, 0.4922] | Pred: Bicycle conf=0.84 IoU=0.96 [MATCH]
+oiv7-c4e8395425f49d05 | GT: Motorcycle bbox=[0.3215, 0.3252, 0.413, 0.5199] | Pred: Bicycle conf=0.81 IoU=0.95 [NO MATCH — nearest pred: Bicycle conf=0.81 IoU=0.95]
+oiv7-71df582bfb39b541 | GT: Motorcycle bbox=[0.3004, 0.6283, 0.1443, 0.2434] | Pred: Person conf=0.49 IoU=0.48 [NO MATCH — nearest pred: Person conf=0.49 IoU=0.48]
+
+# Summary: 10/20 sampled GT boxes had a same-class, IoU>=0.5 match.
+# Purpose of this script: confirm class-name strings and bbox coordinate convention agree between benchmark/model.py predictions and data/manifests/ eval_manifest.jsonl ground truth. It is NOT a recall estimate (it samples a small, non-random subset of GT boxes) — see reports/baseline/Baseline_Report.md and benchmark/results/baseline/per_class.json for the real per-class recall.

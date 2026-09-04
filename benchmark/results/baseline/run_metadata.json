@@ -1,0 +1,23 @@
+{
+  "run_id": "RUN-20260904-002",
+  "timestamp_utc": "2026-09-04T22:20:03.277731+00:00",
+  "benchmark_version": "0.1.0",
+  "git_commit": "76c5508044549f945fb1da2ea2da86be85477172",
+  "model_path": "benchmark\\models\\yolov8m-oiv7.pt",
+  "model_sha256": "21ffa3718c577ac23e708e4c0544c49a20682efa03914d5f816166b54e8fd3fe",
+  "manifest_path": "C:\\Users\\Armaa\\Downloads\\OmniSight\\data\\manifests\\eval_manifest.jsonl",
+  "manifest_sha256": "617190fd433c26c1bb916e6844c705c64edf73defe49bac1d72eba5623915327",
+  "config": {
+    "imgsz": 640,
+    "conf_threshold": 0.4,
+    "iou_threshold": 0.7,
+    "random_seed": 42
+  },
+  "python_version": "3.11.15 (main, Jun  2 2026, 22:29:49) [MSC v.1944 64 bit (AMD64)]",
+  "platform": "Windows-10-10.0.26200-SP0",
+  "gpu_name": "NVIDIA GeForce RTX 3070 Ti",
+  "cuda_version": "12.4",
+  "torch_version": "2.4.1+cu124",
+  "num_eval_images": 380,
+  "num_images_in_manifest": 380
+}
