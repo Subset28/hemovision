@@ -1,0 +1,8 @@
+[2026-09-04T23:21:24.768005+00:00] branch experiment/EXP-0002 created from 3e6d7e1ef9a5450ecdf619f71fbaa8a1930f0144
+Running EXP-0002 candidate inference at imgsz=960, conf=0.4, iou=0.7 over 380 images
+candidate (imgsz=960) hazard: P=0.763 R=0.449
+candidate (imgsz=960) person: P=0.667 R=0.165
+candidate p95 latency: 72.4ms
+[2026-09-04T23:21:45.745332+00:00] pytest exit_ok=True
+[2026-09-04T23:21:45.799364+00:00] evaluation_policy verdict=FAILED -> final_status=FAILED
+[2026-09-04T23:21:45.799364+00:00] verdict explanation: FAILED: guardrail 'hazard.recall' violated: 0.4491 does not satisfy gte 0.4604 (hazard recall must not drop more than 0.02 below baseline)

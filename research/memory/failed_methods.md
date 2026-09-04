@@ -16,3 +16,10 @@ This file is otherwise empty at Phase C seed time — updated by
 `research/orchestrator.py`'s `experiment()` command whenever a verdict is
 FAILED or REJECTED, with enough detail (independent variable, what broke,
 which guardrail) that the same mistake isn't repeated.
+
+## EXP-0002 (2026-09-04T23:21:45.894618+00:00)
+
+- Family: small_object
+- Status: FAILED
+- Hypothesis: Increased inference-time input resolution (640->960 or 640->1280) meaningfully improves Person recall, at some measurable latency cost.
+- Reasons: guardrail 'hazard.recall' violated: 0.4491 does not satisfy gte 0.4604 (hazard recall must not drop more than 0.02 below baseline)

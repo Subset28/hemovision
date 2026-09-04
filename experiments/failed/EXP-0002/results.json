@@ -1,0 +1,63 @@
+{
+  "baseline_metrics": {
+    "hazard": {
+      "precision": 0.8070175438596491,
+      "recall": 0.4804177545691906
+    },
+    "person": {
+      "recall": 0.21122112211221122,
+      "precision": 0.6666666666666666,
+      "num_gt": 303
+    },
+    "latency": {
+      "p95_ms": 57.12579999999434
+    }
+  },
+  "candidate_metrics": {
+    "hazard": {
+      "precision": 0.7627494456762749,
+      "recall": 0.4490861618798956
+    },
+    "person": {
+      "recall": 0.16501650165016502,
+      "precision": 0.6666666666666666,
+      "num_gt": 303
+    },
+    "latency": {
+      "p95_ms": 72.42410000071686
+    }
+  },
+  "raw_evaluation_policy_verdict": "FAILED",
+  "final_experiment_status": "FAILED",
+  "guardrail_results": [
+    {
+      "metric": "hazard.precision",
+      "value": 0.7627494456762749,
+      "threshold": 0.757017543859649,
+      "comparator": "gte",
+      "satisfied": true,
+      "margin": 0.005731901816625862
+    },
+    {
+      "metric": "hazard.recall",
+      "value": 0.4490861618798956,
+      "threshold": 0.4604177545691906,
+      "comparator": "gte",
+      "satisfied": false,
+      "margin": 0.011331592689295011
+    },
+    {
+      "metric": "latency.p95_ms",
+      "value": 72.42410000071686,
+      "threshold": 85.68869999999151,
+      "comparator": "lte",
+      "satisfied": true,
+      "margin": 13.264599999274651
+    }
+  ],
+  "reasons": [
+    "guardrail 'hazard.recall' violated: 0.4491 does not satisfy gte 0.4604 (hazard recall must not drop more than 0.02 below baseline)"
+  ],
+  "notes": "Real inference re-run at imgsz=960 (candidate) vs the canonical imgsz=640 baseline, same model weights/conf/iou/manifest. This is an inference-time-only resolution change \u2014 benchmark/config.py's real IMGSZ=640 is unchanged.",
+  "result_run_id": "EXP-0002-imgsz960-inline"
+}

@@ -1,0 +1,129 @@
+diff --git a/experiments/queued/EXP-0002/analysis.md b/experiments/queued/EXP-0002/analysis.md
+deleted file mode 100644
+index 03f890c..0000000
+--- a/experiments/queued/EXP-0002/analysis.md
++++ /dev/null
+@@ -1,3 +0,0 @@
+-# EXP-0002 â€” Analysis
+-
+-(not yet run)
+diff --git a/experiments/queued/EXP-0002/benchmark.log b/experiments/queued/EXP-0002/benchmark.log
+deleted file mode 100644
+index e69de29..0000000
+diff --git a/experiments/queued/EXP-0002/conclusion.md b/experiments/queued/EXP-0002/conclusion.md
+deleted file mode 100644
+index d5c8080..0000000
+--- a/experiments/queued/EXP-0002/conclusion.md
++++ /dev/null
+@@ -1,3 +0,0 @@
+-# EXP-0002 â€” Conclusion
+-
+-(not yet run)
+diff --git a/experiments/queued/EXP-0002/config.yaml b/experiments/queued/EXP-0002/config.yaml
+deleted file mode 100644
+index 9de7569..0000000
+--- a/experiments/queued/EXP-0002/config.yaml
++++ /dev/null
+@@ -1,17 +0,0 @@
+-experiment_id: EXP-0002
+-experiment_family: small_object
+-independent_variable: 'imgsz (inference-time only: 640 -> 960)'
+-controls:
+-  model: yolov8m-oiv7.pt (same weights)
+-  conf_threshold: 0.4
+-  iou_threshold: 0.7
+-  manifest: data/manifests/eval_manifest.jsonl (unchanged)
+-configuration: {}
+-baseline_run_id: RUN-20260904-002
+-validation_requirement: OFFLINE_SIMULATABLE
+-estimated_cost:
+-  runtime_min: 10
+-  gpu_mem_gb: 2
+-  cpu: medium
+-  disk_mb: 5
+-  llm_calls: 0
+diff --git a/experiments/queued/EXP-0002/hypothesis.md b/experiments/queued/EXP-0002/hypothesis.md
+deleted file mode 100644
+index 5b926cb..0000000
+--- a/experiments/queued/EXP-0002/hypothesis.md
++++ /dev/null
+@@ -1,25 +0,0 @@
+-# EXP-0002 â€” Hypothesis
+-
+-**Family**: small_object
+-**Validation requirement**: OFFLINE_SIMULATABLE
+-**Parent experiment**: (none)
+-
+-## Hypothesis
+-
+-Increased inference-time input resolution (640->960 or 640->1280) meaningfully improves Person recall, at some measurable latency cost.
+-
+-## Motivation
+-
+-64.0% of missed Person boxes have area <2% of the image (small/distant) per reports/baseline/person_failure_analysis.md. Higher input resolution is a natural, architecture-preserving lever for small-object recall.
+-
+-## Rationale
+-
+-YOLO models natively support inference at a different imgsz via letterboxing, with no retraining and no change to the production model weights.
+-
+-## Expected outcome
+-
+-Directional evidence on whether resolution is a viable lever for Person recall.
+-
+-## Risks
+-
+-Runtime cost of a second full inference pass (~380 images); no production code touched.
+diff --git a/experiments/queued/EXP-0002/methodology.md b/experiments/queued/EXP-0002/methodology.md
+deleted file mode 100644
+index 738b766..0000000
+--- a/experiments/queued/EXP-0002/methodology.md
++++ /dev/null
+@@ -1,28 +0,0 @@
+-# EXP-0002 â€” Methodology
+-
+-## Independent variable
+-
+-imgsz (inference-time only: 640 -> 960)
+-
+-## Controls (held constant)
+-
+-- `model`: yolov8m-oiv7.pt (same weights)
+-- `conf_threshold`: 0.4
+-- `iou_threshold`: 0.7
+-- `manifest`: data/manifests/eval_manifest.jsonl (unchanged)
+-
+-## Evaluation method
+-
+-Run real inference over the eval manifest at imgsz=960 (conf/iou unchanged), score with benchmark.metrics.evaluate_detections, compare against the canonical baseline via research.evaluation_policy's default hazard policy.
+-
+-## Success criteria (checked by research/evaluation_policy.py)
+-
+-- `primary_metric`: person.recall
+-- `min_meaningful_delta`: 0.03
+-- `guardrails`: ['hazard.precision >= baseline-0.05', 'latency.p95_ms <= baseline*1.5']
+-
+-## Baseline compared against
+-
+-`RUN-20260904-002` (see `benchmark/results/baseline/run_metadata.json`
+-if this is the canonical baseline, or `benchmark/results/diagnostics/` for a
+-diagnostic-derived baseline).
+diff --git a/experiments/queued/EXP-0002/patch.diff b/experiments/queued/EXP-0002/patch.diff
+deleted file mode 100644
+index e69de29..0000000
+diff --git a/experiments/queued/EXP-0002/results.json b/experiments/queued/EXP-0002/results.json
+deleted file mode 100644
+index 0967ef4..0000000
+--- a/experiments/queued/EXP-0002/results.json
++++ /dev/null
+@@ -1 +0,0 @@
+-{}
+
+# --- untracked files (not shown above; git diff does not include them) ---
+# experiments/active/EXP-0002/analysis.md
+# experiments/active/EXP-0002/benchmark.log
+# experiments/active/EXP-0002/conclusion.md
+# experiments/active/EXP-0002/config.yaml
+# experiments/active/EXP-0002/hypothesis.md
+# experiments/active/EXP-0002/methodology.md
+# experiments/active/EXP-0002/patch.diff
+# experiments/active/EXP-0002/results.json
