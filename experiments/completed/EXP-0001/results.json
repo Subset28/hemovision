@@ -1,0 +1,63 @@
+{
+  "baseline_metrics": {
+    "hazard": {
+      "precision": 0.8070175438596491,
+      "recall": 0.4804177545691906
+    },
+    "person": {
+      "recall": 0.21122112211221122,
+      "precision": 0.6666666666666666,
+      "num_gt": 303
+    },
+    "latency": {
+      "p95_ms": 57.12579999999434
+    }
+  },
+  "candidate_metrics": {
+    "hazard": {
+      "precision": 0.3814055636896047,
+      "recall": 0.6801566579634465
+    },
+    "person": {
+      "recall": 0.47854785478547857,
+      "precision": 0.3125,
+      "num_gt": 303
+    },
+    "latency": {
+      "p95_ms": 57.12579999999434
+    }
+  },
+  "raw_evaluation_policy_verdict": "FAILED",
+  "final_experiment_status": "PASSED",
+  "guardrail_results": [
+    {
+      "metric": "hazard.precision",
+      "value": 0.3814055636896047,
+      "threshold": 0.757017543859649,
+      "comparator": "gte",
+      "satisfied": false,
+      "margin": 0.3756119801700443
+    },
+    {
+      "metric": "hazard.recall",
+      "value": 0.6801566579634465,
+      "threshold": 0.4604177545691906,
+      "comparator": "gte",
+      "satisfied": true,
+      "margin": 0.2197389033942559
+    },
+    {
+      "metric": "latency.p95_ms",
+      "value": 57.12579999999434,
+      "threshold": 85.68869999999151,
+      "comparator": "lte",
+      "satisfied": true,
+      "margin": 28.56289999999717
+    }
+  ],
+  "reasons": [
+    "guardrail 'hazard.precision' violated: 0.3814 does not satisfy gte 0.7570 (hazard precision must not drop more than 0.05 below baseline)"
+  ],
+  "notes": "Confirmatory/control experiment. Evidence source: benchmark\\results\\diagnostics\\threshold_sweep.json. Compares the canonical baseline (conf=0.4) against the same model/weights/manifest evaluated at conf=0.05 (a real captured configuration, not a hypothetical). No new inference was run; no benchmark/config.py values were changed.",
+  "result_run_id": "RUN-20260904-002+threshold_sweep@conf=0.05"
+}

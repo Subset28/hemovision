@@ -132,6 +132,44 @@ def touched_paths(start_commit: str, repo_root: Path = REPO_ROOT) -> list[str]:
     return sorted(paths)
 
 
+def discard_non_experiment_changes(
+    repo_root: Path = REPO_ROOT, keep_prefixes: tuple = ("experiments/", "research/")
+) -> list[str]:
+    """Safety net called right before returning to master: git branches do
+    NOT automatically isolate uncommitted working-tree changes (an
+    uncommitted edit made while on `experiment/EXP-XXXX` survives a plain
+    `git checkout master` if it doesn't conflict). This discards any tracked
+    modification and removes any untracked file OUTSIDE keep_prefixes before
+    switching back, so a code change under test (e.g. to benchmark/*.py)
+    never leaks into master's working tree even though it was never
+    committed. Files under keep_prefixes (the experiment's own bookkeeping —
+    experiments/ artifacts, research/ memory updates) are deliberately left
+    alone; they are the durable lab record this pipeline is supposed to
+    produce, and get committed on master like any other project file.
+    Returns the list of paths that were discarded/removed, for logging."""
+    modified = _run(["diff", "--name-only", "HEAD", "--"], cwd=repo_root)
+    untracked = _run(["ls-files", "--others", "--exclude-standard"], cwd=repo_root)
+    discarded: list[str] = []
+
+    to_checkout = [
+        p for p in modified.splitlines() if p and not p.startswith(keep_prefixes)
+    ]
+    if to_checkout:
+        _run(["checkout", "--", *to_checkout], cwd=repo_root)
+        discarded.extend(to_checkout)
+
+    to_remove = [
+        p for p in untracked.splitlines() if p and not p.startswith(keep_prefixes)
+    ]
+    for p in to_remove:
+        full = repo_root / p
+        if full.exists():
+            full.unlink()
+        discarded.append(p)
+
+    return discarded
+
+
 def return_to_main_branch(repo_root: Path = REPO_ROOT, main_branch: str = "master") -> None:
     """Check out back to master/main. Never leaves the working tree on an
     experiment branch. Safe to call even if already on master (no-op)."""

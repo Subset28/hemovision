@@ -16,6 +16,7 @@ from research.git_isolation import (
     capture_diff,
     create_experiment_branch,
     current_branch,
+    discard_non_experiment_changes,
     is_clean,
     return_to_main_branch,
     touched_paths,
@@ -109,3 +110,44 @@ class TestDiffCapture:
         paths = touched_paths(eb.start_commit, repo_root=temp_repo)
         assert "README.md" in paths
         assert "extra.py" in paths
+
+
+class TestDiscardNonExperimentChanges:
+    def test_discards_tracked_modification_outside_keep_prefixes(self, temp_repo: Path):
+        create_experiment_branch("EXP-0001", repo_root=temp_repo)
+        (temp_repo / "README.md").write_text("code-under-test change\n", encoding="utf-8")
+        discarded = discard_non_experiment_changes(repo_root=temp_repo)
+        assert "README.md" in discarded
+        assert (temp_repo / "README.md").read_text(encoding="utf-8") == "hello\n"
+
+    def test_removes_untracked_file_outside_keep_prefixes(self, temp_repo: Path):
+        create_experiment_branch("EXP-0001", repo_root=temp_repo)
+        (temp_repo / "leaked_code.py").write_text("x = 1\n", encoding="utf-8")
+        discarded = discard_non_experiment_changes(repo_root=temp_repo)
+        assert "leaked_code.py" in discarded
+        assert not (temp_repo / "leaked_code.py").exists()
+
+    def test_keeps_experiment_bookkeeping_files(self, temp_repo: Path):
+        create_experiment_branch("EXP-0001", repo_root=temp_repo)
+        (temp_repo / "experiments").mkdir()
+        (temp_repo / "experiments" / "EXP-0001-notes.md").write_text("kept\n", encoding="utf-8")
+        (temp_repo / "research").mkdir()
+        (temp_repo / "research" / "memory.md").write_text("kept too\n", encoding="utf-8")
+        discarded = discard_non_experiment_changes(repo_root=temp_repo)
+        assert discarded == []
+        assert (temp_repo / "experiments" / "EXP-0001-notes.md").exists()
+        assert (temp_repo / "research" / "memory.md").exists()
+
+    def test_survives_full_lifecycle_leaving_master_clean(self, temp_repo: Path):
+        """End-to-end: branch -> leak a code change + bookkeeping file ->
+        discard -> return to master -> master's working tree carries only
+        the bookkeeping file, never the leaked code change."""
+        eb = create_experiment_branch("EXP-0001", repo_root=temp_repo)
+        (temp_repo / "README.md").write_text("leaked change\n", encoding="utf-8")
+        (temp_repo / "experiments").mkdir()
+        (temp_repo / "experiments" / "record.md").write_text("kept\n", encoding="utf-8")
+        discard_non_experiment_changes(repo_root=temp_repo)
+        return_to_main_branch(temp_repo)
+        assert current_branch(temp_repo) == "master"
+        assert (temp_repo / "README.md").read_text(encoding="utf-8") == "hello\n"
+        assert (temp_repo / "experiments" / "record.md").exists()

@@ -1,0 +1,128 @@
+diff --git a/experiments/queued/EXP-0001/analysis.md b/experiments/queued/EXP-0001/analysis.md
+deleted file mode 100644
+index 9015e58..0000000
+--- a/experiments/queued/EXP-0001/analysis.md
++++ /dev/null
+@@ -1,3 +0,0 @@
+-# EXP-0001 â€” Analysis
+-
+-(not yet run)
+diff --git a/experiments/queued/EXP-0001/benchmark.log b/experiments/queued/EXP-0001/benchmark.log
+deleted file mode 100644
+index e69de29..0000000
+diff --git a/experiments/queued/EXP-0001/conclusion.md b/experiments/queued/EXP-0001/conclusion.md
+deleted file mode 100644
+index c3ce03a..0000000
+--- a/experiments/queued/EXP-0001/conclusion.md
++++ /dev/null
+@@ -1,3 +0,0 @@
+-# EXP-0001 â€” Conclusion
+-
+-(not yet run)
+diff --git a/experiments/queued/EXP-0001/config.yaml b/experiments/queued/EXP-0001/config.yaml
+deleted file mode 100644
+index 37c2a06..0000000
+--- a/experiments/queued/EXP-0001/config.yaml
++++ /dev/null
+@@ -1,18 +0,0 @@
+-experiment_id: EXP-0001
+-experiment_family: threshold_postprocessing
+-independent_variable: confidence_threshold (evaluated post-hoc from an existing conf=0.01
+-  capture; benchmark/config.py's real conf=0.4 is unchanged)
+-controls:
+-  model: yolov8m-oiv7.pt (same weights as the canonical baseline)
+-  manifest: data/manifests/eval_manifest.jsonl (unchanged)
+-  iou_threshold: 0.7
+-  imgsz: 640
+-configuration: {}
+-baseline_run_id: RUN-20260904-002
+-validation_requirement: OFFLINE_SIMULATABLE
+-estimated_cost:
+-  runtime_min: 1
+-  gpu_mem_gb: 0
+-  cpu: low
+-  disk_mb: 1
+-  llm_calls: 0
+diff --git a/experiments/queued/EXP-0001/hypothesis.md b/experiments/queued/EXP-0001/hypothesis.md
+deleted file mode 100644
+index 41e78be..0000000
+--- a/experiments/queued/EXP-0001/hypothesis.md
++++ /dev/null
+@@ -1,25 +0,0 @@
+-# EXP-0001 â€” Hypothesis
+-
+-**Family**: threshold_postprocessing
+-**Validation requirement**: OFFLINE_SIMULATABLE
+-**Parent experiment**: (none)
+-
+-## Hypothesis
+-
+-The existing threshold sweep (benchmark/results/diagnostics/threshold_sweep.json) accurately characterizes the precision/recall tradeoff, and threshold alone cannot resolve Person recall without unacceptable precision loss.
+-
+-## Motivation
+-
+-Phase B.5's diagnostic threshold sweep already showed Person recall roughly doubling (0.211->0.479) at conf=0.05 while precision collapses (0.667->0.312). This experiment formalizes that finding through the real omnilab pipeline as a confirmatory/control run â€” the safest possible first real experiment, since it requires no new inference code and no code changes at all.
+-
+-## Rationale
+-
+-Confirms a large-sample (Person, GT=303), already-verified finding rather than discovering something new â€” deliberately low-risk per the master spec's instruction to prove the pipeline works before running anything more speculative.
+-
+-## Expected outcome
+-
+-Hypothesis confirmed (final status PASSED); no production recommendation changes.
+-
+-## Risks
+-
+-None â€” read-only analysis of already-approved diagnostic data, no code change.
+diff --git a/experiments/queued/EXP-0001/methodology.md b/experiments/queued/EXP-0001/methodology.md
+deleted file mode 100644
+index 564cb0f..0000000
+--- a/experiments/queued/EXP-0001/methodology.md
++++ /dev/null
+@@ -1,26 +0,0 @@
+-# EXP-0001 â€” Methodology
+-
+-## Independent variable
+-
+-confidence_threshold (evaluated post-hoc from an existing conf=0.01 capture; benchmark/config.py's real conf=0.4 is unchanged)
+-
+-## Controls (held constant)
+-
+-- `model`: yolov8m-oiv7.pt (same weights as the canonical baseline)
+-- `manifest`: data/manifests/eval_manifest.jsonl (unchanged)
+-- `iou_threshold`: 0.7
+-- `imgsz`: 640
+-
+-## Evaluation method
+-
+-Read benchmark/results/diagnostics/threshold_sweep.json's conf=0.4 (baseline) and conf=0.05 (candidate) buckets; apply research.evaluation_policy's default hazard policy. A hard evaluation-policy FAILED verdict (precision guardrail badly violated) CONFIRMS this experiment's hypothesis and maps to a final PASSED status.
+-
+-## Success criteria (checked by research/evaluation_policy.py)
+-
+-- `hypothesis_confirmed_if`: candidate hazard.precision violates the (baseline-0.05) guardrail by more than the noise margin, while person.recall improves by more than the minimum-meaningful-delta
+-
+-## Baseline compared against
+-
+-`RUN-20260904-002` (see `benchmark/results/baseline/run_metadata.json`
+-if this is the canonical baseline, or `benchmark/results/diagnostics/` for a
+-diagnostic-derived baseline).
+diff --git a/experiments/queued/EXP-0001/patch.diff b/experiments/queued/EXP-0001/patch.diff
+deleted file mode 100644
+index e69de29..0000000
+diff --git a/experiments/queued/EXP-0001/results.json b/experiments/queued/EXP-0001/results.json
+deleted file mode 100644
+index 0967ef4..0000000
+--- a/experiments/queued/EXP-0001/results.json
++++ /dev/null
+@@ -1 +0,0 @@
+-{}
+
+# --- untracked files (not shown above; git diff does not include them) ---
+# experiments/active/EXP-0001/analysis.md
+# experiments/active/EXP-0001/benchmark.log
+# experiments/active/EXP-0001/conclusion.md
+# experiments/active/EXP-0001/config.yaml
+# experiments/active/EXP-0001/hypothesis.md
+# experiments/active/EXP-0001/methodology.md
+# experiments/active/EXP-0001/patch.diff
+# experiments/active/EXP-0001/results.json

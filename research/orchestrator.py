@@ -39,6 +39,7 @@ from research.git_isolation import (
     GitIsolationError,
     capture_diff,
     create_experiment_branch,
+    discard_non_experiment_changes,
     return_to_main_branch,
     touched_paths,
 )
@@ -297,6 +298,16 @@ def run_experiment(experiment_id: str) -> Experiment:
         )
         return exp_after
     finally:
+        try:
+            discarded = discard_non_experiment_changes()
+            if discarded:
+                logger.warning(
+                    "%s: discarded %d non-experiment working-tree change(s) before "
+                    "returning to master (isolation safety net): %s",
+                    experiment_id, len(discarded), discarded,
+                )
+        except GitIsolationError as e:  # pragma: no cover - defensive only
+            logger.error("failed to discard non-experiment changes: %s", e)
         try:
             return_to_main_branch()
         except GitIsolationError as e:  # pragma: no cover - defensive only
