@@ -133,7 +133,20 @@ def touched_paths(start_commit: str, repo_root: Path = REPO_ROOT) -> list[str]:
 
 
 def discard_non_experiment_changes(
-    repo_root: Path = REPO_ROOT, keep_prefixes: tuple = ("experiments/", "research/")
+    repo_root: Path = REPO_ROOT,
+    keep_prefixes: tuple = (
+        "experiments/", "research/",
+        # Measurement-only diagnostic SOURCE scripts and their derived JSON
+        # outputs, regression tests, and human-readable reports are durable
+        # lab deliverables, not a "candidate production change under test"
+        # — they must survive the return-to-master isolation safety net the
+        # same way experiments/ and research/ do (added for EXP-0003; kept
+        # deliberately narrow — NOT a bare "benchmark/" prefix — so a real
+        # candidate change to benchmark/config.py, benchmark/model.py, etc.
+        # is still discarded as intended).
+        "benchmark/diagnostics/", "benchmark/results/diagnostics/",
+        "tests/", "reports/",
+    ),
 ) -> list[str]:
     """Safety net called right before returning to master: git branches do
     NOT automatically isolate uncommitted working-tree changes (an

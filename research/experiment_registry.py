@@ -53,7 +53,12 @@ REGISTRY: dict[str, FamilySpec] = {
         typical_guardrails=("hazard.precision", "hazard.recall"),
         windows_evaluatable=True,
         production_validation_requirement="OFFLINE_SIMULATABLE",
-        allowed_path_prefixes=("benchmark/", "research/", "experiments/"),
+        # "tests/" and "reports/" added for EXP-0003: a measurement-only
+        # class-confusion experiment's own deliverables legitimately include
+        # new regression tests for its diagnostic scripts and a standalone
+        # human-readable report under reports/baseline/ (see EXP-0003
+        # methodology) -- neither is a production/ios/ change.
+        allowed_path_prefixes=("benchmark/", "research/", "experiments/", "tests/", "reports/"),
     ),
     "small_object": FamilySpec(
         key="small_object",
