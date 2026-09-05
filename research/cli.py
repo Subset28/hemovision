@@ -234,6 +234,20 @@ def cmd_dry_run(args: argparse.Namespace) -> int:
             if key and key not in os.environ:
                 os.environ[key] = value
 
+    model_catalog = None
+    if args.structured_output:
+        # Public, unauthenticated GET -- no API key attached, not a chat
+        # completion, does not touch UsageTracker/dry_run_budget/run_budget.
+        # Fetched here (not inside research/dry_run/pipeline.py) so the
+        # pipeline module itself never performs its own network I/O.
+        import requests
+
+        catalog_resp = requests.get("https://openrouter.ai/api/v1/models", timeout=30)
+        catalog_resp.raise_for_status()
+        model_catalog = {m["id"]: m for m in catalog_resp.json().get("data", [])}
+        print(f"omnilab dry-run: fetched OpenRouter catalog ({len(model_catalog)} models, unauthenticated GET, "
+              "not counted against LLM call budget)")
+
     authorization = LLMCallAuthorization.grant(reason=args.authorize)
     provider = OpenRouterProvider()
     router = LLMRouter(provider=provider, usage_tracker=UsageTracker())
@@ -242,6 +256,7 @@ def cmd_dry_run(args: argparse.Namespace) -> int:
 
     result = run_dry_run_cycle(
         router=router, authorized=authorization, run_budget=run_budget, dry_run_budget=dry_run_budget,
+        model_catalog=model_catalog, require_structured_output=args.structured_output,
     )
     json_path, report_path = write_artifacts(result)
 
@@ -320,6 +335,16 @@ def build_parser() -> argparse.ArgumentParser:
         "--max-calls", type=int, default=3,
         help="hard cap on external LLM calls for this run (default 3, per Phase H's live-"
              "demonstration budget)",
+    )
+    p_dry_run.add_argument(
+        "--structured-output", action="store_true", default=False,
+        help="opt-in: fetch OpenRouter's public, unauthenticated model catalog "
+             "(GET /api/v1/models — no API key, not a chat-completion request, does not "
+             "consume any LLM call budget) and require the configured researcher/reviewer "
+             "models to support native response_format structured output before making any "
+             "chat-completion request (research/llm/model_catalog.py's pre-flight gate). "
+             "A model that fails this check is rejected locally with zero network/budget "
+             "impact. Off by default so pre-remediation callers see unchanged behavior.",
     )
     p_dry_run.set_defaults(func=cmd_dry_run)
 

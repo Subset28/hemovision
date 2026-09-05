@@ -487,3 +487,101 @@ class TestArtifactMarking:
         assert report_path_2.exists()
         assert result1.dryrun_id in report_path_1.name
         assert result2.dryrun_id in report_path_2.name
+
+
+class TestStructuredOutputWiring:
+    """Regression coverage for connecting run_dry_run_cycle's orchestration
+    loop to research/llm/model_catalog.py's pre-flight gate and research/llm/
+    structured_output.py's schema builders -- research/llm/openrouter.py's
+    `_call_llm` choke point already accepted `model_catalog`/
+    `require_structured_output`/`response_format`, but run_dry_run_cycle
+    never forwarded them to any of its 4 call sites until this fix."""
+
+    def test_default_call_omits_response_format_unchanged_behavior(self):
+        """A caller that doesn't pass model_catalog/require_structured_output
+        (every existing caller before this fix) must see byte-identical
+        behavior -- no response_format kwarg reaches the provider."""
+
+        class RecordingProvider(LLMProvider):
+            def __init__(self, items):
+                self.items = list(items)
+                self.received_kwargs: list[dict] = []
+
+            def complete(self, prompt, role, model="", **kwargs):
+                self.received_kwargs.append(kwargs)
+                item = self.items.pop(0)
+                return LLMResponse(text=item, tokens_used=10, cost_usd=0.0, model_used=model)
+
+        provider = RecordingProvider([_proposal_json(), _review_json()])
+        router = _isolated_router(provider)
+        run_dry_run_cycle(router=router, authorized=True, dry_run_budget=DryRunCallBudget(3))
+
+        assert all(kw.get("response_format") is None for kw in provider.received_kwargs)
+        assert all(kw.get("model_catalog") is None for kw in provider.received_kwargs)
+
+    def test_structured_output_enabled_sends_distinct_schemas_per_role(self):
+        """With require_structured_output=True + a permissive model_catalog,
+        the researcher call must carry the proposal JSON schema and the
+        reviewer call must carry the (distinct) reviewer JSON schema."""
+
+        class RecordingProvider(LLMProvider):
+            def __init__(self, items):
+                self.items = list(items)
+                self.calls: list[tuple[str, dict]] = []
+
+            def complete(self, prompt, role, model="", **kwargs):
+                self.calls.append((role, kwargs))
+                item = self.items.pop(0)
+                return LLMResponse(text=item, tokens_used=10, cost_usd=0.0, model_used=model)
+
+        provider = RecordingProvider([_proposal_json(), _review_json()])
+        router = _isolated_router(provider)
+        permissive_catalog = {
+            "test/model": {"pricing": {"prompt": "0", "completion": "0"}, "supported_parameters": ["response_format"]},
+        }
+        # Point both roles at the same permissive catalog entry for this test.
+        for role_cfg in router._roles.values():
+            role_cfg["preferred_model"] = "test/model"
+
+        run_dry_run_cycle(
+            router=router, authorized=True, dry_run_budget=DryRunCallBudget(3),
+            model_catalog=permissive_catalog, require_structured_output=True,
+        )
+
+        researcher_calls = [kw for role, kw in provider.calls if role == "researcher"]
+        reviewer_calls = [kw for role, kw in provider.calls if role == "reviewer"]
+        assert researcher_calls and researcher_calls[0]["response_format"]["json_schema"]["name"] == "proposal_response"
+        assert reviewer_calls and reviewer_calls[0]["response_format"]["json_schema"]["name"] == "reviewer_critique"
+        assert (
+            researcher_calls[0]["response_format"]["json_schema"]["schema"]
+            != reviewer_calls[0]["response_format"]["json_schema"]["schema"]
+        )
+
+    def test_capability_gate_blocks_before_network_when_wired(self):
+        """A catalog entry lacking response_format support must reject the
+        call locally -- the mocked provider must never be invoked."""
+
+        class SpyProvider(LLMProvider):
+            def __init__(self):
+                self.call_count = 0
+
+            def complete(self, prompt, role, model="", **kwargs):
+                self.call_count += 1
+                raise AssertionError("provider.complete() must never be called for an incapable model")
+
+        provider = SpyProvider()
+        router = _isolated_router(provider)
+        unsupported_catalog = {
+            "test/model": {"pricing": {"prompt": "0", "completion": "0"}, "supported_parameters": []},
+        }
+        for role_cfg in router._roles.values():
+            role_cfg["preferred_model"] = "test/model"
+
+        result = run_dry_run_cycle(
+            router=router, authorized=True, dry_run_budget=DryRunCallBudget(3),
+            model_catalog=unsupported_catalog, require_structured_output=True,
+        )
+
+        assert provider.call_count == 0
+        assert result.calls_made == 0
+        assert "capabilit" in result.stopped_reason.lower() or "unavailable" in result.stopped_reason.lower()

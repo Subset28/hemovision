@@ -83,6 +83,14 @@ DRY_RUN_REPORTS_DIR = REPO_ROOT / "reports" / "dry_run"
 _ROLE_RESEARCHER = "researcher"
 _ROLE_REVIEWER = "reviewer"
 
+# Every call site below must catch all three of these as one logical "this
+# logical step could not be fulfilled" outcome: LLMUnavailableError (a real
+# transport/provider failure) and ModelNotFreeError/ModelCapabilityError (a
+# zero-network pre-flight rejection from research/llm/model_catalog.py, only
+# raised when model_catalog is supplied). All three degrade the same way —
+# a graceful `stopped_reason`, never an uncaught crash.
+_CALL_UNAVAILABLE = (LLMUnavailableError, ModelNotFreeError, ModelCapabilityError)
+
 _PROMPTS_DIR = Path(__file__).resolve().parent / "prompts"
 
 
@@ -306,6 +314,18 @@ def _call_llm(
                     "MODEL_NOT_FREE" if isinstance(e, ModelNotFreeError) else "MODEL_CAPABILITY_UNSUPPORTED"
                 ),
             ))
+            # Re-raises the ORIGINAL ModelNotFreeError/ModelCapabilityError
+            # unchanged -- tests/test_dry_run_remediation.py asserts _call_llm
+            # itself raises these exact types (its documented low-level
+            # contract). Every caller in run_dry_run_cycle below must catch
+            # BOTH these types alongside LLMUnavailableError -- see the
+            # `_PREFLIGHT_REJECTIONS` tuple and its use at each of the 4 call
+            # sites. Bug found via tests/test_dry_run_pipeline.py::
+            # TestStructuredOutputWiring::test_capability_gate_blocks_before_
+            # network_when_wired: before this fix, run_dry_run_cycle's `except
+            # LLMUnavailableError` handlers did not catch these (both
+            # ValueError subclasses, not LLMUnavailableError), so a pre-flight
+            # rejection propagated uncaught out of the whole pipeline.
             raise
 
     violations = check_payload_safe(prompt)
@@ -394,11 +414,37 @@ def run_dry_run_cycle(
     run_budget: Optional[RunBudget] = None,
     dry_run_budget: Optional[DryRunCallBudget] = None,
     baseline_run_id: str = CANONICAL_BASELINE_RUN_ID,
+    model_catalog: Optional[dict] = None,
+    require_structured_output: bool = False,
 ) -> DryRunResult:
     """Run one full dry-run cycle. Never writes to research/db.py, never
     creates a git branch, never queues anything. Returns a DryRunResult for
     the caller to render into a report (see `render_report`) and persist
-    (see `write_artifacts`)."""
+    (see `write_artifacts`).
+
+    `model_catalog`/`require_structured_output` (remediation-build wiring,
+    optional, default off — a caller that omits them gets the exact
+    pre-remediation prompt-and-hope behavior, unchanged): when both are
+    provided, every researcher/revision call requests OpenRouter's native
+    structured output using `proposal_response_json_schema()`, and the
+    reviewer call uses `reviewer_critique_json_schema()` — via
+    `_call_llm`'s existing `model_catalog`/`require_structured_output`/
+    `response_format` parameters (research/llm/model_catalog.py's
+    pre-flight capability/free-pricing gate + research/llm/
+    structured_output.py's schema builders, both already implemented and
+    tested; this is the wiring between them and the orchestration loop that
+    was still missing after that build)."""
+    from research.llm.structured_output import build_response_format, proposal_response_json_schema, reviewer_critique_json_schema
+
+    proposal_response_format = (
+        build_response_format(proposal_response_json_schema(), "proposal_response")
+        if require_structured_output else None
+    )
+    reviewer_response_format = (
+        build_response_format(reviewer_critique_json_schema(), "reviewer_critique")
+        if require_structured_output else None
+    )
+
     dry_run_budget = dry_run_budget or DryRunCallBudget(max_calls=3)
     call_records: list = []
 
@@ -434,8 +480,10 @@ def run_dry_run_cycle(
             router, _ROLE_RESEARCHER, render_researcher_prompt(),
             authorized=authorized, run_budget=run_budget, dry_run_budget=dry_run_budget,
             step="initial_proposal", call_records=call_records, dryrun_id=dryrun_id,
+            model_catalog=model_catalog, require_structured_output=require_structured_output,
+            response_format=proposal_response_format,
         )
-    except LLMUnavailableError as e:
+    except _CALL_UNAVAILABLE as e:
         result.stopped_reason = f"researcher role unavailable: {e}"
         result.calls_made = dry_run_budget.calls_made
         return result
@@ -489,6 +537,8 @@ def run_dry_run_cycle(
                     router, _ROLE_RESEARCHER, retry_prompt,
                     authorized=authorized, run_budget=run_budget, dry_run_budget=dry_run_budget,
                     step="redundancy_retry_proposal", call_records=call_records, dryrun_id=dryrun_id,
+                    model_catalog=model_catalog, require_structured_output=require_structured_output,
+                    response_format=proposal_response_format,
                 )
                 proposal_response = parse_and_validate_proposal(response.text)
                 result.raw_proposal_response = proposal_response
@@ -506,7 +556,7 @@ def run_dry_run_cycle(
                 result.proposal = proposal
                 result.calls_made = dry_run_budget.calls_made
                 return result
-            except LLMUnavailableError as e:
+            except _CALL_UNAVAILABLE as e:
                 result.stopped_reason = (
                     f"initial proposal rejected by deterministic redundancy check "
                     f"({conflict_desc}); retry failed: {e}"
@@ -580,6 +630,8 @@ def run_dry_run_cycle(
             router, _ROLE_REVIEWER, reviewer_prompt,
             authorized=authorized, run_budget=run_budget, dry_run_budget=dry_run_budget,
             step="reviewer_critique", call_records=call_records, dryrun_id=dryrun_id,
+            model_catalog=model_catalog, require_structured_output=require_structured_output,
+            response_format=reviewer_response_format,
         )
         critique = parse_and_validate_reviewer_critique(response.text)
     except ValidationError as e:
@@ -592,7 +644,7 @@ def run_dry_run_cycle(
         result.stopped_reason = f"reviewer step failed: {e}"
         result.calls_made = dry_run_budget.calls_made
         return result
-    except LLMUnavailableError as e:
+    except _CALL_UNAVAILABLE as e:
         result.final_validation = result.proposal_validation
         result.stopped_reason = f"reviewer step failed: {e}"
         result.calls_made = dry_run_budget.calls_made
@@ -614,6 +666,8 @@ def run_dry_run_cycle(
                 router, _ROLE_RESEARCHER, revision_prompt,
                 authorized=authorized, run_budget=run_budget, dry_run_budget=dry_run_budget,
                 step="revision", call_records=call_records, dryrun_id=dryrun_id,
+                model_catalog=model_catalog, require_structured_output=require_structured_output,
+                response_format=proposal_response_format,
             )
             revised_response = parse_and_validate_proposal(response.text)
             revised_proposal = _build_proposal(revised_response, placeholder_id, baseline_run_id)
@@ -642,7 +696,7 @@ def run_dry_run_cycle(
                 failure_category=_classify_parse_failure(e),
             )
             result.stopped_reason = f"revision call failed, reporting pre-revision proposal: {e}"
-        except LLMUnavailableError as e:
+        except _CALL_UNAVAILABLE as e:
             result.stopped_reason = f"revision call failed, reporting pre-revision proposal: {e}"
 
     result.final_validation = result.proposal_validation
