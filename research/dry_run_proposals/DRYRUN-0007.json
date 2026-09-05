@@ -1,0 +1,164 @@
+{
+  "actually_queued": false,
+  "artifact_type": "DRY_RUN_PROPOSAL",
+  "call_records": [
+    {
+      "actual_model_returned": "nvidia/nemotron-3-super-120b-a12b:free",
+      "choices_present": true,
+      "content_length": 6753,
+      "content_present": true,
+      "dryrun_id": "DRYRUN-0007",
+      "envelope_parsed": true,
+      "error": null,
+      "failure_category": null,
+      "finish_reason": "stop",
+      "http_status": 200,
+      "latency_ms": 28063.000000000102,
+      "local_schema_validation_result": {
+        "error_count": 0,
+        "is_valid": true
+      },
+      "message_present": true,
+      "model_used": "nvidia/nemotron-3-super-120b-a12b:free",
+      "provider_error_code": null,
+      "provider_error_message": null,
+      "reasoning_configuration": "DISABLED",
+      "request_id": "gen-1788632547-StDqAqPKhtlN7eEwKfuB",
+      "requested_model": "nvidia/nemotron-3-super-120b-a12b:free",
+      "role": "researcher",
+      "selected_model": "nvidia/nemotron-3-super-120b-a12b:free",
+      "step": "initial_proposal",
+      "structured_output_capability_state": true,
+      "structured_parse_result": null,
+      "succeeded": true,
+      "timestamp": "2026-09-05T18:22:26.691996+00:00",
+      "token_usage": {
+        "cached_tokens": 0,
+        "completion_tokens": 1779,
+        "prompt_tokens": 4544,
+        "reasoning_tokens": 0,
+        "total_tokens": 6323
+      }
+    }
+  ],
+  "calls_budget": 1,
+  "calls_made": 1,
+  "dryrun_id": "DRYRUN-0007",
+  "final_validation": {
+    "errors": [],
+    "is_valid": true,
+    "needs_human_review": [
+      {
+        "code": "REPRODUCIBILITY_QUALITY",
+        "level": "NEEDS_HUMAN_REVIEW",
+        "message": "reproducibility_requirements is empty \u2014 cannot mechanically judge reproducibility; human review required."
+      },
+      {
+        "code": "SCIENTIFIC_MERIT",
+        "level": "NEEDS_HUMAN_REVIEW",
+        "message": "Whether this hypothesis is scientifically interesting/worth the resource spend is not mechanically checkable by this validator \u2014 always requires human review regardless of whether every other check passes."
+      }
+    ],
+    "warnings": []
+  },
+  "generated_at": "2026-09-05T18:22:54.769190+00:00",
+  "placeholder_experiment_id": "EXP-9007",
+  "proposal": {
+    "acknowledges_rejected_hypothesis_ids": [],
+    "allowed_path_scope": [],
+    "baseline_comparison": "Compare against MEM-0001 and MEM-0003: baseline uses YOLOv8m-OIV7.pt (trained on OIV7 only). Experimental condition uses YOLOv8m weights pretrained on COCO, then fine-tuned on OIV7 (same optimizer, epochs, augmentations as baseline training).",
+    "baseline_metrics": {},
+    "baseline_run_id": "RUN-20260904-002",
+    "compute_resource_estimate": {},
+    "control_condition": "Baseline: YOLOv8m trained from scratch (or standard Ultralytics weights) on Open Images V7 only, conf=0.4, iou=0.7, imgsz=640.",
+    "controlled_variables": {
+      "architecture": "YOLOv8m",
+      "augmentations": "standard YOLOv8 augmentation (as in baseline)",
+      "confidence_threshold": 0.4,
+      "dataset": "Open Images V7 (hazard classes: person, car, truck, bus, bicycle, motorcycle, stairs, dog)",
+      "epochs": "matched to baseline training duration",
+      "evaluation_protocol": "same as benchmark/results/baseline/",
+      "image_size": 640,
+      "iou_threshold": 0.7,
+      "loss_function": "YOLOv8 detection loss",
+      "optimizer": "SGD (default YOLO settings)"
+    },
+    "coreml_model_replacement_approved": false,
+    "data_privacy_classification": "NONE",
+    "dataset_version": "",
+    "dependent_variables": [
+      "person.recall",
+      "hazard.precision",
+      "person.precision"
+    ],
+    "evidence_references": [
+      "MEM-0003",
+      "MEM-0004",
+      "MEM-0015",
+      "MEM-0021",
+      "MEM-0025"
+    ],
+    "expected_artifacts": [],
+    "experiment_id": "EXP-9007",
+    "external_api_required": false,
+    "external_upload_approved": false,
+    "family": "training_data",
+    "hypothesis": "A YOLOv8m model initialized with COCO pretraining weights and then fine-tuned on Open Images V7 will achieve higher Person recall than the baseline (Open Images V7-only trained YOLOv8m) at conf=0.4, due to better initial feature representations for person-like structures, while maintaining hazard precision above the guardrail floor of 0.757, because COCO provides richer person annotations and diverse contexts that improve generalization to accessibility-relevant person depictions.",
+    "implementation_scope": "",
+    "inconclusive_if": "person.recall increases by \u22650.03 but hazard.precision cannot be measured due to instability, or if variance in training runs prevents clear conclusion despite meeting delta.",
+    "independent_variables": [
+      "model_pretraining_source"
+    ],
+    "isolation_requirements": "",
+    "mac_iphone_deployment_approved": false,
+    "mac_iphone_required": false,
+    "materially_new_rationale": "Unlike EXP-0005, which tested larger checkpoints of the same OIV7-only trained family (YOLOv8l-OIV7) and found negligible recall gains (+0.0198), this proposal changes the pretraining data source (COCO) while keeping architecture and fine-tuning dataset constant. It also differs from EXP-0003 (broad semantic aliasing) and EXP-0001 (threshold shifts) by avoiding post-processing or inference-time thresholds that hurt precision. Unlike the rejected YOLO11m-COOCO candidate in MEM-0015, which was discarded due to precision concerns despite recall gains, this approach fine-tunes the COCO-pretrained model on OIV7, aiming to retain OIV7 calibration while benefiting from COCO's person representation learning \u2014 thus addressing the precision-recall tradeoff that caused prior architecture-only switches to fail.",
+    "model_config_ref": "",
+    "motivation": "Baseline Person recall is critically low at 0.211 (MEM-0003). Prior work shows that same-family scaling (EXP-0005) and preprocessing (EXP-0004) yield negligible gains (<0.02), while architecture changes alone (like YOLO11m) show promise but are confounded by training data differences (MEM-0015). This proposal isolates the training data variable by using the same architecture (YOLOv8m) but changing the pretraining source (COCO vs. none/random) before fine-tuning on OIV7, thus testing whether representation quality from a strong person-labeled dataset improves downstream hazard detection without changing inference-time parameters or introducing post-processing that could hurt precision.",
+    "new_training_approved": false,
+    "prior_experiment_ids": [
+      "EXP-0004",
+      "EXP-0005"
+    ],
+    "private_user_data_use_approved": false,
+    "procedure": "1. Obtain YOLOv8m weights pretrained on COCO (or train from scratch on COCO person class if needed, freezing backbone early layers). 2. Fine-tune these weights on the Open Images V7 hazard dataset using the same training configuration as the baseline (learning rate, batch size, epochs, augmentations). 3. Export the resulting model. 4. Run inference on the baseline evaluation set at conf=0.4, iou=0.7, imgsz=640. 5. Compute person.recall, hazard.precision, and person.precision. 6. Compare to baseline metrics from MEM-0003 and MEM-0002. 7. Ensure no changes to inference code or post-processing \u2014 only the model weights differ.",
+    "production_impact": false,
+    "production_impact_description": "This proposal involves changing only the model checkpoint used during benchmark evaluation. It does not modify any production code (ios/, benchmark/config.py) or introduce runtime changes. Any deployment would require separate human review and integration into the production model replacement process, which is outside the scope of this dry-run proposal.",
+    "production_swift_modification_approved": false,
+    "rejects_hypothesis_if": "person.recall increases by <0.03 OR hazard.precision falls below 0.757, even if recall improves.",
+    "reproducibility_requirements": "",
+    "research_question": "Does fine-tuning a YOLOv8m model pretrained on COCO (80 classes) on the Open Images V7 hazard classes improve Person recall at conf=0.4 without violating the hazard precision guardrail (\u22650.757), compared to the baseline Open Images V7-only trained model?",
+    "schema_version": "1.0",
+    "signing_distribution_change_approved": false,
+    "success_criteria": {
+      "min_meaningful_delta": 0.03,
+      "primary_metric": "person.recall"
+    },
+    "supports_hypothesis_if": "person.recall increases by \u22650.03 (e.g., from 0.211 to \u22650.241) AND hazard.precision remains \u22650.757 (the guardrail floor from MEM-0004).",
+    "title": "Investigating the Impact of COCO Pretraining + Open Images V7 Fine-Tuning on Person Recall in YOLOv8m"
+  },
+  "proposal_validation": {
+    "errors": [],
+    "is_valid": true,
+    "needs_human_review": [
+      {
+        "code": "REPRODUCIBILITY_QUALITY",
+        "level": "NEEDS_HUMAN_REVIEW",
+        "message": "reproducibility_requirements is empty \u2014 cannot mechanically judge reproducibility; human review required."
+      },
+      {
+        "code": "SCIENTIFIC_MERIT",
+        "level": "NEEDS_HUMAN_REVIEW",
+        "message": "Whether this hypothesis is scientifically interesting/worth the resource spend is not mechanically checkable by this validator \u2014 always requires human review regardless of whether every other check passes."
+      }
+    ],
+    "warnings": []
+  },
+  "queue_eligible_in_principle": true,
+  "redundancy_conflicts": [],
+  "redundancy_rejected_initial": false,
+  "reviewer_critique": null,
+  "revised": false,
+  "revision_reason": "",
+  "stopped_reason": "call budget exhausted before the reviewer step could run."
+}
