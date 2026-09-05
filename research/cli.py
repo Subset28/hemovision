@@ -185,6 +185,93 @@ def cmd_experiment_show(args: argparse.Namespace) -> int:
     return 0
 
 
+def _load_dotenv() -> None:
+    """Minimal, dependency-free .env loading, same as research/llm/smoke_test.py."""
+    import os
+    from pathlib import Path
+
+    env_path = Path(__file__).resolve().parent.parent / ".env"
+    if env_path.exists():
+        for line in env_path.read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            key, _, value = line.partition("=")
+            key, value = key.strip(), value.strip()
+            if key and key not in os.environ:
+                os.environ[key] = value
+
+
+def _setup_dry_run_execution(args: argparse.Namespace, roles_to_snapshot: tuple = ("researcher", "reviewer")):
+    """Canonical initialization for ANY live Phase H call (`omnilab dry-run`
+    and `omnilab dry-run-review` both call this -- the single, non-duplicated
+    setup path is the whole point: a prior reviewer-only re-run failed
+    because a standalone script bypassed this and forgot .env loading,
+    causing a local-attempt-counter increment with zero real HTTP requests).
+
+    Handles: .env loading, the --authorize refusal gate, the optional public
+    catalog fetch, authorization/provider/router/budget construction, and
+    per-role catalog-snapshot persistence. Returns
+    `(authorization, router, run_budget, dry_run_budget, model_catalog)` or
+    `None` if not authorized (caller should print its own refusal message
+    and return 1)."""
+    from research.dry_run.budget import DryRunCallBudget
+    from research.llm.authorization import LLMCallAuthorization
+    from research.llm.base import RunBudget, UsageTracker
+    from research.llm.openrouter import OpenRouterProvider
+    from research.llm.router import LLMRouter
+
+    if not args.authorize:
+        return None
+
+    _load_dotenv()
+
+    model_catalog = None
+    if args.structured_output:
+        # Public, unauthenticated GET -- no API key attached, not a chat
+        # completion, does not touch UsageTracker/dry_run_budget/run_budget.
+        # Fetched here (not inside research/dry_run/pipeline.py) so the
+        # pipeline module itself never performs its own network I/O.
+        import requests
+
+        catalog_resp = requests.get("https://openrouter.ai/api/v1/models", timeout=30)
+        catalog_resp.raise_for_status()
+        model_catalog = {m["id"]: m for m in catalog_resp.json().get("data", [])}
+        print(f"omnilab: fetched OpenRouter catalog ({len(model_catalog)} models, unauthenticated GET, "
+              "not counted against LLM call budget)")
+
+    authorization = LLMCallAuthorization.grant(reason=args.authorize)
+    provider = OpenRouterProvider()
+    router = LLMRouter(provider=provider, usage_tracker=UsageTracker())
+    run_budget = RunBudget(max_calls=args.max_calls)
+    dry_run_budget = DryRunCallBudget(max_calls=args.max_calls)
+
+    if model_catalog is not None:
+        # Persist a small, sanitized (public-metadata-only) snapshot for
+        # every relevant role's currently-configured model, at THIS decision
+        # point -- independently auditable evidence for "this model
+        # supported X at call time" (Phase H catalog-verification audit,
+        # section 5: an earlier WebFetch/LLM-summarized check made a claim
+        # no raw snapshot survived to verify or refute).
+        from research.llm.model_catalog import (
+            ModelCapabilityError,
+            ModelNotFreeError,
+            evaluate_model_for_role,
+            save_catalog_snapshot,
+        )
+
+        for role_name in roles_to_snapshot:
+            preferred = router._role_config(role_name).preferred_model
+            entry = model_catalog.get(preferred)
+            try:
+                evaluate_model_for_role(role_name, preferred, entry, require_structured_output=True)
+                save_catalog_snapshot(preferred, entry, eligibility_result="ELIGIBLE")
+            except (ModelNotFreeError, ModelCapabilityError) as e:
+                save_catalog_snapshot(preferred, entry, eligibility_result="REJECTED", rejection_reason=str(e))
+
+    return authorization, router, run_budget, dry_run_budget, model_catalog
+
+
 def cmd_dry_run(args: argparse.Namespace) -> int:
     """Phase H — `omnilab dry-run`. Structurally incapable of executing
     anything (see research/dry_run/pipeline.py's module docstring): read-only
@@ -201,17 +288,10 @@ def cmd_dry_run(args: argparse.Namespace) -> int:
     make any LLM call — this is not a partial/fake run, it is the correct,
     safe behavior for "dry-run command invoked with no explicit go-ahead."
     """
-    from pathlib import Path
+    from research.dry_run.pipeline import run_dry_run_cycle, write_artifacts
 
-    from research.dry_run.budget import DryRunCallBudget
-    from research.dry_run.pipeline import write_artifacts
-    from research.dry_run.pipeline import run_dry_run_cycle
-    from research.llm.authorization import LLMCallAuthorization
-    from research.llm.base import RunBudget, UsageTracker
-    from research.llm.openrouter import OpenRouterProvider
-    from research.llm.router import LLMRouter
-
-    if not args.authorize:
+    setup = _setup_dry_run_execution(args)
+    if setup is None:
         print(
             "omnilab dry-run: no --authorize REASON given — refusing to make any LLM call "
             "(a configured OPENROUTER_API_KEY never authorizes a call by itself; see "
@@ -219,63 +299,7 @@ def cmd_dry_run(args: argparse.Namespace) -> int:
             f"up to --max-calls (default {args.max_calls}) real, budget-capped calls."
         )
         return 1
-
-    # Minimal, dependency-free .env loading, same as research/llm/smoke_test.py.
-    import os
-
-    env_path = Path(__file__).resolve().parent.parent / ".env"
-    if env_path.exists():
-        for line in env_path.read_text(encoding="utf-8").splitlines():
-            line = line.strip()
-            if not line or line.startswith("#") or "=" not in line:
-                continue
-            key, _, value = line.partition("=")
-            key, value = key.strip(), value.strip()
-            if key and key not in os.environ:
-                os.environ[key] = value
-
-    model_catalog = None
-    if args.structured_output:
-        # Public, unauthenticated GET -- no API key attached, not a chat
-        # completion, does not touch UsageTracker/dry_run_budget/run_budget.
-        # Fetched here (not inside research/dry_run/pipeline.py) so the
-        # pipeline module itself never performs its own network I/O.
-        import requests
-
-        catalog_resp = requests.get("https://openrouter.ai/api/v1/models", timeout=30)
-        catalog_resp.raise_for_status()
-        model_catalog = {m["id"]: m for m in catalog_resp.json().get("data", [])}
-        print(f"omnilab dry-run: fetched OpenRouter catalog ({len(model_catalog)} models, unauthenticated GET, "
-              "not counted against LLM call budget)")
-
-    authorization = LLMCallAuthorization.grant(reason=args.authorize)
-    provider = OpenRouterProvider()
-    router = LLMRouter(provider=provider, usage_tracker=UsageTracker())
-    run_budget = RunBudget(max_calls=args.max_calls)
-    dry_run_budget = DryRunCallBudget(max_calls=args.max_calls)
-
-    if model_catalog is not None:
-        # Persist a small, sanitized (public-metadata-only) snapshot for
-        # every role's currently-configured model, at THIS decision point --
-        # independently auditable evidence for "this model supported X at
-        # call time" (Phase H catalog-verification audit, section 5: an
-        # earlier WebFetch/LLM-summarized check made a claim no raw snapshot
-        # survived to verify or refute).
-        from research.llm.model_catalog import (
-            ModelCapabilityError,
-            ModelNotFreeError,
-            evaluate_model_for_role,
-            save_catalog_snapshot,
-        )
-
-        for role_name in ("researcher", "reviewer"):
-            preferred = router._role_config(role_name).preferred_model
-            entry = model_catalog.get(preferred)
-            try:
-                evaluate_model_for_role(role_name, preferred, entry, require_structured_output=True)
-                save_catalog_snapshot(preferred, entry, eligibility_result="ELIGIBLE")
-            except (ModelNotFreeError, ModelCapabilityError) as e:
-                save_catalog_snapshot(preferred, entry, eligibility_result="REJECTED", rejection_reason=str(e))
+    authorization, router, run_budget, dry_run_budget, model_catalog = setup
 
     result = run_dry_run_cycle(
         router=router, authorized=authorization, run_budget=run_budget, dry_run_budget=dry_run_budget,
@@ -286,6 +310,50 @@ def cmd_dry_run(args: argparse.Namespace) -> int:
     print(f"Dry-run {result.dryrun_id} complete. Calls made: {result.calls_made}/{result.calls_budget}")
     print(f"Artifact: {json_path}")
     print(f"Report:   {report_path}")
+    if result.stopped_reason:
+        print(f"Stopped early: {result.stopped_reason}")
+    print("Actually queued: NO (never calls research/orchestrator.py::queue_experiment_from_spec)")
+    return 0
+
+
+def cmd_dry_run_review(args: argparse.Namespace) -> int:
+    """Phase H — `omnilab dry-run-review`. Reviewer-only resume mode: critique
+    an ALREADY-GENERATED, immutable proposal (loaded read-only from
+    `research/dry_run_proposals/<id>.json`) without re-running the researcher
+    step. Uses the exact same canonical initialization as `omnilab dry-run`
+    (see `_setup_dry_run_execution`) -- .env loading, authorization gate,
+    catalog preflight/snapshot, budget construction -- so there is no second,
+    divergent code path. Never mutates the source proposal file; writes a
+    separate `<id>-review.json` artifact. Never queues, never creates
+    EXP-0006, never runs a revision."""
+    from research.dry_run.pipeline import run_reviewer_only, write_review_artifact
+
+    setup = _setup_dry_run_execution(args, roles_to_snapshot=("reviewer",))
+    if setup is None:
+        print(
+            "omnilab dry-run-review: no --authorize REASON given — refusing to make any LLM call. "
+            f"Re-run with --authorize \"<reason>\" to permit up to --max-calls (default {args.max_calls}) "
+            "real, budget-capped calls."
+        )
+        return 1
+    authorization, router, run_budget, dry_run_budget, model_catalog = setup
+
+    additional_facts = ""
+    if args.facts_file:
+        from pathlib import Path
+
+        additional_facts = Path(args.facts_file).read_text(encoding="utf-8")
+
+    result = run_reviewer_only(
+        dryrun_id=args.dryrun_id, router=router, authorized=authorization,
+        run_budget=run_budget, dry_run_budget=dry_run_budget,
+        model_catalog=model_catalog, require_structured_output=args.structured_output,
+        additional_facts=additional_facts,
+    )
+    path = write_review_artifact(result)
+
+    print(f"Review of {result.dryrun_id} complete. Calls made: {result.calls_made}/{result.calls_budget}")
+    print(f"Artifact: {path}")
     if result.stopped_reason:
         print(f"Stopped early: {result.stopped_reason}")
     print("Actually queued: NO (never calls research/orchestrator.py::queue_experiment_from_spec)")
@@ -370,6 +438,24 @@ def build_parser() -> argparse.ArgumentParser:
              "impact. Off by default so pre-remediation callers see unchanged behavior.",
     )
     p_dry_run.set_defaults(func=cmd_dry_run)
+
+    p_dry_run_review = sub.add_parser(
+        "dry-run-review",
+        help="Phase H reviewer-only resume: critique an already-generated, immutable proposal "
+             "(research/dry_run_proposals/<id>.json) without re-running the researcher step. "
+             "Same canonical initialization as 'dry-run' -- never a standalone/duplicated setup.",
+    )
+    p_dry_run_review.add_argument("dryrun_id", help="e.g. DRYRUN-0007 -- must already exist and have a proposal")
+    p_dry_run_review.add_argument("--authorize", default=None, help="see 'dry-run --authorize'")
+    p_dry_run_review.add_argument("--max-calls", type=int, default=1, help="default 1 -- reviewer-only")
+    p_dry_run_review.add_argument("--structured-output", action="store_true", default=False, help="see 'dry-run --structured-output'")
+    p_dry_run_review.add_argument(
+        "--facts-file", default=None,
+        help="optional path to a text file of additional neutral factual context appended to the "
+             "reviewer prompt verbatim (e.g. verified provenance/isolation gaps) -- never a "
+             "conclusion the reviewer is told to reach",
+    )
+    p_dry_run_review.set_defaults(func=cmd_dry_run_review)
 
     return parser
 

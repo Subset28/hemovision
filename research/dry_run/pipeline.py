@@ -221,6 +221,7 @@ class CallRecord:
     failure_category: Optional[str] = None  # one of the FAILURE_* constants, or None on success
     reasoning_configuration: Optional[str] = None  # one of model_catalog.REASONING_* constants, or None if not negotiated
     structured_output_capability_state: Optional[bool] = None  # supports_structured_output() at call time, if known
+    network_attempted: Optional[bool] = None  # True iff requests.post was actually invoked -- distinct from "the local attempt-counter incremented"
 
 
 @dataclass
@@ -318,6 +319,7 @@ def _call_llm(
                 failure_category=(
                     "MODEL_NOT_FREE" if isinstance(e, ModelNotFreeError) else "MODEL_CAPABILITY_UNSUPPORTED"
                 ),
+                network_attempted=False,
             ))
             # Re-raises the ORIGINAL ModelNotFreeError/ModelCapabilityError
             # unchanged -- tests/test_dry_run_remediation.py asserts _call_llm
@@ -437,6 +439,7 @@ def _call_llm(
             failure_category=_classify_transport_failure(e),
             reasoning_configuration=reasoning_decision_category,
             structured_output_capability_state=structured_output_capability_state,
+            network_attempted=diag.get("network_attempted"),
         ))
         raise
     else:
@@ -462,6 +465,7 @@ def _call_llm(
             token_usage=diag.get("usage"),
             reasoning_configuration=reasoning_decision_category,
             structured_output_capability_state=structured_output_capability_state,
+            network_attempted=diag.get("network_attempted", True),
         ))
         return response
 
@@ -991,3 +995,147 @@ def render_report(result: DryRunResult) -> str:
     lines.append("**DRY RUN ONLY — NOT EXECUTED**")
     lines.append("")
     return "\n".join(lines)
+
+
+# ---------------------------------------------------------------------------
+# Reviewer-only resume mode (Phase H follow-up): critique an ALREADY-
+# GENERATED, immutable researcher proposal without re-running the researcher
+# step. Uses the exact same canonical initialization path as a normal
+# run_dry_run_cycle() call -- same _call_llm choke point, same schema
+# builders, same authorization/budget/catalog machinery -- so there is no
+# second, competing code path with different guarantees. The ONLY difference
+# from a full cycle is that step 3 (researcher) is skipped entirely; the
+# proposal is loaded read-only from disk and never mutated.
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class ReviewOnlyResult:
+    dryrun_id: str
+    call_records: list = field(default_factory=list)
+    reviewer_critique: Optional[ReviewerCritique] = None
+    final_validation: Optional[ValidationResult] = None
+    redundancy_conflicts: list = field(default_factory=list)
+    queue_eligible_in_principle: bool = False
+    stopped_reason: str = ""
+    calls_made: int = 0
+    calls_budget: int = 0
+
+
+def load_preserved_proposal(dryrun_id: str) -> ExperimentProposal:
+    """Load a previously-generated dry-run proposal, read-only. Raises
+    FileNotFoundError if it doesn't exist. Never mutates the source file."""
+    path = DRY_RUN_PROPOSALS_DIR / f"{dryrun_id}.json"
+    with open(path, encoding="utf-8") as f:
+        record = json.load(f)
+    proposal_dict = record["proposal"]
+    if proposal_dict is None:
+        raise ValueError(f"{dryrun_id} has no proposal to review (proposal field is null)")
+    return ExperimentProposal(**{
+        k: v for k, v in proposal_dict.items() if k in ExperimentProposal.__dataclass_fields__
+    })
+
+
+def run_reviewer_only(
+    *,
+    dryrun_id: str,
+    router: LLMRouter,
+    authorized: AuthorizationLike,
+    run_budget: Optional[RunBudget] = None,
+    dry_run_budget: Optional[DryRunCallBudget] = None,
+    model_catalog: Optional[dict] = None,
+    require_structured_output: bool = False,
+    additional_facts: str = "",
+) -> ReviewOnlyResult:
+    """Run exactly one reviewer call against an ALREADY-PRESERVED proposal
+    (see `load_preserved_proposal`). Never writes to research/db.py, never
+    creates a git branch, never queues anything, never mutates the source
+    proposal file. `additional_facts` (optional) is appended verbatim to the
+    reviewer prompt as extra factual context -- callers should state facts
+    neutrally, never prime a desired conclusion."""
+    dry_run_budget = dry_run_budget or DryRunCallBudget(max_calls=1)
+    call_records: list = []
+    result = ReviewOnlyResult(dryrun_id=dryrun_id, call_records=call_records, calls_budget=dry_run_budget.max_calls)
+
+    proposal = load_preserved_proposal(dryrun_id)
+
+    memory_db = MemoryDB()
+    try:
+        context_packet = generate_context_packet(memory_db)
+    finally:
+        memory_db.close()
+
+    system_policy = _system_policy_text()
+    reviewer_template = _load_prompt_template("reviewer_critique.md")
+    proposal_json = json.dumps(proposal.to_dict(), indent=2, default=str)
+    context_json = json.dumps(context_packet, indent=2, default=str)
+    reviewer_prompt = reviewer_template.format(
+        system_policy=system_policy, proposal_json=proposal_json, context_packet_json=context_json,
+    ) + additional_facts
+
+    from research.llm.structured_output import build_response_format, reviewer_critique_json_schema
+
+    reviewer_response_format = (
+        build_response_format(reviewer_critique_json_schema(), "reviewer_critique")
+        if require_structured_output else None
+    )
+
+    try:
+        response = _call_llm(
+            router, _ROLE_REVIEWER, reviewer_prompt,
+            authorized=authorized, run_budget=run_budget, dry_run_budget=dry_run_budget,
+            step="reviewer_critique", call_records=call_records, dryrun_id=dryrun_id,
+            model_catalog=model_catalog, require_structured_output=require_structured_output,
+            response_format=reviewer_response_format,
+        )
+        result.reviewer_critique = parse_and_validate_reviewer_critique(response.text)
+    except ValidationError as e:
+        _annotate_last_call_record(
+            call_records, "reviewer_critique",
+            structured_parse_result=_classify_parse_failure(e),
+            failure_category=_classify_parse_failure(e),
+        )
+        result.stopped_reason = f"reviewer step failed: {e}"
+        result.calls_made = dry_run_budget.calls_made
+        return result
+    except _CALL_UNAVAILABLE as e:
+        result.stopped_reason = f"reviewer step failed: {e}"
+        result.calls_made = dry_run_budget.calls_made
+        return result
+
+    # Re-run validation/redundancy against the ORIGINAL, unmodified proposal
+    # -- the reviewer never has the ability to change it.
+    spec = ExperimentSpec(proposal=proposal)
+    result.final_validation = validate(spec)
+    memory_db = MemoryDB()
+    try:
+        result.redundancy_conflicts = find_rejected_hypothesis_conflicts(proposal, memory_db)
+    finally:
+        memory_db.close()
+    result.queue_eligible_in_principle = is_queue_eligible(result.final_validation)
+    result.calls_made = dry_run_budget.calls_made
+    return result
+
+
+def write_review_artifact(result: ReviewOnlyResult) -> Path:
+    """Write the reviewer-only result as a NEW, separate artifact --
+    `research/dry_run_proposals/<dryrun_id>-review.json` -- distinct from
+    the original preserved proposal file, which this never touches."""
+    DRY_RUN_PROPOSALS_DIR.mkdir(parents=True, exist_ok=True)
+    path = DRY_RUN_PROPOSALS_DIR / f"{result.dryrun_id}-review.json"
+    data = {
+        "dryrun_id": result.dryrun_id,
+        "generated_at": _now_utc_str(),
+        "artifact_type": "DRY_RUN_REVIEW_ONLY",
+        "actually_queued": False,
+        "call_records": [vars(c) for c in result.call_records],
+        "calls_made": result.calls_made,
+        "calls_budget": result.calls_budget,
+        "reviewer_critique": vars(result.reviewer_critique) if result.reviewer_critique else None,
+        "final_validation": _validation_to_dict(result.final_validation),
+        "redundancy_conflicts": result.redundancy_conflicts,
+        "queue_eligible_in_principle": result.queue_eligible_in_principle,
+        "stopped_reason": result.stopped_reason,
+    }
+    path.write_text(json.dumps(data, indent=2, sort_keys=True, default=str), encoding="utf-8")
+    return path

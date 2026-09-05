@@ -51,6 +51,59 @@ class TestSuccessDiagnostics:
         assert "Authorization" not in diag
 
 
+class TestNetworkAttemptedTracking:
+    """Regression coverage for a real gap found during a Phase H reviewer
+    re-run: a script that forgot to load .env failed at the API-key check,
+    the local UsageTracker attempt-counter still incremented (existing
+    policy, unchanged), but ZERO bytes ever reached OpenRouter. `network_
+    attempted` makes "local attempt" and "actual HTTP request" explicitly
+    distinguishable, without changing what counts against budget."""
+
+    def test_missing_key_never_attempts_network(self, monkeypatch: pytest.MonkeyPatch):
+        import requests
+
+        def fail_if_called(*a, **k):
+            raise AssertionError("requests.post must never be called when no API key is configured")
+
+        monkeypatch.setattr(requests, "post", fail_if_called)
+        monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+        provider = OpenRouterProvider()
+        with pytest.raises(LLMUnavailableError) as exc_info:
+            provider.complete("hi", role="researcher", authorized=True, max_retries=0)
+        assert exc_info.value.diagnostics["network_attempted"] is False
+
+    def test_real_http_failure_marks_network_attempted_true(self, monkeypatch: pytest.MonkeyPatch):
+        import requests
+
+        class FakeResp:
+            status_code = 429
+            headers = {}
+
+            def json(self):
+                return {"error": {"code": 429, "message": "rate limited"}}
+
+        monkeypatch.setattr(requests, "post", lambda *a, **k: FakeResp())
+        provider = _provider_with_key(monkeypatch)
+        with pytest.raises(LLMUnavailableError) as exc_info:
+            provider.complete("hi", role="researcher", authorized=True, max_retries=0)
+        assert exc_info.value.diagnostics["network_attempted"] is True
+
+    def test_successful_call_marks_network_attempted_true(self, monkeypatch: pytest.MonkeyPatch):
+        import requests
+
+        class FakeResp:
+            status_code = 200
+            headers = {}
+
+            def json(self):
+                return {"choices": [{"message": {"content": "ok"}}]}
+
+        monkeypatch.setattr(requests, "post", lambda *a, **k: FakeResp())
+        provider = _provider_with_key(monkeypatch)
+        resp = provider.complete("hi", role="researcher", authorized=True, max_retries=0)
+        assert resp.diagnostics["network_attempted"] is True
+
+
 class TestFailureDiagnostics:
     def test_empty_content_diagnostics_distinct_category(self, monkeypatch: pytest.MonkeyPatch):
         import requests

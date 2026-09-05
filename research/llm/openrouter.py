@@ -139,6 +139,7 @@ class OpenRouterProvider(LLMProvider):
                 "Set it in your environment or .env (see .env.example) to enable live "
                 "OpenRouter calls. The pipeline continues without it.",
                 category=ErrorCategory.AUTH_ERROR,
+                diagnostics={"network_attempted": False},
             )
         return key
 
@@ -157,14 +158,25 @@ class OpenRouterProvider(LLMProvider):
         **kwargs,
     ) -> LLMResponse:
         # 1. Authorization gate — checked FIRST, before anything else. A
-        #    key being present never implies authorization.
+        #    key being present never implies authorization. (Raises
+        #    LLMCallNotAuthorizedError, a plain RuntimeError with no
+        #    diagnostics -- already unambiguous as pre-network by its type
+        #    and its own docstring: "never counted against any call budget
+        #    ... because no network round-trip was attempted.")
         require_authorization(authorized)
 
-        # 2. Key check.
-        api_key = self._api_key()  # raises LLMUnavailableError if missing
+        # 2. Key check. `network_attempted=False` here specifically: a real
+        #    gap found during a Phase H reviewer re-run, where a script
+        #    forgot to load .env, failed here, and the LOCAL attempt-counter
+        #    still incremented per existing policy even though zero bytes
+        #    reached OpenRouter -- "attempted" and "reached the network" are
+        #    two different, both-worth-tracking facts.
+        api_key = self._api_key()  # raises LLMUnavailableError(diagnostics={"network_attempted": False}) if missing
 
         # 3. Build the payload and run the privacy guard on it BEFORE any
-        #    network code executes.
+        #    network code executes. (Raises PrivacyViolationError, a plain
+        #    RuntimeError -- already unambiguous as pre-network by its type
+        #    and message text.)
         payload_messages = messages if messages is not None else [{"role": "user", "content": prompt}]
         payload_text = "\n".join(str(m.get("content", "")) for m in payload_messages)
         violations = check_payload_safe(payload_text)
@@ -179,7 +191,8 @@ class OpenRouterProvider(LLMProvider):
             import requests
         except ImportError as e:  # pragma: no cover - requests is a declared dep
             raise LLMUnavailableError(
-                f"requests library unavailable: {e}", category=ErrorCategory.UNKNOWN
+                f"requests library unavailable: {e}", category=ErrorCategory.UNKNOWN,
+                diagnostics={"network_attempted": False},
             ) from e
 
         effective_timeout = timeout_sec if timeout_sec is not None else self.timeout_sec
@@ -233,7 +246,7 @@ class OpenRouterProvider(LLMProvider):
         import requests
 
         requested_model = body.get("model")
-        diag: dict = {"requested_model": requested_model}
+        diag: dict = {"requested_model": requested_model, "network_attempted": True}
 
         try:
             resp = requests.post(
