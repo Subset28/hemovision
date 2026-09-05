@@ -13,10 +13,8 @@ exercises more than one experiment per process invocation.
 
 from __future__ import annotations
 
-import json
 import logging
 import subprocess
-from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -52,14 +50,33 @@ from research.rejection import (
 )
 from research.resources import ResourceCheckFailed, check_resources_or_raise
 from research.runners import RUNNERS, RunnerError
+from research import operational_state
+from research.operational_state import (
+    STATE_PATH,
+    OperationalGateError,
+    OperationalPausedError,
+    OperationalStoppedError,
+    current_state,
+    pause,
+    restart_from_stopped,
+    resume,
+    stop,
+)
 
 logger = logging.getLogger("research.orchestrator")
 
-STATE_PATH = REPO_ROOT / "research" / "orchestrator_state.json"
-
 
 # ---------------------------------------------------------------------------
-# pause / resume / stop — simple state-flag mechanism.
+# pause / resume / stop / restart — now a thin re-export of the CENTRALIZED
+# operational-state gate (research/operational_state.py), which every
+# protected operation across the whole codebase shares -- not just
+# run_experiment() below. This used to be a private, orchestrator-only
+# state machine; Phase-I-readiness CRITICAL finding #1
+# (reports/phase_i/PHASE_I_READINESS_AUDIT.md) was exactly that a
+# paused/stopped orchestrator had zero effect on Phase H's LLM calls, since
+# those never checked this module's state at all. Kept as re-exports here
+# (rather than deleting these names) so `research.orchestrator.pause()` etc.
+# keep working unchanged for any existing caller.
 #
 # HONEST LIMITATION (Phase C boundary, not an oversight): this does NOT do
 # mid-experiment graceful suspension. It only prevents a NEW `experiment()`
@@ -69,57 +86,15 @@ STATE_PATH = REPO_ROOT / "research" / "orchestrator_state.json"
 # the master spec's Phase D/J territory note.
 # ---------------------------------------------------------------------------
 
-
-@dataclass
-class OrchestratorState:
-    paused: bool = False
-    stopped: bool = False
-
-
-def _load_state() -> OrchestratorState:
-    if not STATE_PATH.exists():
-        return OrchestratorState()
-    data = json.loads(STATE_PATH.read_text(encoding="utf-8"))
-    return OrchestratorState(**data)
-
-
-def _save_state(state: OrchestratorState) -> None:
-    STATE_PATH.parent.mkdir(parents=True, exist_ok=True)
-    STATE_PATH.write_text(json.dumps(state.__dict__, indent=2), encoding="utf-8")
-
-
-def pause() -> None:
-    state = _load_state()
-    state.paused = True
-    _save_state(state)
-
-
-def resume() -> None:
-    state = _load_state()
-    state.paused = False
-    _save_state(state)
-
-
-def stop() -> None:
-    state = _load_state()
-    state.stopped = True
-    _save_state(state)
-
-
-class OrchestratorPausedError(RuntimeError):
-    pass
-
-
-class OrchestratorStoppedError(RuntimeError):
-    pass
+# Backward-compatible aliases -- pre-fix code (including any external
+# caller) that catches OrchestratorPausedError/OrchestratorStoppedError by
+# name keeps working; both are now the shared operational_state exceptions.
+OrchestratorPausedError = OperationalPausedError
+OrchestratorStoppedError = OperationalStoppedError
 
 
 def _check_not_paused_or_stopped() -> None:
-    state = _load_state()
-    if state.stopped:
-        raise OrchestratorStoppedError("orchestrator is stopped (run `omnilab resume` — actually requires manually clearing state, see research/orchestrator.py)")
-    if state.paused:
-        raise OrchestratorPausedError("orchestrator is paused — run `omnilab resume` first")
+    operational_state.check_gate("run_experiment")
 
 
 # ---------------------------------------------------------------------------
@@ -173,6 +148,7 @@ def queue_experiment_from_spec(spec) -> Experiment:
     from research.experiment_registry import REGISTRY
     from research.experiment_validator import is_queue_eligible, validate
 
+    operational_state.check_gate("queue_experiment_from_spec")
     validation = validate(spec)
     if not is_queue_eligible(validation):
         messages = "; ".join(f"[{i.code}] {i.message}" for i in validation.errors)
@@ -222,7 +198,7 @@ def status_summary() -> dict:
     except Exception as e:  # pragma: no cover - defensive only
         resource_info = {"error": str(e)}
 
-    state = _load_state()
+    state = current_state()
     return {
         "execution_status_counts": execution_status_counts,
         "research_verdict_counts": research_verdict_counts,
@@ -284,7 +260,11 @@ def run_experiment(experiment_id: str) -> Experiment:
 
     hash_before = manifest_hash()
 
-    # 2. git isolation — create the experiment branch from a clean master
+    # 2. git isolation — create the experiment branch from a clean master.
+    #    Re-checked immediately before this specific protected action (not
+    #    just the one check at the top of run_experiment()) -- a pause/stop
+    #    issued during the resource check above must still block here.
+    operational_state.check_gate("create_experiment_branch")
     eb = create_experiment_branch(experiment_id)
 
     exp_dir = EXPERIMENTS_DIR / "running" / experiment_id

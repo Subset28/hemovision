@@ -183,15 +183,16 @@ class TestNativeStructuredOutputRequestShape:
         # actually support every parameter sent -- still exactly one HTTP
         # request, a routing CONSTRAINT not a fallback chain.
         assert body["provider"] == {"require_parameters": True}
-        # No model_catalog was passed to this call -- per the Phase H
-        # reasoning-capability-negotiation fix (DRYRUN-0006 follow-up), with
-        # no catalog to negotiate against, NO reasoning field is sent at all
-        # (never a guessed value) -- this replaced the earlier, incorrect
-        # behavior of unconditionally sending reasoning:{"enabled": False}
-        # regardless of whether the model's catalog metadata said that was
-        # a valid control (it caused DRYRUN-0006's HTTP 400 against a model
-        # with reasoning.mandatory=true).
-        assert "reasoning" not in body
+        # No model_catalog was explicitly passed to this call -- but per the
+        # Phase-I-readiness free-model-only fix (CRITICAL #2), _call_llm now
+        # ALWAYS resolves a catalog itself (here, the autouse permissive test
+        # fixture in tests/conftest.py, which reports reasoning.mandatory:
+        # False for any model), so reasoning negotiation now has real data
+        # to act on and sends the DISABLED control -- never a guessed value,
+        # exactly per the Phase H reasoning-capability-negotiation fix
+        # (DRYRUN-0006 follow-up): a reasoning field is only ever sent when
+        # the resolved catalog explicitly says it's valid for this model.
+        assert body["reasoning"] == {"enabled": False}
         assert response.text == json.dumps(VALID_PROPOSAL)
 
 

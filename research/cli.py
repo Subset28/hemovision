@@ -64,20 +64,34 @@ def cmd_status(args: argparse.Namespace) -> int:
 
 
 def cmd_pause(args: argparse.Namespace) -> int:
-    orchestrator.pause()
-    print("orchestrator paused (new `experiment` calls will refuse to start).")
+    orchestrator.pause(reason=args.reason or "")
+    print(
+        "operational state PAUSED -- every protected operation (real benchmark execution, "
+        "researcher/reviewer/revision LLM calls, queue operations, branch creation) will "
+        "refuse to start until `omnilab resume`. Read-only commands remain available."
+    )
     return 0
 
 
 def cmd_resume(args: argparse.Namespace) -> int:
     orchestrator.resume()
-    print("orchestrator resumed.")
+    print("operational state RESUMED to RUNNING (PAUSED cleared). If state was STOPPED, "
+          "it remains STOPPED -- use `omnilab restart --reason \"...\"` to clear that.")
     return 0
 
 
 def cmd_stop(args: argparse.Namespace) -> int:
-    orchestrator.stop()
-    print("orchestrator stopped (new `experiment` calls will refuse to start until state is manually reset).")
+    orchestrator.stop(reason=args.reason or "")
+    print(
+        "operational state STOPPED -- every protected operation will refuse to start until "
+        "an explicit `omnilab restart --reason \"...\"` (plain `resume` does NOT clear STOPPED)."
+    )
+    return 0
+
+
+def cmd_restart(args: argparse.Namespace) -> int:
+    orchestrator.restart_from_stopped(reason=args.reason)
+    print(f"operational state RESTARTED to RUNNING (STOPPED and PAUSED both cleared). reason={args.reason!r}")
     return 0
 
 
@@ -430,12 +444,17 @@ def build_parser() -> argparse.ArgumentParser:
     p_status = sub.add_parser("status", help="DB + resource summary")
     p_status.set_defaults(func=cmd_status)
 
-    p_pause = sub.add_parser("pause")
+    p_pause = sub.add_parser("pause", help="operational-state gate: PAUSED (blocks every protected operation)")
+    p_pause.add_argument("--reason", default=None)
     p_pause.set_defaults(func=cmd_pause)
-    p_resume = sub.add_parser("resume")
+    p_resume = sub.add_parser("resume", help="clears PAUSED only -- does NOT clear STOPPED, see `restart`")
     p_resume.set_defaults(func=cmd_resume)
-    p_stop = sub.add_parser("stop")
+    p_stop = sub.add_parser("stop", help="operational-state gate: STOPPED (blocks every protected operation; `resume` cannot clear this)")
+    p_stop.add_argument("--reason", default=None)
     p_stop.set_defaults(func=cmd_stop)
+    p_restart = sub.add_parser("restart", help="the ONLY way to clear STOPPED -- requires an explicit --reason")
+    p_restart.add_argument("--reason", required=True)
+    p_restart.set_defaults(func=cmd_restart)
 
     p_memory = sub.add_parser("memory", help="Phase E structured research memory")
     memory_sub = p_memory.add_subparsers(dest="memory_command", required=True)

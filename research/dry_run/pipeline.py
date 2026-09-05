@@ -77,6 +77,7 @@ from research.llm.structured_output import (
 )
 from research.memory_context import generate_context_packet
 from research.memory_db import MemoryDB
+from research import operational_state
 
 DRY_RUN_PROPOSALS_DIR = REPO_ROOT / "research" / "dry_run_proposals"
 DRY_RUN_REPORTS_DIR = REPO_ROOT / "reports" / "dry_run"
@@ -85,13 +86,80 @@ DRY_RUN_REPORTS_DIR = REPO_ROOT / "reports" / "dry_run"
 _ROLE_RESEARCHER = "researcher"
 _ROLE_REVIEWER = "reviewer"
 
-# Every call site below must catch all three of these as one logical "this
+
+class ModelCatalogUnavailableError(RuntimeError):
+    """Raised when no model_catalog was supplied AND the fail-closed fallback
+    fetch (_default_fetch_model_catalog) itself failed (network down, DNS,
+    non-200, malformed body). Deliberately NOT treated as "skip the
+    free-model check" -- see _resolve_model_catalog's docstring. This is a
+    pure local/network-preflight failure, never a chat-completion attempt,
+    so `network_attempted` on its CallRecord is always False."""
+
+
+class ModelProvenanceMismatchError(RuntimeError):
+    """Raised when OpenRouter's response reports a DIFFERENT model than the
+    one that was actually preflighted/authorized for this call (Phase-I-
+    readiness MEDIUM finding #7, catalog TOCTOU). Never accepted as valid
+    OmniLab evidence, regardless of whether the substituted model happens to
+    also be free -- preflighting a SPECIFIC model id means that model's
+    catalog snapshot is the audit trail; a silent substitution invalidates
+    that chain of custody. This is a real HTTP response already received
+    (network_attempted=True), just refused as untrustworthy provenance."""
+
+
+def _default_fetch_model_catalog() -> dict:
+    """Fail-closed catalog resolution's real network fetch -- a public,
+    UNAUTHENTICATED GET, zero budget/network-attempt cost (never a chat-
+    completion request). A separate, monkeypatchable module-level function
+    specifically so tests can replace it with a fixed fake catalog (see
+    tests/conftest.py's autouse fixture) without weakening the real
+    invariant this backs: every real _call_llm invocation resolves SOME
+    catalog before evaluate_model_for_role() runs, never skips the check
+    because a caller forgot a flag."""
+    import requests
+
+    resp = requests.get("https://openrouter.ai/api/v1/models", timeout=30)
+    resp.raise_for_status()
+    data = resp.json().get("data", [])
+    return {m["id"]: m for m in data}
+
+
+def _resolve_model_catalog(model_catalog: Optional[dict]) -> dict:
+    """Phase-I-readiness CRITICAL fix #2: the free-model-only pre-flight
+    (research/llm/model_catalog.py::evaluate_model_for_role) must run on
+    EVERY call, not only when a caller happens to supply model_catalog
+    (previously: only when `--structured-output` was passed). If the caller
+    already fetched one (e.g. research/cli.py's _setup_dry_run_execution,
+    once per process, also used for its sanitized-snapshot audit trail),
+    reuse it. Otherwise fetch fresh HERE, bound as closely as practical to
+    this specific call (also narrows the catalog-TOCTOU window discussed in
+    reports/phase_i/PHASE_I_READINESS_AUDIT.md's finding #7). Never returns
+    None -- a fetch failure raises ModelCatalogUnavailableError rather than
+    silently proceeding with no catalog (fail closed, never fail open)."""
+    if model_catalog is not None:
+        return model_catalog
+    try:
+        return _default_fetch_model_catalog()
+    except Exception as e:  # requests.RequestException, JSON errors, etc.
+        raise ModelCatalogUnavailableError(
+            f"could not resolve a model catalog for the mandatory free-model-only "
+            f"pre-flight check, and none was supplied by the caller: {e}. Refusing "
+            "to proceed without one -- see research/dry_run/pipeline.py::_resolve_model_catalog."
+        ) from e
+
+
+# Every call site below must catch all of these as one logical "this
 # logical step could not be fulfilled" outcome: LLMUnavailableError (a real
-# transport/provider failure) and ModelNotFreeError/ModelCapabilityError (a
-# zero-network pre-flight rejection from research/llm/model_catalog.py, only
-# raised when model_catalog is supplied). All three degrade the same way —
-# a graceful `stopped_reason`, never an uncaught crash.
-_CALL_UNAVAILABLE = (LLMUnavailableError, ModelNotFreeError, ModelCapabilityError)
+# transport/provider failure), ModelNotFreeError/ModelCapabilityError (a
+# zero-network pre-flight rejection from research/llm/model_catalog.py),
+# ModelCatalogUnavailableError (the mandatory catalog fetch itself failed),
+# and ModelProvenanceMismatchError (OpenRouter returned a different model
+# than the one preflighted). All degrade the same way — a graceful
+# `stopped_reason`, never an uncaught crash.
+_CALL_UNAVAILABLE = (
+    LLMUnavailableError, ModelNotFreeError, ModelCapabilityError,
+    ModelCatalogUnavailableError, ModelProvenanceMismatchError,
+)
 
 _PROMPTS_DIR = Path(__file__).resolve().parent / "prompts"
 
@@ -286,54 +354,80 @@ def _call_llm(
     step — it is just never automatic/invisible within one call.
 
     `model_catalog` (Phase-remediation sections 1/2, optional, default
-    None): a `{model_id: catalog_entry}` mapping. When provided, the role's
-    `preferred_model` is checked via
-    `research/llm/model_catalog.py::evaluate_model_for_role` BEFORE
-    anything else in this function — a rejection (not free, or, if
+    None): a `{model_id: catalog_entry}` mapping. The role's `preferred_model`
+    is ALWAYS checked via `research/llm/model_catalog.py::evaluate_model_for_role`
+    BEFORE anything else in this function (see `_resolve_model_catalog` —
+    Phase-I-readiness fix, this is no longer conditional on the caller
+    supplying one) — a rejection (not free, or, if
     `require_structured_output=True`, lacking structured-output capability)
     raises immediately, records a CallRecord with zero budget/network
     impact (dry_run_budget/usage_tracker/run_budget are never touched, and
     `router.provider.complete()` is never called), and never falls back to
-    a different/paid model. When `model_catalog` is None (the default —
-    e.g. no catalog snapshot was fetched for this run), this pre-flight
-    check is skipped entirely; `roles.yaml`'s `preferred_model` is used
-    as-is, exactly as before this remediation build."""
+    a different/paid model. Passing `model_catalog=None` no longer skips
+    this check — it only skips the CALLER's own catalog fetch, since
+    `_call_llm` performs its own fail-closed fallback fetch in that case.
+
+    Phase-I-readiness CRITICAL fixes (2026-09-05, see
+    reports/phase_i/PHASE_I_READINESS_AUDIT.md):
+      1. `operational_state.check_gate()` is now the FIRST thing this
+         function does -- a PAUSED/STOPPED operational state blocks every
+         researcher/reviewer/revision call immediately, not only real
+         benchmark execution. Checked here (not only once at CLI startup)
+         so a pause/stop issued between preparation and the actual HTTP
+         request still takes effect.
+      2. The free-model-only pre-flight is now UNCONDITIONAL -- previously
+         it only ran `if model_catalog is not None`, and model_catalog was
+         only ever populated when a caller passed `--structured-output`,
+         meaning free-model enforcement was opt-in, not a real invariant.
+         `_resolve_model_catalog()` below always resolves a catalog (the
+         caller's, if supplied; otherwise a fresh, zero-budget-cost public
+         fetch performed HERE) before `evaluate_model_for_role()` runs --
+         there is no code path left that skips the free-pricing check."""
+    operational_state.check_gate(f"{role}_llm_call:{step}")
+
     role_cfg = router._role_config(role)
     timestamp = _now_utc_str()
 
-    if model_catalog is not None:
-        catalog_entry = model_catalog.get(role_cfg.preferred_model)
-        try:
-            evaluate_model_for_role(
-                role, role_cfg.preferred_model, catalog_entry,
-                require_structured_output=require_structured_output,
-            )
-        except (ModelNotFreeError, ModelCapabilityError) as e:
-            # Pre-flight rejection: zero network, zero budget consumption --
-            # dry_run_budget/usage_tracker/run_budget are deliberately never
-            # touched below, and router.provider.complete() is never called.
-            call_records.append(CallRecord(
-                step=step, role=role, model_used=None, succeeded=False, error=str(e),
-                timestamp=timestamp, dryrun_id=dryrun_id,
-                requested_model=role_cfg.preferred_model, selected_model=role_cfg.preferred_model,
-                failure_category=(
-                    "MODEL_NOT_FREE" if isinstance(e, ModelNotFreeError) else "MODEL_CAPABILITY_UNSUPPORTED"
-                ),
-                network_attempted=False,
-            ))
-            # Re-raises the ORIGINAL ModelNotFreeError/ModelCapabilityError
-            # unchanged -- tests/test_dry_run_remediation.py asserts _call_llm
-            # itself raises these exact types (its documented low-level
-            # contract). Every caller in run_dry_run_cycle below must catch
-            # BOTH these types alongside LLMUnavailableError -- see the
-            # `_PREFLIGHT_REJECTIONS` tuple and its use at each of the 4 call
-            # sites. Bug found via tests/test_dry_run_pipeline.py::
-            # TestStructuredOutputWiring::test_capability_gate_blocks_before_
-            # network_when_wired: before this fix, run_dry_run_cycle's `except
-            # LLMUnavailableError` handlers did not catch these (both
-            # ValueError subclasses, not LLMUnavailableError), so a pre-flight
-            # rejection propagated uncaught out of the whole pipeline.
-            raise
+    resolved_catalog = _resolve_model_catalog(model_catalog)
+    catalog_entry = resolved_catalog.get(role_cfg.preferred_model)
+    try:
+        evaluate_model_for_role(
+            role, role_cfg.preferred_model, catalog_entry,
+            require_structured_output=require_structured_output,
+        )
+    except (ModelNotFreeError, ModelCapabilityError) as e:
+        # Pre-flight rejection: zero network, zero budget consumption --
+        # dry_run_budget/usage_tracker/run_budget are deliberately never
+        # touched below, and router.provider.complete() is never called.
+        call_records.append(CallRecord(
+            step=step, role=role, model_used=None, succeeded=False, error=str(e),
+            timestamp=timestamp, dryrun_id=dryrun_id,
+            requested_model=role_cfg.preferred_model, selected_model=role_cfg.preferred_model,
+            failure_category=(
+                "MODEL_NOT_FREE" if isinstance(e, ModelNotFreeError) else "MODEL_CAPABILITY_UNSUPPORTED"
+            ),
+            network_attempted=False,
+        ))
+        # Re-raises the ORIGINAL ModelNotFreeError/ModelCapabilityError
+        # unchanged -- tests/test_dry_run_remediation.py asserts _call_llm
+        # itself raises these exact types (its documented low-level
+        # contract). Every caller in run_dry_run_cycle below must catch
+        # BOTH these types alongside LLMUnavailableError -- see the
+        # `_CALL_UNAVAILABLE` tuple and its use at each call site. Bug found
+        # via tests/test_dry_run_pipeline.py::TestStructuredOutputWiring::
+        # test_capability_gate_blocks_before_network_when_wired: before this
+        # fix, run_dry_run_cycle's `except LLMUnavailableError` handlers did
+        # not catch these (both ValueError subclasses, not
+        # LLMUnavailableError), so a pre-flight rejection propagated
+        # uncaught out of the whole pipeline.
+        raise
+
+    # model_catalog kept as the ORIGINAL parameter (not resolved_catalog)
+    # below -- structured_output_capability_state and build_reasoning_decision
+    # already correctly no-op when None was explicitly passed pre-fix; now
+    # threading resolved_catalog through everywhere keeps that metadata
+    # populated even when the caller didn't supply one.
+    model_catalog = resolved_catalog
 
     violations = check_payload_safe(prompt)
     if violations:
@@ -448,6 +542,43 @@ def _call_llm(
             run_budget.record()
         dry_run_budget.record()
         diag = response.diagnostics or {}
+        # Catalog-TOCTOU / returned-model-mismatch check (Phase-I-readiness
+        # MEDIUM finding #7): the model actually returned by OpenRouter must
+        # match the one that was preflighted above. A silent substitution --
+        # even to another nominally-free model -- breaks the chain of
+        # custody the catalog snapshot exists to provide, so it is treated
+        # as a policy/provenance failure, never accepted as valid OmniLab
+        # evidence. This is a real HTTP response already received
+        # (network_attempted stays True) -- what's rejected is trusting its
+        # content, not the fact that a request happened.
+        actual_model = response.model_used
+        if actual_model and actual_model != role_cfg.preferred_model:
+            call_records.append(CallRecord(
+                step=step, role=role, model_used=actual_model, succeeded=False,
+                error=(
+                    f"model provenance mismatch: preflighted/authorized "
+                    f"{role_cfg.preferred_model!r}, OpenRouter returned {actual_model!r}"
+                ),
+                timestamp=timestamp, dryrun_id=dryrun_id,
+                requested_model=role_cfg.preferred_model, selected_model=role_cfg.preferred_model,
+                actual_model_returned=actual_model,
+                http_status=diag.get("http_status"),
+                request_id=response.request_id,
+                latency_ms=response.latency_ms,
+                finish_reason=diag.get("finish_reason"),
+                token_usage=diag.get("usage"),
+                failure_category="MODEL_PROVENANCE_MISMATCH",
+                reasoning_configuration=reasoning_decision_category,
+                structured_output_capability_state=structured_output_capability_state,
+                network_attempted=diag.get("network_attempted", True),
+            ))
+            raise ModelProvenanceMismatchError(
+                f"OpenRouter returned model {actual_model!r} but {role_cfg.preferred_model!r} "
+                "was preflighted/authorized for this call -- refusing to accept as valid "
+                "OmniLab evidence. See reports/phase_i/PHASE_I_READINESS_AUDIT.md finding #7 "
+                "for the documented residual TOCTOU risk this check narrows but cannot fully "
+                "eliminate (OpenRouter is a remote, provider-controlled system)."
+            )
         call_records.append(CallRecord(
             step=step, role=role, model_used=response.model_used, succeeded=True,
             timestamp=timestamp, dryrun_id=dryrun_id,
