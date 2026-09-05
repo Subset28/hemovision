@@ -39,6 +39,7 @@ from research.dry_run.budget import DryRunCallBudget
 from research.experiment_spec import ExperimentProposal, ExperimentSpec
 from research.experiment_validator import (
     ValidationResult,
+    _keywords,
     find_rejected_hypothesis_conflicts,
     is_queue_eligible,
     validate,
@@ -109,11 +110,60 @@ class PhaseICycleResult:
     revised_proposal: Optional[ExperimentProposal] = None
     final_validation: Optional[ValidationResult] = None
     redundancy_conflicts: list = field(default_factory=list)
+    candidate_history_conflicts: list = field(default_factory=list)
     stopped_reason: str = ""
     proposal_path: Optional[Path] = None
     review_path: Optional[Path] = None
     revision_path: Optional[Path] = None
     final_report_path: Optional[Path] = None
+
+
+def find_candidate_history_conflicts(proposal: ExperimentProposal, exclude_candidate_id: str) -> list:
+    """Deterministic candidate-history redundancy check (Phase I second-
+    cycle authorization, section 2): a prior Phase I candidate -- including
+    one that was REJECTED and never became an EXP-XXXX row -- counts as
+    prior proposal history for redundancy purposes. Same family-match +
+    keyword-overlap approach as
+    research/experiment_validator.py::find_rejected_hypothesis_conflicts --
+    a GUARDRAIL, not proof of novelty; deeper semantic novelty assessment
+    remains the reviewer's job. Returns [(candidate_id, "candidate_history"),
+    ...] pairs, in the same shape find_rejected_hypothesis_conflicts uses,
+    so the caller's existing acknowledgment logic (checking
+    acknowledges_rejected_hypothesis_ids, which accepts free-form id
+    strings) works unchanged for CANDIDATE-XXXX ids too. NEVER reads or
+    writes research/db.py -- this is candidate-artifact history only."""
+    conflicts: list = []
+    proposal_keywords: set = set()
+    for iv in proposal.independent_variables:
+        proposal_keywords |= _keywords(iv)
+    for dv in proposal.dependent_variables:
+        proposal_keywords |= _keywords(dv)
+    proposal_keywords |= _keywords(proposal.control_condition)
+    if not proposal_keywords:
+        return conflicts
+
+    for record in cs.list_all_candidates():
+        if record.candidate_id == exclude_candidate_id:
+            continue
+        if not record.proposal_path or not Path(record.proposal_path).exists():
+            continue
+        try:
+            with open(record.proposal_path, encoding="utf-8") as f:
+                saved = json.load(f)
+        except (OSError, json.JSONDecodeError):
+            continue
+        prior_proposal = saved.get("proposal") or {}
+        if prior_proposal.get("family") != proposal.family:
+            continue
+        prior_keywords: set = set()
+        for iv in prior_proposal.get("independent_variables") or []:
+            prior_keywords |= _keywords(iv)
+        for dv in prior_proposal.get("dependent_variables") or []:
+            prior_keywords |= _keywords(dv)
+        prior_keywords |= _keywords(prior_proposal.get("control_condition") or "")
+        if proposal_keywords & prior_keywords:
+            conflicts.append((record.candidate_id, "candidate_history"))
+    return conflicts
 
 
 def _placeholder_experiment_id(candidate_id: str) -> str:
@@ -289,10 +339,20 @@ def run_phase_i_cycle(
         proposal_validation = validate(spec)
         memory_db = MemoryDB()
         try:
-            conflicts = find_rejected_hypothesis_conflicts(proposal, memory_db)
+            exp_conflicts = find_rejected_hypothesis_conflicts(proposal, memory_db)
         finally:
             memory_db.close()
-        result.redundancy_conflicts = conflicts
+        # Candidate-history redundancy (Phase I section 2): a prior Phase I
+        # candidate counts as prior proposal history even though it never
+        # became an EXP row -- reported separately from exp_conflicts (see
+        # the proposal artifact's "rejected_hypothesis_conflicts" vs.
+        # "candidate_history_conflicts" keys) but combined into the SAME
+        # admissibility/acknowledgment check below, since both are the same
+        # kind of guardrail with the same acknowledgment mechanism.
+        candidate_conflicts = find_candidate_history_conflicts(proposal, record.candidate_id)
+        result.redundancy_conflicts = exp_conflicts
+        result.candidate_history_conflicts = candidate_conflicts
+        conflicts = exp_conflicts + candidate_conflicts
 
         acknowledged = set(proposal.acknowledges_rejected_hypothesis_ids)
         unacknowledged = [
@@ -503,6 +563,7 @@ def _write_final_report(record: "cs.CandidateRecord", result: PhaseICycleResult,
             is_queue_eligible(result.final_validation) if result.final_validation is not None else False
         ),
         "redundancy_conflicts": result.redundancy_conflicts,
+        "candidate_history_conflicts": result.candidate_history_conflicts,
         "calls_made": result.calls_made,
         "calls_budget": result.calls_budget,
         "authorization_assessment": _authorization_assessment(final_proposal),

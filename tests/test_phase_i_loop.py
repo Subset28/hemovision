@@ -429,3 +429,84 @@ class TestRestartIdempotency:
         router2 = LLMRouter(provider=PoisonedProvider(), usage_tracker=UsageTracker(path=tracker_path, max_per_day=1000))
         result2 = run_phase_i_cycle(router=router2, authorized=True, resume_candidate_id=candidate.candidate_id)
         assert result2.final_state == cs.FINALIZED
+
+
+class TestCandidateHistoryRedundancy:
+    """Phase I second-cycle authorization, section 2: a prior candidate
+    (REJECTED or otherwise) counts as prior proposal history for redundancy
+    purposes even though it never became an EXP-XXXX row."""
+
+    def test_superficial_rewrite_of_prior_candidate_is_flagged(self):
+        # First candidate: proposes a temporal_pipeline intervention.
+        router1, provider1 = _router([_proposal_json()])
+        candidate1 = cs.create_candidate()
+        result1 = run_phase_i_cycle(router=router1, authorized=True, resume_candidate_id=candidate1.candidate_id)
+        assert result1.proposal_path is not None
+
+        # Second candidate: same family, overlapping independent_variables
+        # wording -- must be caught as a candidate-history conflict.
+        router2, provider2 = _router([_proposal_json(
+            independent_variables=["hard_positive_oversampling_ratio", "temporal_window_size"],
+        )])
+        result2 = run_phase_i_cycle(router=router2, authorized=True)
+        assert any(cid == candidate1.candidate_id for cid, _ in result2.candidate_history_conflicts)
+
+    def test_genuinely_different_family_not_flagged(self):
+        router1, provider1 = _router([_proposal_json(family="temporal_pipeline")])
+        candidate1 = cs.create_candidate()
+        run_phase_i_cycle(router=router1, authorized=True, resume_candidate_id=candidate1.candidate_id)
+
+        router2, provider2 = _router([_proposal_json(
+            family="preprocessing", independent_variables=["clahe_clip_limit"],
+        ), _review_json()])
+        result2 = run_phase_i_cycle(router=router2, authorized=True)
+        assert not any(cid == candidate1.candidate_id for cid, _ in result2.candidate_history_conflicts)
+
+    def test_candidate_history_conflict_alone_does_not_insert_into_exp_db(self):
+        before = _experiments_row_count()
+        router1, provider1 = _router([_proposal_json()])
+        candidate1 = cs.create_candidate()
+        run_phase_i_cycle(router=router1, authorized=True, resume_candidate_id=candidate1.candidate_id)
+
+        router2, provider2 = _router([_proposal_json(
+            independent_variables=["hard_positive_oversampling_ratio", "temporal_window_size"],
+        )])
+        run_phase_i_cycle(router=router2, authorized=True)
+        assert _experiments_row_count() == before
+
+    def test_acknowledged_candidate_conflict_with_rationale_proceeds(self):
+        router1, provider1 = _router([_proposal_json()])
+        candidate1 = cs.create_candidate()
+        run_phase_i_cycle(router=router1, authorized=True, resume_candidate_id=candidate1.candidate_id)
+
+        router2, provider2 = _router([
+            _proposal_json(
+                independent_variables=["hard_positive_oversampling_ratio", "temporal_window_size"],
+                acknowledges_rejected_hypothesis_ids=[candidate1.candidate_id],
+                materially_new_rationale="Genuinely different mechanism: propagates evidence across frames "
+                                         "via explicit carry-forward rather than confirmation filtering.",
+            ),
+            _review_json(),
+        ])
+        result2 = run_phase_i_cycle(router=router2, authorized=True)
+        assert result2.final_state in (cs.FINALIZED, cs.REJECTED)  # proceeded past the redundancy gate either way
+        assert result2.calls_made >= 2  # reached the reviewer, not rejected pre-reviewer for redundancy
+
+
+class TestApprovalPendingReviewerAdmission:
+    """Phase I section 8: missing approval alone must not stop reviewer
+    critique -- only genuine scientific/schema ERRORs do."""
+
+    def test_mac_iphone_required_proposal_reaches_reviewer(self):
+        router, provider = _router([_proposal_json(family="temporal_pipeline", mac_iphone_required=True), _review_json()])
+        result = run_phase_i_cycle(router=router, authorized=True)
+        reviewer_calls = [c for c in provider.calls if c[0] == "reviewer"]
+        assert len(reviewer_calls) == 1
+        assert result.final_state == cs.FINALIZED
+
+    def test_training_data_family_proposal_reaches_reviewer(self):
+        router, provider = _router([_proposal_json(family="training_data"), _review_json()])
+        result = run_phase_i_cycle(router=router, authorized=True)
+        reviewer_calls = [c for c in provider.calls if c[0] == "reviewer"]
+        assert len(reviewer_calls) == 1
+        assert result.final_state == cs.FINALIZED

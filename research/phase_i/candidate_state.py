@@ -163,6 +163,28 @@ def next_candidate_id() -> str:
     return f"CANDIDATE-{n:04d}"
 
 
+def list_all_candidates() -> list:
+    """All persisted candidates, oldest first. Used for candidate-history
+    redundancy checks (Phase I second-cycle authorization, section 2) --
+    CANDIDATE-0001 (and any other prior candidate) counts as prior proposal
+    history even though it never became an EXP row. Never touches
+    research/db.py/EXP-XXXX in any way; a corrupt individual candidate's
+    state.json is skipped (fail-closed for THAT candidate only -- a
+    redundancy check must not crash the whole cycle over one unrelated bad
+    file), not fatal to the caller."""
+    if not CANDIDATES_DIR.exists():
+        return []
+    records = []
+    for p in sorted(CANDIDATES_DIR.iterdir()):
+        if not (p.is_dir() and p.name.startswith("CANDIDATE-")):
+            continue
+        try:
+            records.append(load_candidate(p.name))
+        except CandidateStateError:
+            continue
+    return records
+
+
 def create_candidate() -> CandidateRecord:
     """Allocate a new candidate id and persist its initial CREATED state.
     Never touches EXP-XXXX/research/db.py in any way."""
