@@ -844,3 +844,78 @@ Omitting `--authorize` makes zero LLM calls (a configured
 `OPENROUTER_API_KEY` never authorizes a call by itself — same discipline as
 `research/llm/authorization.py` and `research/llm/smoke_test.py`). There is
 no "wet" mode of this command.
+
+## OpenRouter integration remediation (narrow build, post-audit)
+
+Follows `reports/openrouter/OPENROUTER_INTEGRATION_AUDIT.md` (commit
+`85c10bb`). Zero live chat-completion requests were made while building
+this. Summary of what changed and the design boundaries that were kept
+deliberately narrow:
+
+- **`research/llm/model_catalog.py`** — two fail-closed, pre-flight,
+  zero-network gates over an already-fetched OpenRouter catalog snapshot:
+  `is_free_model()` (both prompt+completion pricing must be exactly zero;
+  missing/malformed pricing is treated as NOT free, never as free) and
+  `supports_structured_output()` (catalog `supported_parameters` must list
+  `"response_format"`; missing/malformed is treated as unsupported).
+  `evaluate_model_for_role()` is the single gate call site — it raises
+  `ModelNotFreeError`/`ModelCapabilityError` (both zero-budget, zero-network)
+  rather than ever substituting a different/paid model. There is NO
+  substitution logic anywhere in this codebase — a rejected model is
+  reported and the call stops there.
+- **`find_eligible_free_models()`** (same module) is an OFFLINE/ADVISORY
+  discovery helper over an already-fetched catalog snapshot — for a human
+  to consult when *choosing* what to put in `roles.yaml` next. It is never
+  imported by `research/dry_run/pipeline.py` or any other live-call path;
+  wiring it into a live path would reintroduce the non-deterministic,
+  non-reproducible model-selection risk the audit flagged for
+  `openrouter/free` (see the audit's section 9). `roles.yaml`'s
+  `preferred_model` remains the single, explicit, human-reviewed source of
+  truth for what a live call actually uses.
+- **Native structured output** — `research/llm/structured_output.py` now
+  has `proposal_response_json_schema()` / `reviewer_critique_json_schema()`
+  (two distinct JSON Schemas) and `build_response_format()`, which builds
+  OpenRouter's documented `response_format: {type: "json_schema", ...}`
+  request field. This flows into `OpenRouterProvider.complete()` purely via
+  its existing `**kwargs` -> `body.update(kwargs)` mechanism — no change to
+  that method's request-construction code was needed. `research/dry_run/
+  pipeline.py::_call_llm` gained an optional `response_format` parameter
+  that adds this field to the SAME single HTTP request; it does not add a
+  second attempt or a fallback loop. **Native structured output is a
+  conformance aid only** — every response, native-structured or not, still
+  passes through this module's `parse_and_validate_*` functions AND
+  `research/experiment_validator.py::validate()` unchanged.
+- **Defensive parser** — `structured_output.py::_parse_json_object` now
+  strips a single markdown fence (` ```json ... ``` ` or generic
+  ` ``` ... ``` `) wrapping the whole response, trims whitespace, and — only
+  if direct parsing still fails and exactly one top-level balanced `{...}`
+  block is found — extracts that one candidate. Zero or multiple candidates
+  is a hard, explicit failure; this module will never scan for "any braces
+  anywhere" and guess.
+- **Diagnostics** — `LLMResponse`/`LLMUnavailableError` both gained a safe
+  `diagnostics: dict` (http_status, envelope_parsed, choices_present,
+  message_present, content_present, content_length, finish_reason,
+  request_id, usage, and — for 429s only — the documented
+  `X-RateLimit-*`/`Retry-After` headers and `error.code`/`error.metadata`
+  body fields). **Never** populated: the API key, the `Authorization`
+  header, raw environment, private context, or the full prompt/completion
+  text. `research/dry_run/pipeline.py::CallRecord` was extended with the
+  matching fields plus an A-G failure-category taxonomy
+  (`FAILURE_TRANSPORT` / `FAILURE_INVALID_ENVELOPE` /
+  `FAILURE_MISSING_CHOICES_MESSAGE_CONTENT` / `FAILURE_EMPTY_CONTENT` /
+  `FAILURE_CONTENT_NOT_VALID_JSON` / `FAILURE_JSON_FAILED_CANONICAL_SCHEMA` /
+  `FAILURE_LOCAL_VALIDATOR_REJECTION`) so a future failure is diagnosable
+  without a live test.
+- **Usage-accounting authority model** (explicit, unchanged by this build):
+  `research/llm/base.py::UsageTracker` / `research/llm_usage.json` is
+  OmniLab's own, sole, FIRST-PARTY enforcement mechanism for its daily call
+  cap — checked before every real call, independent of OpenRouter's own
+  account Activity dashboard. OpenRouter's Activity log is an EXTERNAL
+  audit source only; OmniLab has no API access to it and never depends on
+  it programmatically. The prior disappearance of `research/llm_usage.json`
+  (see the audit, section 12) remains **UNKNOWN** — no code path was found
+  during this remediation build either that could explain it (re-checked
+  `research/git_isolation.py::discard_non_experiment_changes` and every
+  `UsageTracker(...)`/`unlink`/`os.remove`/`shutil.rmtree` call site again;
+  same result as the audit). This stays an open observability limitation,
+  not a solved problem.

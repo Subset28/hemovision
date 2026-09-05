@@ -75,9 +75,21 @@ class LLMUnavailableError(RuntimeError):
     the message string. Message text is guaranteed to never contain a secret
     value (see research/llm/openrouter.py's redaction discipline)."""
 
-    def __init__(self, message: str, category: ErrorCategory = ErrorCategory.UNKNOWN):
+    def __init__(
+        self,
+        message: str,
+        category: ErrorCategory = ErrorCategory.UNKNOWN,
+        diagnostics: "Optional[dict]" = None,
+    ):
         super().__init__(message)
         self.category = category
+        # Safe, non-secret diagnostic detail (narrow remediation build --
+        # see reports/openrouter/OPENROUTER_INTEGRATION_AUDIT.md section 11).
+        # NEVER contains an API key, an Authorization header value, raw
+        # environment, private context, or the full prompt/completion text
+        # -- see research/llm/openrouter.py::_build_diagnostics for exactly
+        # what is (and is not) placed here.
+        self.diagnostics: dict = diagnostics or {}
 
 
 class BudgetExceededError(LLMUnavailableError):
@@ -109,6 +121,10 @@ class LLMResponse:
     request_id: Optional[str] = None
     latency_ms: Optional[float] = None
     error_category: Optional[ErrorCategory] = None  # None on success
+    # Safe diagnostic detail captured for a SUCCESSFUL call (narrow
+    # remediation build) -- same safe-field discipline as
+    # LLMUnavailableError.diagnostics; see research/llm/openrouter.py.
+    diagnostics: Optional[dict] = None
 
 
 class LLMProvider(ABC):

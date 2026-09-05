@@ -42,7 +42,7 @@ from __future__ import annotations
 
 import logging
 import time
-from typing import Optional
+from typing import Any, Optional
 
 from research.llm.authorization import AuthorizationLike, require_authorization
 from research.llm.base import (
@@ -71,6 +71,55 @@ def _redact(key: Optional[str]) -> str:
     if not key:
         return "unset"
     return f"set(len={len(key)})"
+
+
+# Response/rate-limit headers OpenRouter documents as safe, non-secret,
+# diagnosis-relevant (https://openrouter.ai/docs/api-reference/limits) --
+# `Authorization` (or any other secret-bearing header) is NEVER read here,
+# NEVER placed in diagnostics, and NEVER logged, by construction: this list
+# is the only set of header names `_safe_response_headers` ever consults.
+_SAFE_DIAGNOSTIC_HEADERS = (
+    "X-RateLimit-Limit",
+    "X-RateLimit-Remaining",
+    "X-RateLimit-Reset",
+    "Retry-After",
+)
+
+
+def _safe_response_headers(resp) -> dict:
+    """Extract ONLY the documented, non-secret rate-limit/retry headers from
+    an HTTP response, case-insensitively. Never touches `Authorization` or
+    any other header -- this function's own allowlist (`_SAFE_DIAGNOSTIC_HEADERS`)
+    is the sole source of what it will ever return."""
+    headers = getattr(resp, "headers", None) or {}
+    out: dict = {}
+    for name in _SAFE_DIAGNOSTIC_HEADERS:
+        value = headers.get(name)
+        if value is not None:
+            out[name] = value
+    return out
+
+
+def _safe_error_body_fields(data: Any) -> dict:
+    """Extract ONLY `error.code`/`error.message`/`error.metadata` from an
+    OpenRouter error envelope, if present -- never the raw body verbatim,
+    never anything else it might contain."""
+    if not isinstance(data, dict):
+        return {}
+    err = data.get("error")
+    if not isinstance(err, dict):
+        return {}
+    out: dict = {}
+    if "code" in err:
+        out["provider_error_code"] = err.get("code")
+    if "message" in err:
+        # OpenRouter's own error message text -- not model output, not a
+        # secret, safe to retain (distinct from the prompt/completion body,
+        # which is never retained).
+        out["provider_error_message"] = err.get("message")
+    if "metadata" in err:
+        out["provider_error_metadata"] = err.get("metadata")
+    return out
 
 
 class OpenRouterProvider(LLMProvider):
@@ -173,8 +222,18 @@ class OpenRouterProvider(LLMProvider):
     def _dispatch(self, api_key: str, body: dict, timeout_sec: int) -> LLMResponse:
         """One HTTP attempt. Raises OpenRouterProviderError, categorized,
         for every failure mode — never lets a raw requests/JSON exception
-        (which could theoretically echo request internals) propagate."""
+        (which could theoretically echo request internals) propagate.
+
+        Every raise point (and the success return) attaches a safe
+        diagnostics dict (Phase-remediation section 5/6) — never the API
+        key, the Authorization header, raw environment, private context, the
+        full prompt, or the full response/completion text; only structural
+        facts (status code, presence checks, lengths, safe headers/error
+        fields) survive into `diagnostics`."""
         import requests
+
+        requested_model = body.get("model")
+        diag: dict = {"requested_model": requested_model}
 
         try:
             resp = requests.post(
@@ -190,63 +249,119 @@ class OpenRouterProvider(LLMProvider):
             raise OpenRouterProviderError(
                 f"OpenRouter request timed out (key: {_redact(api_key)})",
                 category=ErrorCategory.TIMEOUT,
+                diagnostics=diag,
             ) from e
         except requests.exceptions.ConnectionError as e:
             raise OpenRouterProviderError(
                 f"OpenRouter request failed — network error (key: {_redact(api_key)})",
                 category=ErrorCategory.NETWORK_ERROR,
+                diagnostics=diag,
             ) from e
         except requests.exceptions.RequestException as e:
             raise OpenRouterProviderError(
                 f"OpenRouter request failed (key: {_redact(api_key)})",
                 category=ErrorCategory.UNKNOWN,
+                diagnostics=diag,
             ) from e
+
+        diag["http_status"] = getattr(resp, "status_code", None)
 
         if resp.status_code == 401 or resp.status_code == 403:
             raise OpenRouterProviderError(
                 f"OpenRouter auth failed, HTTP {resp.status_code} (key: {_redact(api_key)})",
                 category=ErrorCategory.AUTH_ERROR,
+                diagnostics=diag,
             )
         if resp.status_code == 429:
+            # 429 diagnostics (Phase-remediation section 6): capture the
+            # documented rate-limit headers and error-body fields that
+            # distinguish account-quota vs. model/provider-level throttling
+            # (https://openrouter.ai/docs/api-reference/limits) -- never a
+            # secret-bearing header, never the Authorization header.
+            diag.update(_safe_response_headers(resp))
+            try:
+                err_body = resp.json()
+            except ValueError:
+                err_body = None
+            diag.update(_safe_error_body_fields(err_body))
             raise OpenRouterProviderError(
-                "OpenRouter rate limit hit, HTTP 429", category=ErrorCategory.RATE_LIMIT
+                "OpenRouter rate limit hit, HTTP 429",
+                category=ErrorCategory.RATE_LIMIT,
+                diagnostics=diag,
             )
         if resp.status_code == 404:
             raise OpenRouterProviderError(
                 f"OpenRouter model not found/unavailable, HTTP 404 (model={body.get('model')!r})",
                 category=ErrorCategory.MODEL_UNAVAILABLE,
+                diagnostics=diag,
             )
         if resp.status_code >= 400:
+            diag.update(_safe_response_headers(resp))
+            try:
+                err_body = resp.json()
+            except ValueError:
+                err_body = None
+            diag.update(_safe_error_body_fields(err_body))
             raise OpenRouterProviderError(
-                f"OpenRouter HTTP error {resp.status_code}", category=ErrorCategory.HTTP_ERROR
+                f"OpenRouter HTTP error {resp.status_code}",
+                category=ErrorCategory.HTTP_ERROR,
+                diagnostics=diag,
             )
 
         try:
             data = resp.json()
         except ValueError as e:
+            diag["envelope_parsed"] = False
             raise OpenRouterProviderError(
                 f"OpenRouter returned non-JSON response body: {e}",
                 category=ErrorCategory.MALFORMED_RESPONSE,
+                diagnostics=diag,
             ) from e
+        diag["envelope_parsed"] = True
+
+        choices = data.get("choices") if isinstance(data, dict) else None
+        diag["choices_present"] = isinstance(choices, list) and len(choices) > 0
+        message = None
+        if diag["choices_present"]:
+            first_choice = choices[0]
+            if isinstance(first_choice, dict):
+                message = first_choice.get("message")
+                diag["finish_reason"] = first_choice.get("finish_reason")
+        diag["message_present"] = isinstance(message, dict)
 
         try:
             choices = data["choices"]
             text = choices[0]["message"]["content"]
         except (KeyError, IndexError, TypeError) as e:
+            diag["content_present"] = False
             raise OpenRouterProviderError(
                 f"unexpected OpenRouter response shape: {e}",
                 category=ErrorCategory.MALFORMED_RESPONSE,
+                diagnostics=diag,
             ) from e
+
+        diag["content_present"] = text is not None
+        diag["content_length"] = len(str(text)) if text is not None else 0
 
         if not text or not str(text).strip():
             raise OpenRouterProviderError(
-                "OpenRouter returned an empty completion", category=ErrorCategory.EMPTY_RESPONSE
+                "OpenRouter returned an empty completion",
+                category=ErrorCategory.EMPTY_RESPONSE,
+                diagnostics=diag,
             )
 
         usage = data.get("usage") or {}
         tokens_used = usage.get("total_tokens")
         model_used = data.get("model", body.get("model"))
         request_id = data.get("id")
+
+        diag["request_id"] = request_id
+        diag["model_used"] = model_used
+        diag["usage"] = {
+            "prompt_tokens": usage.get("prompt_tokens"),
+            "completion_tokens": usage.get("completion_tokens"),
+            "total_tokens": usage.get("total_tokens"),
+        }
 
         return LLMResponse(
             text=text,
@@ -256,4 +371,5 @@ class OpenRouterProvider(LLMProvider):
             provider="openrouter",
             request_id=request_id,
             error_category=None,
+            diagnostics=diag,
         )

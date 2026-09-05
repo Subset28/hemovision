@@ -57,8 +57,13 @@ from research.experiment_validator import (
     validate,
 )
 from research.llm.authorization import AuthorizationLike
-from research.llm.base import LLMResponse, LLMUnavailableError, RunBudget
+from research.llm.base import ErrorCategory, LLMResponse, LLMUnavailableError, RunBudget
 from research.llm.injection_guard import flag_suspicious_response
+from research.llm.model_catalog import (
+    ModelCapabilityError,
+    ModelNotFreeError,
+    evaluate_model_for_role,
+)
 from research.llm.privacy_guard import check_payload_safe
 from research.llm.router import LLMRouter
 from research.llm.structured_output import (
@@ -128,6 +133,52 @@ REDUNDANCY_RETRY_INSTRUCTIONS = (
 )
 
 
+# The A-G failure-category taxonomy (narrow remediation build, section 5):
+# distinguishes WHERE a call/parse failed, beyond just "it failed" / a raw
+# exception message. `None` on a fully-successful step.
+FAILURE_TRANSPORT = "TRANSPORT_FAILURE"  # timeout/network/auth/http/rate-limit/model-unavailable
+FAILURE_INVALID_ENVELOPE = "INVALID_ENVELOPE"  # HTTP 200 but body did not parse as JSON at all
+FAILURE_MISSING_CHOICES_MESSAGE_CONTENT = "MISSING_CHOICES_MESSAGE_CONTENT"
+FAILURE_EMPTY_CONTENT = "EMPTY_CONTENT"
+FAILURE_CONTENT_NOT_VALID_JSON = "CONTENT_NOT_VALID_JSON"
+FAILURE_JSON_FAILED_CANONICAL_SCHEMA = "JSON_FAILED_CANONICAL_SCHEMA"
+FAILURE_LOCAL_VALIDATOR_REJECTION = "LOCAL_VALIDATOR_REJECTION"
+
+
+def _classify_transport_failure(e: LLMUnavailableError) -> str:
+    """Map a raised LLMUnavailableError's category + diagnostics to the A-G
+    taxonomy's transport-layer buckets (categories A/B/C)."""
+    diag = getattr(e, "diagnostics", None) or {}
+    if e.category == ErrorCategory.MALFORMED_RESPONSE:
+        if diag.get("envelope_parsed") is False:
+            return FAILURE_INVALID_ENVELOPE
+        return FAILURE_MISSING_CHOICES_MESSAGE_CONTENT
+    if e.category == ErrorCategory.EMPTY_RESPONSE:
+        return FAILURE_EMPTY_CONTENT
+    return FAILURE_TRANSPORT
+
+
+def _annotate_last_call_record(call_records: list, step: str, **fields) -> None:
+    """Attach post-hoc detail (parse-layer failure category, local
+    validator result) to the CallRecord already appended by `_call_llm` for
+    `step` -- the JSON-parse and local-validation stages happen one layer
+    above `_call_llm`, after the HTTP round-trip it recorded."""
+    for cr in reversed(call_records):
+        if cr.step == step:
+            for k, v in fields.items():
+                setattr(cr, k, v)
+            return
+
+
+def _classify_parse_failure(e: ValidationError) -> str:
+    """Map a raised structured_output.ValidationError to the A-G taxonomy's
+    parse-layer buckets (categories D/E)."""
+    msg = str(e)
+    if "not valid JSON" in msg or "ambiguous" in msg:
+        return FAILURE_CONTENT_NOT_VALID_JSON
+    return FAILURE_JSON_FAILED_CANONICAL_SCHEMA
+
+
 @dataclass
 class CallRecord:
     step: str
@@ -135,6 +186,28 @@ class CallRecord:
     model_used: Optional[str]
     succeeded: bool
     error: Optional[str] = None
+    # -- Phase-remediation diagnostics (section 5) — safe fields only, never
+    #    the API key, Authorization header, raw environment, private
+    #    context, or the full prompt/completion text. --
+    timestamp: str = ""
+    dryrun_id: str = ""
+    requested_model: Optional[str] = None
+    selected_model: Optional[str] = None
+    actual_model_returned: Optional[str] = None
+    http_status: Optional[int] = None
+    provider_error_code: Optional[str] = None
+    request_id: Optional[str] = None
+    latency_ms: Optional[float] = None
+    finish_reason: Optional[str] = None
+    envelope_parsed: Optional[bool] = None
+    choices_present: Optional[bool] = None
+    message_present: Optional[bool] = None
+    content_present: Optional[bool] = None
+    content_length: Optional[int] = None
+    structured_parse_result: Optional[str] = None  # one of the FAILURE_* constants, or None
+    local_schema_validation_result: Optional[dict] = None  # {"is_valid": bool, "error_count": int}
+    token_usage: Optional[dict] = None
+    failure_category: Optional[str] = None  # one of the FAILURE_* constants, or None on success
 
 
 @dataclass
@@ -168,6 +241,10 @@ def _call_llm(
     step: str,
     call_records: list,
     max_retries: int = 0,
+    dryrun_id: str = "",
+    model_catalog: Optional[dict] = None,
+    require_structured_output: bool = False,
+    response_format: Optional[dict] = None,
 ) -> LLMResponse:
     """The single choke point for every LLM call this pipeline makes.
     Checks (and records against) the dry-run budget BEFORE/AFTER the call,
@@ -192,7 +269,45 @@ def _call_llm(
     policy) rather than silently retried against a different model that
     would cost a second real request. Genuine fallback remains available —
     a caller may simply invoke `_call_llm` again for the next logical
-    step — it is just never automatic/invisible within one call."""
+    step — it is just never automatic/invisible within one call.
+
+    `model_catalog` (Phase-remediation sections 1/2, optional, default
+    None): a `{model_id: catalog_entry}` mapping. When provided, the role's
+    `preferred_model` is checked via
+    `research/llm/model_catalog.py::evaluate_model_for_role` BEFORE
+    anything else in this function — a rejection (not free, or, if
+    `require_structured_output=True`, lacking structured-output capability)
+    raises immediately, records a CallRecord with zero budget/network
+    impact (dry_run_budget/usage_tracker/run_budget are never touched, and
+    `router.provider.complete()` is never called), and never falls back to
+    a different/paid model. When `model_catalog` is None (the default —
+    e.g. no catalog snapshot was fetched for this run), this pre-flight
+    check is skipped entirely; `roles.yaml`'s `preferred_model` is used
+    as-is, exactly as before this remediation build."""
+    role_cfg = router._role_config(role)
+    timestamp = _now_utc_str()
+
+    if model_catalog is not None:
+        catalog_entry = model_catalog.get(role_cfg.preferred_model)
+        try:
+            evaluate_model_for_role(
+                role, role_cfg.preferred_model, catalog_entry,
+                require_structured_output=require_structured_output,
+            )
+        except (ModelNotFreeError, ModelCapabilityError) as e:
+            # Pre-flight rejection: zero network, zero budget consumption --
+            # dry_run_budget/usage_tracker/run_budget are deliberately never
+            # touched below, and router.provider.complete() is never called.
+            call_records.append(CallRecord(
+                step=step, role=role, model_used=None, succeeded=False, error=str(e),
+                timestamp=timestamp, dryrun_id=dryrun_id,
+                requested_model=role_cfg.preferred_model, selected_model=role_cfg.preferred_model,
+                failure_category=(
+                    "MODEL_NOT_FREE" if isinstance(e, ModelNotFreeError) else "MODEL_CAPABILITY_UNSUPPORTED"
+                ),
+            ))
+            raise
+
     violations = check_payload_safe(prompt)
     if violations:
         raise ValidationError(f"privacy_guard flagged outgoing prompt for step {step!r}: {violations}")
@@ -202,12 +317,17 @@ def _call_llm(
     if run_budget is not None:
         run_budget.check()
 
-    role_cfg = router._role_config(role)
     call_kwargs: dict = {}
     if role_cfg.max_tokens is not None:
         call_kwargs["max_tokens"] = role_cfg.max_tokens
     if role_cfg.timeout is not None:
         call_kwargs["timeout_sec"] = role_cfg.timeout
+    if response_format is not None:
+        # Native OpenRouter structured-output request (section 3) -- an
+        # ADDITIONAL field on the SAME single request, never a second
+        # attempt. Flows straight through OpenRouterProvider.complete()'s
+        # existing `body.update(kwargs)`.
+        call_kwargs["response_format"] = response_format
 
     try:
         response = router.provider.complete(
@@ -224,14 +344,46 @@ def _call_llm(
         if run_budget is not None:
             run_budget.record()
         dry_run_budget.record()
-        call_records.append(CallRecord(step=step, role=role, model_used=None, succeeded=False, error=str(e)))
+        diag = getattr(e, "diagnostics", None) or {}
+        call_records.append(CallRecord(
+            step=step, role=role, model_used=None, succeeded=False, error=str(e),
+            timestamp=timestamp, dryrun_id=dryrun_id,
+            requested_model=role_cfg.preferred_model, selected_model=role_cfg.preferred_model,
+            http_status=diag.get("http_status"),
+            provider_error_code=diag.get("provider_error_code"),
+            request_id=diag.get("request_id"),
+            finish_reason=diag.get("finish_reason"),
+            envelope_parsed=diag.get("envelope_parsed"),
+            choices_present=diag.get("choices_present"),
+            message_present=diag.get("message_present"),
+            content_present=diag.get("content_present"),
+            content_length=diag.get("content_length"),
+            structured_parse_result=_classify_transport_failure(e),
+            failure_category=_classify_transport_failure(e),
+        ))
         raise
     else:
         router.usage_tracker.record_call()
         if run_budget is not None:
             run_budget.record()
         dry_run_budget.record()
-        call_records.append(CallRecord(step=step, role=role, model_used=response.model_used, succeeded=True))
+        diag = response.diagnostics or {}
+        call_records.append(CallRecord(
+            step=step, role=role, model_used=response.model_used, succeeded=True,
+            timestamp=timestamp, dryrun_id=dryrun_id,
+            requested_model=role_cfg.preferred_model, selected_model=role_cfg.preferred_model,
+            actual_model_returned=response.model_used,
+            http_status=diag.get("http_status"),
+            request_id=response.request_id,
+            latency_ms=response.latency_ms,
+            finish_reason=diag.get("finish_reason"),
+            envelope_parsed=diag.get("envelope_parsed"),
+            choices_present=diag.get("choices_present"),
+            message_present=diag.get("message_present"),
+            content_present=diag.get("content_present"),
+            content_length=diag.get("content_length"),
+            token_usage=diag.get("usage"),
+        ))
         return response
 
 
@@ -281,7 +433,7 @@ def run_dry_run_cycle(
         response = _call_llm(
             router, _ROLE_RESEARCHER, render_researcher_prompt(),
             authorized=authorized, run_budget=run_budget, dry_run_budget=dry_run_budget,
-            step="initial_proposal", call_records=call_records,
+            step="initial_proposal", call_records=call_records, dryrun_id=dryrun_id,
         )
     except LLMUnavailableError as e:
         result.stopped_reason = f"researcher role unavailable: {e}"
@@ -292,6 +444,11 @@ def run_dry_run_cycle(
     try:
         proposal_response = parse_and_validate_proposal(response.text)
     except ValidationError as e:
+        _annotate_last_call_record(
+            call_records, "initial_proposal",
+            structured_parse_result=_classify_parse_failure(e),
+            failure_category=_classify_parse_failure(e),
+        )
         result.stopped_reason = f"initial proposal response failed structured-output validation: {e}"
         result.calls_made = dry_run_budget.calls_made
         return result
@@ -331,12 +488,25 @@ def run_dry_run_cycle(
                 response = _call_llm(
                     router, _ROLE_RESEARCHER, retry_prompt,
                     authorized=authorized, run_budget=run_budget, dry_run_budget=dry_run_budget,
-                    step="redundancy_retry_proposal", call_records=call_records,
+                    step="redundancy_retry_proposal", call_records=call_records, dryrun_id=dryrun_id,
                 )
                 proposal_response = parse_and_validate_proposal(response.text)
                 result.raw_proposal_response = proposal_response
                 proposal = _build_proposal(proposal_response, placeholder_id, baseline_run_id)
-            except (LLMUnavailableError, ValidationError) as e:
+            except ValidationError as e:
+                _annotate_last_call_record(
+                    call_records, "redundancy_retry_proposal",
+                    structured_parse_result=_classify_parse_failure(e),
+                    failure_category=_classify_parse_failure(e),
+                )
+                result.stopped_reason = (
+                    f"initial proposal rejected by deterministic redundancy check "
+                    f"({conflict_desc}); retry failed: {e}"
+                )
+                result.proposal = proposal
+                result.calls_made = dry_run_budget.calls_made
+                return result
+            except LLMUnavailableError as e:
                 result.stopped_reason = (
                     f"initial proposal rejected by deterministic redundancy check "
                     f"({conflict_desc}); retry failed: {e}"
@@ -380,6 +550,19 @@ def run_dry_run_cycle(
     # -- Step 5/6: local schema validation (never authoritative-by-LLM). --
     spec = ExperimentSpec(proposal=proposal)
     result.proposal_validation = validate(spec)
+    _validation_step = "redundancy_retry_proposal" if result.redundancy_rejected_initial else "initial_proposal"
+    _annotate_last_call_record(
+        call_records, _validation_step,
+        local_schema_validation_result={
+            "is_valid": result.proposal_validation.is_valid,
+            "error_count": len(result.proposal_validation.errors),
+        },
+        **(
+            {"failure_category": FAILURE_LOCAL_VALIDATOR_REJECTION}
+            if not result.proposal_validation.is_valid
+            else {}
+        ),
+    )
 
     # -- Step 7: reviewer call. ---------------------------------------------
     if dry_run_budget.remaining() <= 0:
@@ -396,10 +579,20 @@ def run_dry_run_cycle(
         response = _call_llm(
             router, _ROLE_REVIEWER, reviewer_prompt,
             authorized=authorized, run_budget=run_budget, dry_run_budget=dry_run_budget,
-            step="reviewer_critique", call_records=call_records,
+            step="reviewer_critique", call_records=call_records, dryrun_id=dryrun_id,
         )
         critique = parse_and_validate_reviewer_critique(response.text)
-    except (LLMUnavailableError, ValidationError) as e:
+    except ValidationError as e:
+        _annotate_last_call_record(
+            call_records, "reviewer_critique",
+            structured_parse_result=_classify_parse_failure(e),
+            failure_category=_classify_parse_failure(e),
+        )
+        result.final_validation = result.proposal_validation
+        result.stopped_reason = f"reviewer step failed: {e}"
+        result.calls_made = dry_run_budget.calls_made
+        return result
+    except LLMUnavailableError as e:
         result.final_validation = result.proposal_validation
         result.stopped_reason = f"reviewer step failed: {e}"
         result.calls_made = dry_run_budget.calls_made
@@ -420,7 +613,7 @@ def run_dry_run_cycle(
             response = _call_llm(
                 router, _ROLE_RESEARCHER, revision_prompt,
                 authorized=authorized, run_budget=run_budget, dry_run_budget=dry_run_budget,
-                step="revision", call_records=call_records,
+                step="revision", call_records=call_records, dryrun_id=dryrun_id,
             )
             revised_response = parse_and_validate_proposal(response.text)
             revised_proposal = _build_proposal(revised_response, placeholder_id, baseline_run_id)
@@ -430,7 +623,26 @@ def run_dry_run_cycle(
             result.revision_reason = critique.revision_notes
             spec = ExperimentSpec(proposal=revised_proposal)
             result.proposal_validation = validate(spec)
-        except (LLMUnavailableError, ValidationError) as e:
+            _annotate_last_call_record(
+                call_records, "revision",
+                local_schema_validation_result={
+                    "is_valid": result.proposal_validation.is_valid,
+                    "error_count": len(result.proposal_validation.errors),
+                },
+                **(
+                    {"failure_category": FAILURE_LOCAL_VALIDATOR_REJECTION}
+                    if not result.proposal_validation.is_valid
+                    else {}
+                ),
+            )
+        except ValidationError as e:
+            _annotate_last_call_record(
+                call_records, "revision",
+                structured_parse_result=_classify_parse_failure(e),
+                failure_category=_classify_parse_failure(e),
+            )
+            result.stopped_reason = f"revision call failed, reporting pre-revision proposal: {e}"
+        except LLMUnavailableError as e:
             result.stopped_reason = f"revision call failed, reporting pre-revision proposal: {e}"
 
     result.final_validation = result.proposal_validation

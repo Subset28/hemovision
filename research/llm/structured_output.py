@@ -52,8 +52,164 @@ the only gate.
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass, field
 from typing import Any
+
+# ---------------------------------------------------------------------------
+# Native OpenRouter structured-output support (narrow remediation build --
+# see reports/openrouter/OPENROUTER_INTEGRATION_AUDIT.md sections 2/4/16).
+#
+# `build_response_format(schema, name)` builds OpenRouter's documented
+# request-time opt-in shape (https://openrouter.ai/docs/features/structured-outputs):
+#   {"type": "json_schema", "json_schema": {"name": ..., "strict": True, "schema": {...}}}
+# This is a CONFORMANCE AID, never authoritative -- every response, native
+# structured-output or not, still passes through this module's
+# parse_and_validate_* functions AND research/experiment_validator.py's
+# deterministic validate() unchanged. See research/dry_run/pipeline.py.
+# ---------------------------------------------------------------------------
+
+
+def build_response_format(schema: dict, name: str, *, strict: bool = True) -> dict:
+    """Build OpenRouter's native `response_format: {type: "json_schema", ...}`
+    request field for a given JSON Schema. Pass the result as the
+    `response_format` kwarg to `OpenRouterProvider.complete()` (it flows
+    straight into the request body via that method's existing
+    `body.update(kwargs)` -- no other wiring is required)."""
+    return {
+        "type": "json_schema",
+        "json_schema": {"name": name, "strict": strict, "schema": schema},
+    }
+
+
+def proposal_response_json_schema() -> dict:
+    """A JSON Schema constraining the shape of `ProposalResponse` -- the
+    LLM-authorable subset of research/experiment_spec.py::ExperimentProposal
+    (title, family, research_question, hypothesis, motivation,
+    evidence_references, prior_experiment_ids, independent_variables,
+    dependent_variables, controls, methodology fields, success criteria,
+    expected-interpretation fields; deliberately excludes ALL 7 human-
+    authority approval flags and any ExperimentResult field -- there is no
+    property here that could hold one).
+
+    Simplifications (documented per the task spec): nested list/dict fields
+    (`independent_variables`, `dependent_variables`, `success_criteria`,
+    `controlled_variables`, `evidence_references`, `prior_experiment_ids`,
+    `acknowledges_rejected_hypothesis_ids`) are typed as generic
+    `array`/`object` rather than fully-specified nested schemas -- OpenRouter
+    JSON Schema strict mode has practical limits on deeply-nested
+    `additionalProperties: false` objects with heterogeneous value types, and
+    this codebase's own local validators (`structured_output.py`'s
+    `_require_*` helpers + `research/experiment_validator.py::validate`)
+    already enforce the real per-field invariants after parsing -- this
+    schema only needs to meaningfully constrain the *shape* well enough to
+    make native structured-output mode worth using, not to duplicate every
+    local check OpenRouter has no way to express anyway."""
+    return {
+        "type": "object",
+        "additionalProperties": False,
+        "required": [
+            "selected_problem",
+            "selection_rationale",
+            "title",
+            "family",
+            "research_question",
+            "hypothesis",
+            "motivation",
+            "independent_variables",
+            "dependent_variables",
+            "control_condition",
+            "baseline_comparison",
+            "success_criteria",
+            "supports_hypothesis_if",
+            "rejects_hypothesis_if",
+            "inconclusive_if",
+            "evidence_references",
+            "prior_experiment_ids",
+            "controlled_variables",
+            "procedure",
+            "production_impact",
+            "production_impact_description",
+            "data_privacy_classification",
+            "external_api_required",
+            "mac_iphone_required",
+            "acknowledges_rejected_hypothesis_ids",
+            "materially_new_rationale",
+        ],
+        "properties": {
+            "selected_problem": {"type": "string"},
+            "selection_rationale": {"type": "string"},
+            "title": {"type": "string"},
+            "family": {"type": "string"},
+            "research_question": {"type": "string"},
+            "hypothesis": {"type": "string"},
+            "motivation": {"type": "string"},
+            "independent_variables": {"type": "array", "items": {"type": "string"}},
+            "dependent_variables": {"type": "array", "items": {"type": "string"}},
+            "control_condition": {"type": "string"},
+            "baseline_comparison": {"type": "string"},
+            "success_criteria": {"type": "object"},
+            "supports_hypothesis_if": {"type": "string"},
+            "rejects_hypothesis_if": {"type": "string"},
+            "inconclusive_if": {"type": "string"},
+            "evidence_references": {"type": "array", "items": {"type": "string"}},
+            "prior_experiment_ids": {"type": "array", "items": {"type": "string"}},
+            "controlled_variables": {"type": "object"},
+            "procedure": {"type": "string"},
+            "production_impact": {"type": "boolean"},
+            "production_impact_description": {"type": "string"},
+            "data_privacy_classification": {"type": "string"},
+            "external_api_required": {"type": "boolean"},
+            "mac_iphone_required": {"type": "boolean"},
+            "acknowledges_rejected_hypothesis_ids": {"type": "array", "items": {"type": "string"}},
+            "materially_new_rationale": {"type": "string"},
+        },
+    }
+
+
+def reviewer_critique_json_schema() -> dict:
+    """A JSON Schema constraining the shape of `ReviewerCritique` --
+    structurally distinct from `proposal_response_json_schema()` (different
+    fields entirely). Deliberately excludes any field that could set a
+    research verdict or grant a human-authority approval flag (see
+    FORBIDDEN_REVIEWER_FIELDS) -- there is no property here for any of
+    them."""
+    return {
+        "type": "object",
+        "additionalProperties": False,
+        "required": [
+            "novelty_assessment",
+            "scientific_validity_assessment",
+            "targets_verified_failure_mode",
+            "success_criteria_deterministic",
+            "confounding_notes",
+            "dataset_can_answer_question",
+            "sample_size_adequate",
+            "leakage_risk_notes",
+            "privacy_safety_ok",
+            "feasibility_notes",
+            "worth_running",
+            "recommends_revision",
+            "revision_notes",
+            "summary",
+        ],
+        "properties": {
+            "novelty_assessment": {"type": "string"},
+            "scientific_validity_assessment": {"type": "string"},
+            "targets_verified_failure_mode": {"type": "boolean"},
+            "success_criteria_deterministic": {"type": "boolean"},
+            "confounding_notes": {"type": "string"},
+            "dataset_can_answer_question": {"type": "boolean"},
+            "sample_size_adequate": {"type": "boolean"},
+            "leakage_risk_notes": {"type": "string"},
+            "privacy_safety_ok": {"type": "boolean"},
+            "feasibility_notes": {"type": "string"},
+            "worth_running": {"type": "boolean"},
+            "recommends_revision": {"type": "boolean"},
+            "revision_notes": {"type": "string"},
+            "summary": {"type": "string"},
+        },
+    }
 
 # Mirrors the field vocabulary of research/experiment_spec.py::ExperimentResult
 # (Phase F's execution-only side of the proposal/result split). Kept as a
@@ -203,11 +359,111 @@ class ReviewerCritique:
     summary: str
 
 
+_FENCE_RE = re.compile(r"^```(?:[a-zA-Z0-9_+-]*)\s*\n?(.*?)\n?```$", re.DOTALL)
+
+
+def _strip_markdown_fence(text: str) -> str:
+    """Strip a SINGLE markdown code fence that wraps the ENTIRE trimmed
+    string (` ```json ... ``` ` or generic ` ``` ... ``` `). Returns the
+    input unchanged if it is not fully fence-wrapped -- this is narrow,
+    mechanical fence-stripping, not a scanner for fences anywhere in the
+    text."""
+    stripped = text.strip()
+    m = _FENCE_RE.match(stripped)
+    if m:
+        return m.group(1).strip()
+    return stripped
+
+
+def _find_balanced_json_object_candidates(text: str) -> list[str]:
+    """Scan `text` for top-level, brace-balanced `{...}` substrings (string
+    literals respected so a `{`/`}` inside a JSON string value doesn't
+    confuse the brace count). Returns every such candidate found -- callers
+    decide what "exactly one" vs "ambiguous" means. This is a mechanical
+    brace-balance scan, not a heuristic guesser: it does not attempt to
+    validate JSON syntax itself, only to find balanced-brace spans."""
+    candidates: list[str] = []
+    depth = 0
+    start: int | None = None
+    in_string = False
+    escape = False
+    for i, ch in enumerate(text):
+        if in_string:
+            if escape:
+                escape = False
+            elif ch == "\\":
+                escape = True
+            elif ch == '"':
+                in_string = False
+            continue
+        if ch == '"':
+            in_string = True
+            continue
+        if ch == "{":
+            if depth == 0:
+                start = i
+            depth += 1
+        elif ch == "}":
+            if depth > 0:
+                depth -= 1
+                if depth == 0 and start is not None:
+                    candidates.append(text[start : i + 1])
+                    start = None
+    return candidates
+
+
 def _parse_json_object(raw_text: str) -> dict:
+    """Extract and parse exactly one top-level JSON object from `raw_text`.
+
+    Handles, in order (Phase-remediation section 4 -- documented boundary,
+    read this before "improving" it):
+      1. Plain JSON (unchanged, already worked).
+      2. A SINGLE markdown fence (` ```json ... ``` ` or generic
+         ` ``` ... ``` `) wrapping the ENTIRE trimmed response -- stripped
+         before parsing.
+      3. Leading/trailing whitespace -- trimmed.
+      4. Brief surrounding prose ONLY if, after fence-stripping and
+         whitespace-trimming, exactly ONE top-level, brace-balanced `{...}`
+         block is found in the text. If direct parsing of the (fence-
+         stripped, trimmed) text already succeeds, that result is used and
+         candidate-scanning is skipped entirely.
+
+    Explicitly refuses to guess in two cases -- these are hard failures,
+    not best-effort extraction:
+      - Zero JSON-object-shaped candidates found anywhere in the text.
+      - MORE THAN ONE top-level candidate found (ambiguous -- which one did
+        the model mean?). This module will never scan for "any braces
+        anywhere" and pick the first/largest/likeliest one; an ambiguous
+        response is a parser failure, reported as such, never guessed at.
+    """
+    if not isinstance(raw_text, str):
+        raise ValidationError(f"response is not valid JSON: expected str, got {type(raw_text).__name__}")
+
+    text = _strip_markdown_fence(raw_text)
+
+    # Fast path: the (fence-stripped, trimmed) text is itself valid JSON.
     try:
-        data = json.loads(raw_text)
-    except (json.JSONDecodeError, TypeError) as e:
-        raise ValidationError(f"response is not valid JSON: {e}") from e
+        data = json.loads(text)
+    except (json.JSONDecodeError, TypeError):
+        data = None
+        parse_ok = False
+    else:
+        parse_ok = True
+
+    if not parse_ok:
+        candidates = _find_balanced_json_object_candidates(text)
+        if len(candidates) == 0:
+            raise ValidationError("response is not valid JSON: no JSON object found in response text")
+        if len(candidates) > 1:
+            raise ValidationError(
+                f"response contains {len(candidates)} ambiguous top-level JSON object "
+                "candidates -- refusing to guess which one was intended"
+            )
+        try:
+            data = json.loads(candidates[0])
+        except (json.JSONDecodeError, TypeError) as e:
+            raise ValidationError(f"response is not valid JSON: {e}") from e
+
     if not isinstance(data, dict):
         raise ValidationError(
             f"response must be a JSON object at the top level, got {type(data).__name__}"
