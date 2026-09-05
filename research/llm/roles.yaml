@@ -19,6 +19,19 @@
 # its OWN hand-picked model id (see that file's docstring) rather than any
 # entry in this file. Re-verify these slugs before any future phase relies
 # on them for a real call.
+#
+# Phase G completion-round finding: `meta-llama/llama-3.1-8b-instruct:free`
+# (used above as a fallback for researcher/experiment_designer/reviewer/
+# analyst, and originally as smoke_test.py's first-attempt model) is
+# CONFIRMED STALE — a live call against it returned HTTP 404/
+# MODEL_UNAVAILABLE. It is left in place here deliberately (per the task
+# spec: "do not modify the global routing configuration merely to hide the
+# stale-model problem before documenting it") rather than silently swapped
+# out, since none of these role entries were exercised live in Phase G and
+# fixing this file's guesses was explicitly out of this completion round's
+# scope. smoke_test.py itself was updated to a freshly-verified-live slug
+# (`poolside/laguna-s-2.1:free`, confirmed via OpenRouter's public /models
+# catalog) for its own one-off second authorized call, which succeeded.
 
 researcher:
   preferred_model: nvidia/nemotron-nano-9b-v2:free
