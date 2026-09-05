@@ -5,9 +5,18 @@ recommended autonomy boundary. Zero live LLM completion calls were made to
 produce this report (public catalog/docs fetches only, and only where
 already-cached from earlier Phase H work — none newly fetched here).
 
-**Bottom line: READY_WITH_RESTRICTIONS.** Two CRITICAL gaps must close
-before any Phase I autonomous loop starts (kill switch does not cover LLM
-calls; free-model enforcement is opt-in, not unconditional). See §6.
+**UPDATE (hardening pass, same day)**: both CRITICAL findings and all HIGH/
+MEDIUM findings below (§6) have been fixed and tested — see
+`reports/phase_i/PHASE_I_SAFETY_INVARIANTS.md` for the full invariant table,
+enforcement locations, and residual risks. §6 below is left as originally
+written (the audit's own record) with a RESOLVED marker added to each item;
+nothing in this document was rewritten to look retroactively correct.
+
+**Bottom line, as originally written: READY_WITH_RESTRICTIONS.** Two
+CRITICAL gaps had to close before any Phase I autonomous loop starts (kill
+switch not covering LLM calls; free-model enforcement being opt-in). Both
+are now RESOLVED — see the safety invariants report for the updated overall
+recommendation.
 
 ---
 
@@ -285,6 +294,10 @@ has read.
    unaffected by a human hitting pause. **Fix**: `_call_llm` (or
    `_setup_dry_run_execution`) must call `orchestrator._check_not_paused_or_stopped()`
    (or an equivalent shared check) before any network attempt.
+   **RESOLVED** (hardening pass, commit `a9d7210`): new
+   `research/operational_state.py` centralizes RUNNING/PAUSED/STOPPED;
+   `_call_llm` calls `check_gate()` as its first statement. See
+   `PHASE_I_SAFETY_INVARIANTS.md` invariants #1-4.
 2. **Free-model-only enforcement is opt-in, not unconditional.**
    `evaluate_model_for_role()`'s pre-flight only runs when a caller supplies
    `model_catalog` (today: only when `--structured-output` is passed). An
@@ -293,6 +306,10 @@ has read.
    `roles.yaml` says with zero runtime check. **Fix**: make the catalog
    preflight unconditional inside `_call_llm` (fetch it once per process/run
    if not already supplied), not contingent on a CLI flag.
+   **RESOLVED** (hardening pass, commit `a9d7210`): `_resolve_model_catalog()`
+   always resolves a catalog (caller-supplied or freshly fetched) before
+   `evaluate_model_for_role()` runs; a fetch failure fails closed
+   (`ModelCatalogUnavailableError`). See invariants #5-7.
 
 ### HIGH
 
@@ -302,10 +319,19 @@ has read.
    already `COMPLETED`. **Fix**: add an explicit `ImmutableExperimentError`
    guard before Phase I gains any code path that could plausibly touch an
    experiment row programmatically.
+   **RESOLVED** (hardening pass, commit `ac18707`): both methods now raise
+   `ImmutableExperimentError` unless `allow_amendment=True` + a non-empty
+   `reason`, which is itself logged to `experiment_events`. EXP-0001..0005
+   verified unchanged. See invariants #12-15.
 4. **No GPU/runtime budget mechanism.** Irrelevant while Phase H never
    trains anything; becomes a real gap the moment any future phase permits
    real training. **Fix before that phase, not necessarily before Phase I's
    propose/review/revise-only scope.**
+   **RESOLVED (infrastructure only)** (hardening pass, commit `9103d8a`):
+   new `research/execution_budget.py::require_execution_budget()`, fail
+   closed on missing config/authorization. Not yet wired to any real
+   training code path (none exists) — built ahead of need, per instruction.
+   See invariants #16-17.
 
 ### MEDIUM
 
@@ -313,22 +339,46 @@ has read.
    reachable if any future code calls it directly, reintroducing the
    DRYRUN-0001 bug class. Recommend deprecating/removing it or adding an
    assertion that it is never called from `research/dry_run/`.
+   **RESOLVED (proven via test, not deleted)** (commit `a9d7210`): regression
+   tests monkeypatch `LLMRouter.complete` to raise if invoked and run the
+   full canonical path through it — proven unreachable. The method itself
+   was kept (documented as legacy/unused-by-canonical-path). See invariant #8-9.
 6. `find_rejected_hypothesis_conflicts()` is keyword-based, not semantic —
    self-documented residual risk (threat #2).
+   **PARTIALLY RESOLVED** (commit `ad99964`): broadened keyword pool
+   (dependent_variables, control/baseline text). Still explicitly documented
+   as a guardrail, not proof of novelty — the residual gap is real and
+   proven by a passing test, not just claimed. See invariant #20.
 7. No dirty-tree pre-flight check before a live call (threat #7) — currently
    a manual verification step in this workflow, not automated.
+   **RESOLVED for branch creation** (commit `9103d8a`): `git_isolation.py::
+   require_clean_tree()`, reports exactly which paths are dirty, wired into
+   `create_experiment_branch()`. Not yet wired into any other future
+   operation (training/benchmark-writing) since none exists yet. See
+   invariant #18-19.
 8. Catalog-fetch-then-complete is two separate HTTP calls — a small
    TOCTOU window on model capability metadata (threat #18).
+   **PARTIALLY RESOLVED** (commit `a9d7210`): the fetch is now bound as
+   closely as practical to the actual request (per-call fresh fetch when no
+   catalog was pre-supplied), and a returned-model mismatch is independently
+   detected and rejected (`ModelProvenanceMismatchError`). The window itself
+   cannot be fully closed — documented, not solved. See invariant #10-11.
 
 ---
 
 ## 7. Final recommendation
 
-**READY_WITH_RESTRICTIONS.**
+**As originally written: READY_WITH_RESTRICTIONS**, pending the two
+CRITICAL blockers.
 
-Phase H is genuinely complete and its evidence chain is sound. Phase I
-should NOT begin until the two CRITICAL blockers (§6.1, §6.2) are fixed and
-verified — both are small, well-scoped code changes, not architectural
-rework. Once fixed, the recommended initial Phase I scope (§5) — autonomous
-propose/review/bounded-revise only, human-gated queueing/training/
-deployment — is a conservative, defensible starting point.
+**UPDATED (hardening pass complete, same day): READY_FOR_PHASE_I_PROPOSAL_ONLY.**
+
+Both CRITICAL blockers and all HIGH/MEDIUM findings above are now RESOLVED
+or PARTIALLY RESOLVED-and-documented (see each item's update above and the
+full invariant table in `reports/phase_i/PHASE_I_SAFETY_INVARIANTS.md`).
+"PROPOSAL_ONLY" qualifies this: the recommendation is specifically for the
+conservative initial scope in §5 — autonomous propose/review/bounded-revise
+only, human-gated queueing/training/deployment. Phase I itself remains
+UNAUTHORIZED pending explicit human sign-off; this document and the
+hardening pass only establish that the infrastructure is ready for that
+scope, not that Phase I is approved to begin.
