@@ -1,0 +1,57 @@
+{
+  "dryrun_id": "DRYRUN-0007",
+  "call_records": [
+    {
+      "step": "reviewer_critique",
+      "role": "reviewer",
+      "model_used": null,
+      "succeeded": false,
+      "error": "no OPENROUTER_API_KEY configured \u2014 LLM role unavailable. Set it in your environment or .env (see .env.example) to enable live OpenRouter calls. The pipeline continues without it.",
+      "timestamp": "2026-09-05T18:31:15.139119+00:00",
+      "dryrun_id": "DRYRUN-0007",
+      "requested_model": "nvidia/nemotron-3-super-120b-a12b:free",
+      "selected_model": "nvidia/nemotron-3-super-120b-a12b:free",
+      "actual_model_returned": null,
+      "http_status": null,
+      "provider_error_code": null,
+      "provider_error_message": null,
+      "request_id": null,
+      "latency_ms": null,
+      "finish_reason": null,
+      "envelope_parsed": null,
+      "choices_present": null,
+      "message_present": null,
+      "content_present": null,
+      "content_length": null,
+      "structured_parse_result": "TRANSPORT_FAILURE",
+      "local_schema_validation_result": null,
+      "token_usage": null,
+      "failure_category": "TRANSPORT_FAILURE",
+      "reasoning_configuration": "DISABLED",
+      "structured_output_capability_state": true
+    }
+  ],
+  "review_result": {
+    "success": false,
+    "error": "no OPENROUTER_API_KEY configured \u2014 LLM role unavailable. Set it in your environment or .env (see .env.example) to enable live OpenRouter calls. The pipeline continues without it."
+  },
+  "final_validation": {
+    "is_valid": true,
+    "errors": [],
+    "needs_human_review": [
+      {
+        "level": "NEEDS_HUMAN_REVIEW",
+        "code": "REPRODUCIBILITY_QUALITY",
+        "message": "reproducibility_requirements is empty \u2014 cannot mechanically judge reproducibility; human review required."
+      },
+      {
+        "level": "NEEDS_HUMAN_REVIEW",
+        "code": "SCIENTIFIC_MERIT",
+        "message": "Whether this hypothesis is scientifically interesting/worth the resource spend is not mechanically checkable by this validator \u2014 always requires human review regardless of whether every other check passes."
+      }
+    ]
+  },
+  "redundancy_conflicts": [],
+  "queue_eligible_in_principle": true,
+  "actually_queued": false
+}
