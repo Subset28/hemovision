@@ -629,3 +629,30 @@ class TestStructuredOutputWiring:
         }
         assert cr.actual_model_returned == "liquid/lfm-2.5-2.6b:free"
         assert cr.finish_reason == "length"
+
+    def test_failed_call_records_provider_error_message(self):
+        """Regression test for a gap found via DRYRUN-0006 (Phase H
+        token/reasoning audit follow-up): openrouter.py's
+        _safe_error_body_fields() extracts OpenRouter's own human-readable
+        error.message text into diagnostics["provider_error_message"], but
+        CallRecord never had a field for it and _call_llm never copied it
+        over -- so a 400 (or any HTTP error) with a genuinely explanatory
+        message from OpenRouter was reduced to just a numeric status code,
+        with no way to know WHY the request was rejected."""
+
+        class HttpErrorProvider(LLMProvider):
+            def complete(self, prompt, role, model="", **kwargs):
+                raise LLMUnavailableError(
+                    "OpenRouter HTTP error 400",
+                    category=ErrorCategory.HTTP_ERROR,
+                    diagnostics={
+                        "http_status": 400,
+                        "provider_error_code": 400,
+                        "provider_error_message": "reasoning is not supported for this model",
+                    },
+                )
+
+        router = _isolated_router(HttpErrorProvider())
+        result = run_dry_run_cycle(router=router, authorized=True, dry_run_budget=DryRunCallBudget(3))
+
+        assert result.call_records[0].provider_error_message == "reasoning is not supported for this model"

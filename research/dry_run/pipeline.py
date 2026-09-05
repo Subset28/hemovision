@@ -204,6 +204,7 @@ class CallRecord:
     actual_model_returned: Optional[str] = None
     http_status: Optional[int] = None
     provider_error_code: Optional[str] = None
+    provider_error_message: Optional[str] = None
     request_id: Optional[str] = None
     latency_ms: Optional[float] = None
     finish_reason: Optional[str] = None
@@ -393,6 +394,7 @@ def _call_llm(
             actual_model_returned=diag.get("model_used"),
             http_status=diag.get("http_status"),
             provider_error_code=diag.get("provider_error_code"),
+            provider_error_message=diag.get("provider_error_message"),
             request_id=diag.get("request_id"),
             finish_reason=diag.get("finish_reason"),
             envelope_parsed=diag.get("envelope_parsed"),
