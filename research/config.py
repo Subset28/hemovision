@@ -51,6 +51,13 @@ MAX_CONCURRENT_EXPERIMENTS = 1
 MAX_EXPERIMENTS_PER_RUN = 3
 MAX_LLM_CALLS = 10  # per orchestrator run, distinct from the daily cap below
 MAX_LLM_CALLS_PER_DAY = 40
+
+# Phase G — explicit alias for MAX_LLM_CALLS. Kept both names: MAX_LLM_CALLS
+# is the original Phase C constant (still referenced by its docstring
+# comment above), MAX_LLM_CALLS_PER_RUN is the clearer Phase G name used by
+# research/llm/base.py::RunBudget. They are intentionally the same value —
+# do not let them drift apart without updating both call sites.
+MAX_LLM_CALLS_PER_RUN = MAX_LLM_CALLS
 MAX_EXPERIMENT_RUNTIME_SEC = 60 * 60  # 60 minutes
 
 # Resource-check thresholds (research/resources.py). Conservative defaults —

@@ -572,3 +572,197 @@ not present in `research/experiment_specs/`, has no `EXP-9999` row in
 (`production_impact=True`/`mac_iphone_required=True` with both approval
 flags `False`) — which is the point: this is what an under-approved,
 not-yet-queue-eligible family-H proposal looks like.
+
+## Phase G — real, tested, budget-aware, safe LLM abstraction
+
+Phase G makes the Phase C `research/llm/` skeleton real: an actual OpenRouter
+HTTP call was implemented and exercised (once, live, deliberately) on top of
+the graceful-no-key plumbing that already worked. Phase G adds **no new
+experiment**, queues nothing, trains nothing, and does not touch `ios/` or
+`benchmark/config.py`.
+
+### What Phase C already had working (audited, not rewritten)
+
+- `research/llm/base.py::LLMUnavailableError` — the designed, catchable
+  graceful-failure type for "no LLM available right now."
+- `research/llm/base.py::UsageTracker` — a persisted, JSON-file daily call
+  counter re-read on every check (already correct; Phase G only changed
+  *when* `record_call()` fires — see below).
+- `research/llm/router.py::LLMRouter` — primary/fallback model routing over
+  `roles.yaml`, tested against a fake provider (`tests/test_llm_router.py`).
+- Graceful no-key failure (`OpenRouterProvider._api_key()`).
+
+### What was incomplete before Phase G
+
+No real HTTP call had ever been implemented or tested (the pre-Phase-G
+`complete()` made an actual `requests.post()` with no test ever mocking it —
+`tests/test_llm_router.py::test_explicit_key_bypasses_env_check` was, in
+practice, an unmocked live network attempt that happened to look like a
+graceful-failure test because it failed either way). There was no
+authorization gate separate from "is a key present," no error-category
+vocabulary, no bounded retry/backoff, no per-run budget distinct from the
+daily cap, no structured-output validation, no privacy/injection guards, and
+no context builder wired to Phase E's context packet.
+
+### Provider abstraction
+
+`research/llm/base.py::LLMProvider.complete()` is the one interface every
+provider implements. `LLMResponse` (text, tokens_used, cost_usd, model_used,
+provider, request_id, latency_ms, error_category) is the only shape that
+crosses out of `research/llm/` — nothing outside this package ever sees a
+raw OpenRouter JSON response. `ErrorCategory` is a closed enum: `TIMEOUT`,
+`HTTP_ERROR`, `RATE_LIMIT`, `AUTH_ERROR`, `MODEL_UNAVAILABLE`,
+`MALFORMED_RESPONSE`, `EMPTY_RESPONSE`, `NETWORK_ERROR`, `UNKNOWN`.
+
+### OpenRouter configuration / env vars
+
+`OPENROUTER_API_KEY` is read from `os.environ` inside
+`OpenRouterProvider._api_key()` at call time (never at import time, so tests
+freely monkeypatch it). It is never interpolated into a log line or
+exception message — only a redacted `set(len=N)`/`unset` marker is ever
+shown. `.env` is gitignored (verified by
+`tests/test_llm_no_network.py::TestEnvIsGitignored`); `.env.example`
+contains only the placeholder `OPENROUTER_API_KEY=`.
+
+**Having `OPENROUTER_API_KEY` configured does not authorize external
+calls.**
+
+### Model routing
+
+`research/llm/roles.yaml` now uses `preferred_model` + `fallback_models`
+(a list, tried in order) + `max_tokens` + `timeout` + `call_budget_category`
+per role (`researcher`, `experiment_designer`, `reviewer`, `analyst`). The
+original master plan's named free-tier models were not assumed current —
+see `roles.yaml`'s header comment for the explicit "unverified, re-check
+before relying on this" caveat. `LLMRouter._role_config()` also still
+accepts the original Phase C `primary`/`fallback` (singular) keys for
+backward compatibility with existing fixtures.
+
+### Budgets
+
+Two independent, distinct caps:
+  - **Daily** (`UsageTracker`, `research/llm_usage.json`, default 40/day via
+    `research.config.MAX_LLM_CALLS_PER_DAY`) — persisted, survives process
+    restarts, re-read on every check.
+  - **Per-run** (`RunBudget`, in-memory only, default 10/run via
+    `research.config.MAX_LLM_CALLS_PER_RUN`) — deliberately not persisted;
+    a "run" is one process invocation, and cross-process accumulation is
+    already the daily tracker's job.
+
+**Policy (deliberate, documented):** both budgets are checked BEFORE any
+network attempt and incremented AFTER every attempt — success or failure.
+A failed call still costs a real round-trip; letting a retry/fallback storm
+look "free" because every attempt failed would defeat the guardrail's
+purpose.
+
+### Authorization gate
+
+`research/llm/authorization.py::require_authorization()` is the single
+choke point both `OpenRouterProvider.complete()` and `LLMRouter.complete()`
+call through. `authorized` has no default that silently authorizes a call —
+omitting it or passing `False` (or an `LLMCallAuthorization` with
+`authorized=False`) raises `LLMCallNotAuthorizedError` before the API key is
+even checked, before budget is checked, before any network code runs. This
+is structurally separate from "is a key present": a key alone never
+dispatches a call. Tested exhaustively in `tests/test_llm_authorization.py`,
+including the specific decoupling case (key present + `authorized=False` →
+refused, HTTP layer mocked and asserted never invoked; key present +
+`authorized=True` → proceeds against a mocked HTTP layer).
+
+### Privacy / data boundary
+
+`research/llm/privacy_guard.py::check_payload_safe(payload)` runs against
+every outgoing request payload before it is sent (wired into
+`OpenRouterProvider.complete()`, and into `research/llm/context_builder.py`'s
+output). It flags: a literal `OPENROUTER_API_KEY=`/`*_SECRET=`/`*_TOKEN=`
+assignment, a multi-line `.env`-style dump, a `Bearer <token>` header, an
+`sk-...`-style key literal, and an absolute Windows user-profile path. **This
+is a best-effort heuristic, not a security boundary** — it does not catch
+obfuscated/encoded secrets, non-text media, or novel PII formats; see the
+module docstring for the full, honest limits list. Nothing in
+`research/llm/context_builder.py` auto-pulls files, photos, faces, voices,
+environment variables, or repository dumps — only Phase E's compact context
+packet plus whatever the caller explicitly passes in
+(`objective`/`code_excerpt`).
+
+### Context construction
+
+`research/llm/context_builder.py::build_context()` wraps
+`research/memory_context.py::generate_context_packet()` (the PREFERRED, and
+now only, source of context) into a `BuiltContext` with observable
+`char_count`/`approx_token_estimate` and a `categories_included` dict
+(`baseline`, `rejected_hypotheses`, `open_questions`, `objective`,
+`code_excerpt`) so a caller can see exactly what went in without
+re-deriving it. Deterministic: the same memory-DB state produces the same
+context text every time.
+
+### Structured-output validation
+
+`research/llm/structured_output.py` defines three response shapes —
+`HypothesisResponse`, `ReviewerResponse`, `AnalysisResponse` — validated via
+`parse_and_validate(raw_text, shape)`. Any response containing a Phase F
+result-only field (`metrics`, `research_verdict`, `verdict`,
+`observed_results`, `pass_fail`, ...) is rejected, reusing the exact
+proposal/result separation principle `research/experiment_spec.py` already
+enforces for `ExperimentProposal.from_dict()`. `tests/test_llm_structured_output.py::TestChainOfCustody`
+proves an adversarial response containing smuggled result fields cannot (a)
+reach `ExperimentProposal.from_dict()`/the queue-eligibility gate, (b)
+mutate `research/db.py` (patched and asserted uncalled), or (c) produce any
+object an evidence-recording path could consume.
+
+### Prompt injection / authority boundaries
+
+`research/llm/prompts/system_policy.md` is the system-prompt template any
+real role call should prepend — it states plainly that production code is
+off-limits, the deterministic benchmark decides outcomes (not the model),
+no fabricated results are acceptable, the model has no secret access, and
+it cannot change frozen success criteria or bypass approval flags.
+`research/llm/injection_guard.py::flag_suspicious_response()` is a
+lightweight, best-effort pattern scan over model OUTPUT (phrases like
+"ignore previous instructions," "disable the guardrail," "bypass approval,"
+"reveal the api key"). **This is explicitly NOT a solved problem** — it is
+trivially evadable by rephrasing/translation/splitting, and is never treated
+as a security control; the actual safety property (model output cannot set
+a verdict, mutate the DB, or become evidence) is enforced structurally by
+`research/llm/structured_output.py`, independent of whether this heuristic
+fires.
+
+### Retry / failure policy
+
+`OpenRouterProvider.complete()` retries only `TIMEOUT`/`NETWORK_ERROR`
+(`RETRYABLE_CATEGORIES` in `research/llm/base.py`), bounded by `max_retries`
+(default 2 → up to 3 total attempts), with a small exponential backoff.
+`AUTH_ERROR`/`MALFORMED_RESPONSE`/`MODEL_UNAVAILABLE`/`EMPTY_RESPONSE` fail
+immediately — they cannot succeed differently on retry. `max_retries=0`
+disables retries entirely (used by the one live smoke-test call below).
+Fallback to `fallback_models` happens at the router level
+(`LLMRouter.complete()`) and is itself budget-aware: every attempted model,
+success or failure, counts against both the daily and per-run budget.
+
+### Tests / zero-network guarantee
+
+`tests/test_llm_*.py` cover every item above. **Approach for "no network
+call occurs in normal unit tests":** every Phase G test mocks
+`requests.post` directly, AND `tests/conftest.py` adds an autouse,
+session-scoped fixture that monkeypatches `socket.socket.connect`/
+`connect_ex` to raise `UnexpectedNetworkCallError` for any non-loopback
+host — a backstop in case any test is missing a mock. Full suite: 308 → 388
+tests, all green, confirmed zero real network calls during the run.
+
+### The one live smoke test (dated record)
+
+Run manually (not collected by pytest) via `research/llm/smoke_test.py` on
+**2026-09-05**. Result: the chosen model id,
+`meta-llama/llama-3.1-8b-instruct:free` (picked from prior knowledge of
+OpenRouter's free tier rather than spending the one call on model
+discovery — see that file's docstring for the full reasoning), returned
+`HTTP 404` / `ErrorCategory.MODEL_UNAVAILABLE` — the slug no longer exists
+on OpenRouter as of this date. Per the task's explicit instruction, this
+was NOT treated as a reason to try a second model live; the single
+authorized call (`max_retries=0`, so exactly one HTTP request) was made,
+recorded against budget (0/40 → 1/40 used), and reported as a clean,
+informative failure. The key was never logged (only a `set(len=73)`
+redacted marker was printed). A future phase should pick a re-verified
+model id (or spend a dedicated, separately-authorized call on the
+`/models` discovery endpoint) before relying on a live OpenRouter call
+again.

@@ -1,25 +1,56 @@
 # Role -> model routing config for research/llm/router.py.
-# primary is tried first; if it errors/is unavailable, fallback is tried;
-# if both fail (or no API key is configured at all), the router raises
-# LLMUnavailableError and the caller is expected to degrade gracefully.
 #
-# Model IDs are OpenRouter model slugs. Nothing here is called live in
-# Phase C (no OPENROUTER_API_KEY exists in this environment) — this file
-# exists so the plumbing is real and testable via the fake provider in
-# tests/test_llm_router.py.
+# preferred_model is tried first; on failure, fallback_models are tried in
+# order; if all fail (or no API key is configured at all, or the call is not
+# authorized), the router raises LLMUnavailableError/LLMCallNotAuthorizedError
+# and the caller is expected to degrade gracefully.
+#
+# Model IDs are OpenRouter model slugs. IMPORTANT (Phase G audit finding):
+# the original master plan named specific free-tier models (MiniMax M3,
+# NVIDIA Nemotron 3 Ultra, Poolside Laguna S 2.1, Cohere North Mini Code) —
+# free-tier model availability on OpenRouter changes frequently and none of
+# those slugs were verified live as part of this phase (verifying them would
+# have spent the one authorized live call this phase is allowed to make on
+# discovery rather than the actual smoke test). The preferred_model values
+# below are a best-effort, UNVERIFIED guess at plausible current slugs;
+# fallback_models ends with a well-established paid model as a safety net.
+# Nothing here is called live in Phase G except the single, separate,
+# explicitly-authorized smoke test in research/llm/smoke_test.py, which uses
+# its OWN hand-picked model id (see that file's docstring) rather than any
+# entry in this file. Re-verify these slugs before any future phase relies
+# on them for a real call.
 
 researcher:
-  primary: anthropic/claude-3.5-sonnet
-  fallback: openai/gpt-4o-mini
+  preferred_model: nvidia/nemotron-nano-9b-v2:free
+  fallback_models:
+    - meta-llama/llama-3.1-8b-instruct:free
+    - anthropic/claude-3.5-sonnet
+  max_tokens: 1024
+  timeout: 60
+  call_budget_category: research
 
 experiment_designer:
-  primary: anthropic/claude-3.5-sonnet
-  fallback: openai/gpt-4o-mini
+  preferred_model: qwen/qwen-2.5-coder-32b-instruct:free
+  fallback_models:
+    - meta-llama/llama-3.1-8b-instruct:free
+    - anthropic/claude-3.5-sonnet
+  max_tokens: 1536
+  timeout: 60
+  call_budget_category: design
 
 reviewer:
-  primary: openai/gpt-4o
-  fallback: anthropic/claude-3.5-sonnet
+  preferred_model: meta-llama/llama-3.1-8b-instruct:free
+  fallback_models:
+    - openai/gpt-4o-mini
+  max_tokens: 768
+  timeout: 45
+  call_budget_category: review
 
 analyst:
-  primary: anthropic/claude-3.5-sonnet
-  fallback: openai/gpt-4o-mini
+  preferred_model: nvidia/nemotron-nano-9b-v2:free
+  fallback_models:
+    - meta-llama/llama-3.1-8b-instruct:free
+    - openai/gpt-4o-mini
+  max_tokens: 1024
+  timeout: 60
+  call_budget_category: analysis
