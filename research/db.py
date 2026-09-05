@@ -101,6 +101,9 @@ EXPERIMENT_FAMILIES = (
     "model_variant",
     "training_data",
     "temporal_pipeline",
+    "application_decision_logic",  # family H, added Phase F->G cleanup (research/migrations/002_add_family_h.py) --
+                                    # registry-only until a runner exists; TTS/announcement-decision-logic
+                                    # experiments (e.g. SpeechEngine cooldown/priority tuning), REQUIRES_IPHONE-leaning.
 )
 
 # Execution axis: did the pipeline run to completion?
@@ -247,7 +250,8 @@ CREATE TABLE IF NOT EXISTS experiments (
     experiment_family       TEXT NOT NULL CHECK (experiment_family IN (
                                  'threshold_postprocessing','class_confusion',
                                  'small_object','preprocessing','model_variant',
-                                 'training_data','temporal_pipeline')),
+                                 'training_data','temporal_pipeline',
+                                 'application_decision_logic')),
     git_branch               TEXT,
     start_commit              TEXT,
     end_commit                TEXT,
