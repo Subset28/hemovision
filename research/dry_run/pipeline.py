@@ -498,8 +498,14 @@ def write_artifacts(result: DryRunResult) -> tuple[Path, Path]:
     json_path = DRY_RUN_PROPOSALS_DIR / f"{result.dryrun_id}.json"
     json_path.write_text(json.dumps(_result_to_dict(result), indent=2, sort_keys=True, default=str), encoding="utf-8")
 
+    # Include dryrun_id, not just a minute-resolution timestamp: two runs in
+    # the same clock-minute (a real occurrence during the Phase H completion
+    # retry -- DRYRUN-0003 and DRYRUN-0004 both landed at 2026-09-05 16:06)
+    # would otherwise collide on filename and silently overwrite each
+    # other's report, defeating the requirement that every dry-run attempt
+    # -- including failed ones -- stay historically inspectable.
     ts = datetime.now(timezone.utc).strftime("%Y-%m-%d-%H%M")
-    report_path = DRY_RUN_REPORTS_DIR / f"{ts}.md"
+    report_path = DRY_RUN_REPORTS_DIR / f"{ts}-{result.dryrun_id}.md"
     report_path.write_text(render_report(result), encoding="utf-8")
     return json_path, report_path
 

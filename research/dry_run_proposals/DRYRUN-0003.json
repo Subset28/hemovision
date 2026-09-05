@@ -1,0 +1,28 @@
+{
+  "actually_queued": false,
+  "artifact_type": "DRY_RUN_PROPOSAL",
+  "call_records": [
+    {
+      "error": null,
+      "model_used": "nvidia/nemotron-3.5-lightning:free",
+      "role": "researcher",
+      "step": "initial_proposal",
+      "succeeded": true
+    }
+  ],
+  "calls_budget": 2,
+  "calls_made": 1,
+  "dryrun_id": "DRYRUN-0003",
+  "final_validation": null,
+  "generated_at": "2026-09-05T16:06:19.394493+00:00",
+  "placeholder_experiment_id": "EXP-9003",
+  "proposal": null,
+  "proposal_validation": null,
+  "queue_eligible_in_principle": false,
+  "redundancy_conflicts": [],
+  "redundancy_rejected_initial": false,
+  "reviewer_critique": null,
+  "revised": false,
+  "revision_reason": "",
+  "stopped_reason": "initial proposal response failed structured-output validation: response is not valid JSON: Expecting value: line 1 column 1 (char 0)"
+}

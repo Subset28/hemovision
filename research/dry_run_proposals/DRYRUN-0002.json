@@ -1,0 +1,28 @@
+{
+  "actually_queued": false,
+  "artifact_type": "DRY_RUN_PROPOSAL",
+  "call_records": [
+    {
+      "error": "OpenRouter returned an empty completion",
+      "model_used": null,
+      "role": "researcher",
+      "step": "initial_proposal",
+      "succeeded": false
+    }
+  ],
+  "calls_budget": 3,
+  "calls_made": 1,
+  "dryrun_id": "DRYRUN-0002",
+  "final_validation": null,
+  "generated_at": "2026-09-05T16:05:15.272357+00:00",
+  "placeholder_experiment_id": "EXP-9002",
+  "proposal": null,
+  "proposal_validation": null,
+  "queue_eligible_in_principle": false,
+  "redundancy_conflicts": [],
+  "redundancy_rejected_initial": false,
+  "reviewer_critique": null,
+  "revised": false,
+  "revision_reason": "",
+  "stopped_reason": "researcher role unavailable: OpenRouter returned an empty completion"
+}

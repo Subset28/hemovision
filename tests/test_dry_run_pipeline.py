@@ -459,3 +459,31 @@ class TestArtifactMarking:
         assert data["actually_queued"] is False
         assert data["artifact_type"] == "DRY_RUN_PROPOSAL"
         assert "DRY RUN ONLY" in report_path.read_text(encoding="utf-8")
+
+    def test_report_filename_includes_dryrun_id_no_same_minute_collision(self, tmp_path, monkeypatch):
+        """Regression test for a real bug hit during the Phase H completion
+        retry: two dry-run attempts (DRYRUN-0003, DRYRUN-0004) landed in the
+        same clock-minute and the old minute-only report filename
+        (YYYY-MM-DD-HHMM.md) let the second overwrite the first's report --
+        DRYRUN-0003's JSON survived but its rendered report was silently
+        lost, violating "every dry-run attempt, including failed ones, stays
+        historically inspectable." The filename must include dryrun_id."""
+        import research.dry_run.pipeline as pipeline_mod
+
+        monkeypatch.setattr(pipeline_mod, "DRY_RUN_PROPOSALS_DIR", tmp_path / "proposals")
+        monkeypatch.setattr(pipeline_mod, "DRY_RUN_REPORTS_DIR", tmp_path / "reports")
+
+        router1 = _router([_proposal_json(), _review_json()])
+        result1 = run_dry_run_cycle(router=router1, authorized=True, dry_run_budget=DryRunCallBudget(3))
+        _, report_path_1 = write_artifacts(result1)
+
+        router2 = _router([_proposal_json(), _review_json()])
+        result2 = run_dry_run_cycle(router=router2, authorized=True, dry_run_budget=DryRunCallBudget(3))
+        _, report_path_2 = write_artifacts(result2)
+
+        assert result1.dryrun_id != result2.dryrun_id
+        assert report_path_1 != report_path_2, "two distinct dry-run reports must never share a filename"
+        assert report_path_1.exists(), "the first report must survive the second write, even in the same minute"
+        assert report_path_2.exists()
+        assert result1.dryrun_id in report_path_1.name
+        assert result2.dryrun_id in report_path_2.name

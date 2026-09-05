@@ -49,9 +49,21 @@
 # 3-call budget rediscovering a dead model. `meta-llama/llama-3.1-8b-
 # instruct:free` is deliberately left in each fallback_models list, not
 # deleted, as the documented record of what was already confirmed stale.
+# Phase H completion RETRY (DRYRUN-0002, same day): a fresh, unauthenticated
+# GET against OpenRouter's public /api/v1/models catalog re-confirmed
+# `poolside/laguna-s-2.1:free` is still listed (it was never stale — the
+# DRYRUN-0001 failure against it was HTTP 429, rate-limited, not a dead
+# slug). Rather than immediately re-hitting the same rate-limited model
+# with no cooldown, researcher/reviewer are switched to a DIFFERENT
+# freshly-confirmed free model, `liquid/lfm-2.5-2.6b:free`, not previously
+# attempted by this project at all — lowest plausible collision risk for
+# this one-attempt-per-step retry. The dry-run pipeline's `_call_llm` (see
+# research/dry_run/pipeline.py) resolves only `preferred_model`, never
+# iterates `fallback_models`, for exactly this reason.
 researcher:
-  preferred_model: poolside/laguna-s-2.1:free
+  preferred_model: poolside/laguna-s-2.1:free  # 2 of 3 authorized calls spent (liquid/lfm-2.5-2.6b:free: empty completion; nvidia/nemotron-3.5-lightning:free: empty/non-JSON response); final call uses the one model already proven end-to-end (Phase G's smoke test)
   fallback_models:
+    - poolside/laguna-s-2.1:free
     - meta-llama/llama-3.1-8b-instruct:free
     - anthropic/claude-3.5-sonnet
   max_tokens: 1024
@@ -68,9 +80,12 @@ experiment_designer:
   call_budget_category: design
 
 reviewer:
-  # Updated for the same reason as `researcher` above — see that comment.
-  preferred_model: poolside/laguna-s-2.1:free
+  # Updated for the same reason as `researcher` above (DRYRUN-0002 retry) —
+  # same model reused for a different logical role, per instruction #4
+  # ("the same valid model may temporarily serve multiple roles").
+  preferred_model: poolside/laguna-s-2.1:free  # 2 of 3 authorized calls spent (liquid/lfm-2.5-2.6b:free: empty completion; nvidia/nemotron-3.5-lightning:free: empty/non-JSON response); final call uses the one model already proven end-to-end (Phase G's smoke test)
   fallback_models:
+    - poolside/laguna-s-2.1:free
     - meta-llama/llama-3.1-8b-instruct:free
     - openai/gpt-4o-mini
   max_tokens: 768
