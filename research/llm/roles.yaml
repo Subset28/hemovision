@@ -84,7 +84,15 @@ researcher:
     - poolside/laguna-s-2.1:free
     - meta-llama/llama-3.1-8b-instruct:free
     - anthropic/claude-3.5-sonnet
-  max_tokens: 2048
+  # max_tokens raised 2048->4096 after the Phase H token/reasoning audit:
+  # a locally-measured representative valid ExperimentProposal is only
+  # ~400-450 tokens (tests/test_dry_run_pipeline.py::VALID_PROPOSAL), so
+  # the actual answer was never the bottleneck -- this is pure headroom
+  # against reasoning-token consumption, combined with the code-level fix
+  # (reasoning.enabled=false) in research/dry_run/pipeline.py::_call_llm.
+  # liquid/lfm-2.5-2.6b:free's own catalog entry advertises an 8192-token
+  # completion cap, so 4096 stays comfortably under it.
+  max_tokens: 4096
   timeout: 60
   call_budget_category: research
 

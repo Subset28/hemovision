@@ -348,6 +348,20 @@ def _call_llm(
         # attempt. Flows straight through OpenRouterProvider.complete()'s
         # existing `body.update(kwargs)`.
         call_kwargs["response_format"] = response_format
+        # Phase H token/reasoning audit finding (DRYRUN-0005): OmniLab
+        # previously sent NO reasoning-control parameter at all, and
+        # OpenRouter's documented reasoning-tokens mechanism
+        # (https://openrouter.ai/docs/use-cases/reasoning-tokens) confirms
+        # reasoning tokens count against the same completion-token budget
+        # and CAN consume it entirely, producing exactly DRYRUN-0005's
+        # observed shape (finish_reason="length", empty content) if a model
+        # reasons by default. A JSON-schema structured-output answer has no
+        # use for a separate reasoning trace anyway, so disabling it via
+        # OpenRouter's documented `reasoning.enabled` field is safe and
+        # targeted for every structured-output call, not just this one
+        # model -- named parameter taken directly from OpenRouter's own
+        # docs, not guessed.
+        call_kwargs["reasoning"] = {"enabled": False}
 
     try:
         response = router.provider.complete(

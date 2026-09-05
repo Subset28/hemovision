@@ -178,6 +178,13 @@ class TestNativeStructuredOutputRequestShape:
         assert body["response_format"]["type"] == "json_schema"
         assert body["response_format"]["json_schema"]["name"] == "proposal_response"
         assert body["response_format"]["json_schema"]["schema"] == schema
+        # Phase H token/reasoning audit fix (DRYRUN-0005): every structured-
+        # output call must explicitly disable reasoning, per OpenRouter's
+        # documented reasoning-tokens mechanism -- a JSON-schema answer has
+        # no use for a separate reasoning trace, and leaving it unset let a
+        # reasoning-capable model consume the entire completion budget
+        # before emitting any content.
+        assert body["reasoning"] == {"enabled": False}
         assert response.text == json.dumps(VALID_PROPOSAL)
 
 
