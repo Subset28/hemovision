@@ -158,6 +158,22 @@ class VerdictError(ValueError):
     recorded (non-PENDING) verdict — verdicts are immutable once set."""
 
 
+class ImmutableExperimentError(VerdictError):
+    """Raised when update_fields()/set_research_verdict() is called against
+    an experiment whose scientific record is already finalized
+    (execution_status=COMPLETED) without allow_amendment=True. Phase-I-
+    readiness HIGH finding #3 (reports/phase_i/PHASE_I_READINESS_AUDIT.md):
+    update_fields() previously had NO guard at all against rewriting
+    metrics/conclusion/etc. on an already-COMPLETED experiment -- every
+    write silently succeeded with no audit trail. A legitimate correction
+    is still possible via allow_amendment=True + a non-empty reason, which
+    is itself logged to experiment_events (see _log_amendment) — this is a
+    deliberate, audited exception, never a silent overwrite. Subclasses
+    VerdictError (not bare ValueError) so pre-existing callers that catch
+    `except VerdictError` for "verdict already set" keep working unchanged
+    -- this is strictly a more specific exception, not a different one."""
+
+
 class ExperimentNotFoundError(KeyError):
     pass
 
@@ -430,8 +446,26 @@ class OmniLabDB:
         self._conn.commit()
         return self.get_experiment(experiment_id)
 
+    def _log_amendment(self, experiment_id: str, field_name: str, old_value: Any, new_value: Any, reason: str, now: str) -> None:
+        """Append-only audit record for an explicit, human-authorized
+        correction to an already-finalized experiment. Distinct event-type
+        prefix ('amend:') so the audit log can tell an amendment apart from
+        a normal execution_status/verdict transition."""
+        self._conn.execute(
+            "INSERT INTO experiment_events (experiment_id, from_status, to_status, note, timestamp) "
+            "VALUES (?, ?, ?, ?, ?)",
+            (
+                experiment_id,
+                f"amend:{field_name}={old_value!r}",
+                f"amend:{field_name}={new_value!r}",
+                f"AMENDMENT (reason: {reason})",
+                now,
+            ),
+        )
+
     def set_research_verdict(
-        self, experiment_id: str, verdict: str, note: Optional[str] = None
+        self, experiment_id: str, verdict: str, note: Optional[str] = None,
+        *, allow_amendment: bool = False, reason: str = "",
     ) -> Experiment:
         """Record the scientific verdict for an experiment. Distinct from
         transition_status() — this is a separate, less-constrained operation
@@ -441,7 +475,12 @@ class OmniLabDB:
         retrying means a new EXP-XXXX record with parent_experiment_id set).
         Logs to experiment_events with from_status/to_status prefixed
         'verdict:' so the audit log distinguishes verdict changes from
-        execution_status transitions."""
+        execution_status transitions.
+
+        `allow_amendment=True` + a non-empty `reason` is the ONLY sanctioned
+        way to change an already-finalized (non-PENDING) verdict -- an
+        explicit, audited correction (Phase-I-readiness HIGH finding #3),
+        never a silent overwrite."""
         if verdict not in RESEARCH_VERDICTS:
             raise ValueError(f"invalid research_verdict: {verdict!r}")
         exp = self.get_experiment(experiment_id)
@@ -451,44 +490,73 @@ class OmniLabDB:
                 f"{exp.execution_status!r} — a verdict requires execution_status='COMPLETED'."
             )
         if exp.research_verdict != "PENDING":
-            raise VerdictError(
-                f"{experiment_id}: research_verdict is already {exp.research_verdict!r} — "
-                "verdicts are immutable once set. Create a new EXP-XXXX record with "
-                "parent_experiment_id set to retry."
-            )
+            if not allow_amendment:
+                raise ImmutableExperimentError(
+                    f"{experiment_id}: research_verdict is already {exp.research_verdict!r} — "
+                    "verdicts are immutable once set. Pass allow_amendment=True with a non-empty "
+                    "reason for an explicit, audited correction, or create a new EXP-XXXX record "
+                    "with parent_experiment_id set to retry."
+                )
+            if not reason or not reason.strip():
+                raise ValueError("allow_amendment=True requires a non-empty reason")
         now = _utcnow()
         self._conn.execute(
             "UPDATE experiments SET research_verdict = ?, updated_at = ? WHERE experiment_id = ?",
             (verdict, now, experiment_id),
         )
-        self._conn.execute(
-            "INSERT INTO experiment_events (experiment_id, from_status, to_status, note, timestamp) "
-            "VALUES (?, ?, ?, ?, ?)",
-            (experiment_id, f"verdict:{exp.research_verdict}", f"verdict:{verdict}", note, now),
-        )
+        if allow_amendment and exp.research_verdict != "PENDING":
+            self._log_amendment(experiment_id, "research_verdict", exp.research_verdict, verdict, reason, now)
+        else:
+            self._conn.execute(
+                "INSERT INTO experiment_events (experiment_id, from_status, to_status, note, timestamp) "
+                "VALUES (?, ?, ?, ?, ?)",
+                (experiment_id, f"verdict:{exp.research_verdict}", f"verdict:{verdict}", note, now),
+            )
         self._conn.commit()
         return self.get_experiment(experiment_id)
 
-    def update_fields(self, experiment_id: str, **fields: Any) -> Experiment:
+    def update_fields(
+        self, experiment_id: str, *, allow_amendment: bool = False, reason: str = "", **fields: Any,
+    ) -> Experiment:
         """Update arbitrary non-status/non-verdict fields (e.g. metrics,
         conclusion, result_run_id, git_branch, end_commit). Use
         transition_status() for execution_status changes and
         set_research_verdict() for verdict changes — this method refuses to
-        touch either directly, to keep the audit log authoritative."""
+        touch either directly, to keep the audit log authoritative.
+
+        Phase-I-readiness HIGH finding #3: once execution_status='COMPLETED',
+        this method refuses to write ANY field unless allow_amendment=True
+        with a non-empty reason -- previously there was no guard at all, so
+        metrics/conclusion/etc. could be silently rewritten on an already-
+        finalized experiment with zero audit trail. A legitimate correction
+        goes through allow_amendment=True (logged to experiment_events, old
+        value preserved) -- history is appended to, never erased."""
         if "execution_status" in fields or "status" in fields:
             raise ValueError("use transition_status() to change execution_status, not update_fields()")
         if "research_verdict" in fields:
             raise ValueError("use set_research_verdict() to change research_verdict, not update_fields()")
-        self.get_experiment(experiment_id)  # existence check
+        exp = self.get_experiment(experiment_id)
+        if exp.execution_status == "COMPLETED":
+            if not allow_amendment:
+                raise ImmutableExperimentError(
+                    f"{experiment_id}: execution_status is already COMPLETED — its scientific "
+                    "record fields are immutable. Pass allow_amendment=True with a non-empty "
+                    "reason for an explicit, audited correction."
+                )
+            if not reason or not reason.strip():
+                raise ValueError("allow_amendment=True requires a non-empty reason")
         set_clauses = []
         params: dict[str, Any] = {"experiment_id": experiment_id}
+        now = _utcnow()
         for k, v in fields.items():
             if k in _JSON_FIELDS and v is not None:
                 v = json.dumps(v)
             set_clauses.append(f"{k} = :{k}")
             params[k] = v
+            if allow_amendment and exp.execution_status == "COMPLETED":
+                self._log_amendment(experiment_id, k, getattr(exp, k, None), fields[k], reason, now)
         set_clauses.append("updated_at = :updated_at")
-        params["updated_at"] = _utcnow()
+        params["updated_at"] = now
         sql = f"UPDATE experiments SET {', '.join(set_clauses)} WHERE experiment_id = :experiment_id"
         self._conn.execute(sql, params)
         self._conn.commit()
