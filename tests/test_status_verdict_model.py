@@ -175,26 +175,32 @@ class TestMigratedHistoricalRecords:
         assert exp.metrics is not None
         assert exp.metrics.get("raw_evaluation_policy_verdict") == "FAILED"
 
-    def test_exp_0005_has_been_unblocked_per_research_exp0005_preregister(self):
-        """EXP-0005 (model_variant) was subsequently unblocked (a separately-
-        approved task, per research/README.md's "Execution status vs.
-        research verdict" section and research/_exp0005_preregister.py) --
-        it must no longer be BLOCKED. This test is intentionally loose about
-        WHICH non-BLOCKED execution_status it is in (QUEUED/RUNNING/
-        COMPLETED are all legal at different points in that task's own
-        pipeline run) rather than hard-coding COMPLETED here, so this test
-        file itself does not become a false gate inside the very pipeline
-        run it is checked by (research/orchestrator.py's `_run_tests()` runs
-        this suite WHILE EXP-0005 is execution_status=RUNNING, before it
-        reaches COMPLETED)."""
+    def test_exp_0005_ran_to_completion_with_a_recorded_verdict(self):
+        """EXP-0005 (model_variant) was subsequently unblocked and run to
+        completion through the real omnilab pipeline (a separately-approved
+        task, per research/README.md's "Execution status vs. research
+        verdict" section and research/_exp0005_preregister.py) -- it is now
+        execution_status=COMPLETED with a non-PENDING research_verdict, the
+        same invariant already checked for EXP-0001..0004 below.
+        research_verdict=INCONCLUSIVE here specifically: the representative
+        candidate (yolov8l-oiv7, a same-vocabulary capacity increase) cleared
+        every guardrail but its Person recall delta (+0.0198) fell below the
+        pre-registered minimum meaningful delta (0.03) -- see
+        experiments/completed/EXP-0005/conclusion.md and
+        reports/baseline/model_variant_analysis.md for the full picture
+        across all 4 candidates, including the COCO-trained candidate whose
+        much larger fixed-threshold recall gain hard-failed the
+        hazard-precision guardrail and evaporated under a precision-matched
+        comparison."""
         with OmniLabDB() as db:
             exp = db.get_experiment("EXP-0005")
-        assert exp.execution_status != "BLOCKED"
+        assert exp.execution_status == "COMPLETED"
+        assert exp.research_verdict == "INCONCLUSIVE"
 
     def test_experiments_directory_layout_is_execution_status_keyed(self):
         from research.config import EXPERIMENTS_DIR
 
-        for experiment_id in ("EXP-0001", "EXP-0002", "EXP-0003", "EXP-0004"):
+        for experiment_id in ("EXP-0001", "EXP-0002", "EXP-0003", "EXP-0004", "EXP-0005"):
             assert (EXPERIMENTS_DIR / "completed" / experiment_id).exists(), experiment_id
         assert not (EXPERIMENTS_DIR / "failed").exists()
         assert not (EXPERIMENTS_DIR / "rejected").exists()
@@ -207,7 +213,7 @@ class TestMigratedHistoricalRecords:
 
         from research.config import EXPERIMENTS_DIR
 
-        for experiment_id in ("EXP-0001", "EXP-0002", "EXP-0003", "EXP-0004"):
+        for experiment_id in ("EXP-0001", "EXP-0002", "EXP-0003", "EXP-0004", "EXP-0005"):
             results_path = EXPERIMENTS_DIR / "completed" / experiment_id / "results.json"
             assert results_path.exists(), experiment_id
             data = json.loads(results_path.read_text(encoding="utf-8"))

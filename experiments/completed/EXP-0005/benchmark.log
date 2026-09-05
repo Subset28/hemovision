@@ -1,0 +1,19 @@
+[2026-09-05T03:16:05.168514+00:00] branch experiment/EXP-0005 created from fc964760ae4b5e3ffbb3af9ef344b3a5f20ca515
+EXP-0005: running benchmark.diagnostics.model_variant_eval.run_all() (4 candidate checkpoints x 2 confidence passes x 380 images, real inference)
+Wrote benchmark\results\diagnostics\model_variant_analysis.json
+[A_yolov8m_oiv7_baseline] vocab=oiv7 params=26.20M size=52.7MB | hazard_common P=0.8134 R=0.4896 | person P=0.6667 R=0.2112 F1=0.3208 AP50=0.1743 | inference p50=27.99ms p95=69.73ms peak_gpu=214.4MB | coreml_export={'attempted': True, 'success': False, 'error': 'AssertionError: CoreML export is not supported on Windows, please run on macOS or Linux.'}
+[B_yolov8n_oiv7_smaller] vocab=oiv7 params=3.50M size=7.2MB | hazard_common P=0.7846 R=0.3384 | person P=0.6923 R=0.1188 F1=0.2028 AP50=0.0966 | inference p50=21.40ms p95=54.47ms peak_gpu=196.2MB | coreml_export={'attempted': True, 'success': False, 'error': 'AssertionError: CoreML export is not supported on Windows, please run on macOS or Linux.'}
+[C_yolo11m_coco_newer_arch] vocab=coco params=20.11M size=40.7MB | hazard_common P=0.4540 R=0.6921 | person P=0.2930 R=0.5677 F1=0.3865 AP50=0.2574 | inference p50=28.97ms p95=61.15ms peak_gpu=213.3MB | coreml_export={'attempted': False, 'success': None, 'error': None}
+[D_yolov8l_oiv7_diagnostic_upper_bound] vocab=oiv7 params=44.09M size=88.6MB | hazard_common P=0.8047 R=0.5201 | person P=0.6542 R=0.2310 F1=0.3415 AP50=0.1988 | inference p50=35.15ms p95=48.69ms peak_gpu=390.7MB | coreml_export={'attempted': False, 'success': None, 'error': None}
+[A_yolov8m_oiv7_baseline] evaluation_policy verdict=INCONCLUSIVE person.recall_delta=+0.0000 precision_matched_recall=0.21122112211221122 guardrail_matched_recall=0.24422442244224424
+[B_yolov8n_oiv7_smaller] evaluation_policy verdict=FAILED person.recall_delta=-0.0924 precision_matched_recall=0.1551155115511551 guardrail_matched_recall=0.1551155115511551
+[C_yolo11m_coco_newer_arch] evaluation_policy verdict=FAILED person.recall_delta=+0.3564 precision_matched_recall=0.006600660066006601 guardrail_matched_recall=0.12211221122112212
+[D_yolov8l_oiv7_diagnostic_upper_bound] evaluation_policy verdict=INCONCLUSIVE person.recall_delta=+0.0198 precision_matched_recall=0.21122112211221122 guardrail_matched_recall=0.264026402640264
+Representative candidate selected for DB verdict: 'D_yolov8l_oiv7_diagnostic_upper_bound' (cleared_guardrails=True)
+TRUE_DETECTOR_MISS (92 baseline) recovery by candidate: {'B_yolov8n_oiv7_smaller': {'gained_any_person_candidate': 50, 'gained_tp': 0, 'gained_other_human_class': 0, 'remains_complete_miss': 42}, 'C_yolo11m_coco_newer_arch': {'gained_any_person_candidate': 83, 'gained_tp': 17, 'gained_other_human_class': 0, 'remains_complete_miss': 9}, 'D_yolov8l_oiv7_diagnostic_upper_bound': {'gained_any_person_candidate': 71, 'gained_tp': 1, 'gained_other_human_class': 0, 'remains_complete_miss': 21}}
+Wrote model_comparison.json
+Wrote person_transitions.json
+Wrote reports/baseline/model_variant_analysis.md
+[2026-09-05T03:18:23.685839+00:00] pytest exit_ok=True
+[2026-09-05T03:18:23.796669+00:00] evaluation_policy verdict=INCONCLUSIVE -> research_verdict=INCONCLUSIVE
+[2026-09-05T03:18:23.796669+00:00] verdict explanation: INCONCLUSIVE: primary metric 'person.recall' delta (+0.0198) is below the minimum meaningful delta (0.03)

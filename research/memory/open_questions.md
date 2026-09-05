@@ -40,3 +40,11 @@ WebSearch, never training-data recall alone) — this is not started.
 - Status: INCONCLUSIVE
 - Hypothesis: A single, simple image preprocessing transform (contrast/sharpening/CLAHE) applied before inference improves difficult Person detection without unacceptable latency cost.
 - Reasons: primary metric 'person.recall' delta (+0.0198) is below the minimum meaningful delta (0.03)
+
+## EXP-0005 (2026-09-05T03:18:23.905895+00:00)
+
+- Family: model_variant
+- Execution status: COMPLETED
+- Research verdict: INCONCLUSIVE
+- Hypothesis: A different model checkpoint/architecture (e.g. YOLO26n, referenced but never actually shipped per OMNISIGHT_ARCHITECTURE.md section 3) would improve Person and/or Stairs recall over the current yolov8m-oiv7 baseline.
+- Reasons: primary metric 'person.recall' delta (+0.0198) is below the minimum meaningful delta (0.03)

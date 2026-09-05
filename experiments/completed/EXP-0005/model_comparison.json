@@ -1,0 +1,372 @@
+{
+  "A_yolov8m_oiv7_baseline": {
+    "spec": {
+      "role": "current production baseline (unchanged)",
+      "architecture_family": "YOLOv8 (medium)",
+      "pretrained_dataset": "Open Images V7 (601 classes)",
+      "source_url": "https://github.com/ultralytics/assets/releases/download/v8.3.0/yolov8m-oiv7.pt",
+      "license": "AGPL-3.0 (Ultralytics OSS license) \u2014 commercial closed-source use (OmniSight is a paid/commercial App Store app) requires an Ultralytics Enterprise license, same as the currently-shipped model.",
+      "reason_for_inclusion": "Reference point (A) \u2014 every other candidate is judged relative to this, already in production."
+    },
+    "checkpoint": {
+      "filename": "yolov8m-oiv7.pt",
+      "sha256": "21ffa3718c577ac23e708e4c0544c49a20682efa03914d5f816166b54e8fd3fe",
+      "size_bytes": 52732835,
+      "size_mb": 50.29,
+      "n_params": 26204299,
+      "n_params_millions": 26.2,
+      "vocabulary": "oiv7",
+      "num_classes": 601,
+      "class_map_verification": {
+        "missing": [],
+        "ok": true,
+        "num_declared": 8
+      }
+    },
+    "hazard_common_class": {
+      "precision": 0.8133640552995391,
+      "recall": 0.4895977808599168,
+      "f1": 0.6112554112554113,
+      "map50": 0.6246523361052174,
+      "tp": 353,
+      "fp": 81,
+      "fn": 368,
+      "num_gt": 721,
+      "classes_included": [
+        "Bicycle",
+        "Bus",
+        "Car",
+        "Dog",
+        "Motorcycle",
+        "Person",
+        "Truck"
+      ],
+      "classes_excluded": []
+    },
+    "hazard_native": {
+      "precision": 0.8070175438596491,
+      "recall": 0.4804177545691906,
+      "f1": 0.602291325695581,
+      "map50": 0.5822603224286523,
+      "note": "Full native hazard-8 (all 8 OmniSight hazard classes; same vocabulary as production)."
+    },
+    "person": {
+      "precision": 0.6666666666666666,
+      "recall": 0.21122112211221122,
+      "f1": 0.3208020050125313,
+      "ap50": 0.17425857303805609,
+      "tp": 64,
+      "fp": 32,
+      "fn": 239,
+      "num_gt": 303
+    },
+    "latency_ms": {
+      "median_ms": 27.9908999982581,
+      "p95_ms": 69.72740000128397,
+      "mean_ms": 38.94461421046129,
+      "n": 380,
+      "note": "Windows/CUDA relative compute proxy, NOT iPhone. Inference-only (no preprocessing step in this experiment)."
+    },
+    "peak_gpu_memory_mb_conf0.4_pass": 204.46,
+    "coreml_export": {
+      "attempted": true,
+      "success": false,
+      "error": "AssertionError: CoreML export is not supported on Windows, please run on macOS or Linux."
+    },
+    "precision_matched_person_recall": {
+      "threshold": 0.4,
+      "recall": 0.21122112211221122,
+      "precision_at_threshold": 0.6666666666666666,
+      "reached": true,
+      "target_precision": 0.6666666666666666,
+      "definition": "Person recall at the lowest swept confidence threshold whose Person precision >= the baseline's official (conf=0.4) Person precision."
+    },
+    "guardrail_matched_person_recall": {
+      "threshold": 0.35,
+      "recall": 0.24422442244224424,
+      "precision_at_threshold": 0.7725409836065574,
+      "reached": true,
+      "target_precision": 0.757,
+      "definition": "Person recall at the lowest swept confidence threshold whose common-class hazard precision >= the hazard-precision guardrail floor (baseline-0.05)."
+    },
+    "evaluation_policy_verdict": "INCONCLUSIVE"
+  },
+  "B_yolov8n_oiv7_smaller": {
+    "spec": {
+      "role": "smaller/faster same-vocabulary candidate",
+      "architecture_family": "YOLOv8 (nano)",
+      "pretrained_dataset": "Open Images V7 (601 classes) \u2014 same vocabulary as baseline, no class mapping needed",
+      "source_url": "https://github.com/ultralytics/assets/releases/download/v8.3.0/yolov8n-oiv7.pt",
+      "license": "AGPL-3.0 (Ultralytics OSS license) \u2014 commercial closed-source use requires Ultralytics Enterprise.",
+      "reason_for_inclusion": "(B) smaller/faster variant \u2014 an official Ultralytics OIV7 release exists at nano size, so no COCO vocabulary compromise is needed for this probe; tests whether a lighter model (mobile-friendlier) can hold Person recall."
+    },
+    "checkpoint": {
+      "filename": "yolov8n-oiv7.pt",
+      "sha256": "3851dfbf39ed2a076b1f39215cc22dba64eb5646f282bf964703785b0bed6a41",
+      "size_bytes": 7226939,
+      "size_mb": 6.89,
+      "n_params": 3497943,
+      "n_params_millions": 3.5,
+      "vocabulary": "oiv7",
+      "num_classes": 601,
+      "class_map_verification": {
+        "missing": [],
+        "ok": true,
+        "num_declared": 8
+      }
+    },
+    "hazard_common_class": {
+      "precision": 0.7845659163987139,
+      "recall": 0.33841886269070737,
+      "f1": 0.4728682170542636,
+      "map50": 0.42693622730603964,
+      "tp": 244,
+      "fp": 67,
+      "fn": 477,
+      "num_gt": 721,
+      "classes_included": [
+        "Bicycle",
+        "Bus",
+        "Car",
+        "Dog",
+        "Motorcycle",
+        "Person",
+        "Truck"
+      ],
+      "classes_excluded": []
+    },
+    "hazard_native": {
+      "precision": 0.7823343848580442,
+      "recall": 0.3237597911227154,
+      "f1": 0.4579870729455217,
+      "map50": 0.3841247544483402,
+      "note": "Full native hazard-8 (all 8 OmniSight hazard classes; same vocabulary as production)."
+    },
+    "person": {
+      "precision": 0.6923076923076923,
+      "recall": 0.1188118811881188,
+      "f1": 0.20281690140845068,
+      "ap50": 0.09658243999474053,
+      "tp": 36,
+      "fp": 16,
+      "fn": 267,
+      "num_gt": 303
+    },
+    "latency_ms": {
+      "median_ms": 21.39750000060303,
+      "p95_ms": 54.46970000048168,
+      "mean_ms": 24.19887684203499,
+      "n": 380,
+      "note": "Windows/CUDA relative compute proxy, NOT iPhone. Inference-only (no preprocessing step in this experiment)."
+    },
+    "peak_gpu_memory_mb_conf0.4_pass": 187.07,
+    "coreml_export": {
+      "attempted": true,
+      "success": false,
+      "error": "AssertionError: CoreML export is not supported on Windows, please run on macOS or Linux."
+    },
+    "precision_matched_person_recall": {
+      "threshold": 0.35,
+      "recall": 0.1551155115511551,
+      "precision_at_threshold": 0.6811594202898551,
+      "reached": true,
+      "target_precision": 0.6666666666666666,
+      "definition": "Person recall at the lowest swept confidence threshold whose Person precision >= the baseline's official (conf=0.4) Person precision."
+    },
+    "guardrail_matched_person_recall": {
+      "threshold": 0.35,
+      "recall": 0.1551155115511551,
+      "precision_at_threshold": 0.7700831024930748,
+      "reached": true,
+      "target_precision": 0.757,
+      "definition": "Person recall at the lowest swept confidence threshold whose common-class hazard precision >= the hazard-precision guardrail floor (baseline-0.05)."
+    },
+    "evaluation_policy_verdict": "FAILED"
+  },
+  "C_yolo11m_coco_newer_arch": {
+    "spec": {
+      "role": "newer-architecture, realistic-for-mobile candidate (COCO-trained)",
+      "architecture_family": "YOLO11 (medium)",
+      "pretrained_dataset": "COCO (80 classes) \u2014 no official Ultralytics OIV7-trained YOLO11 release exists; COCO is the only reliably-downloadable YOLO11 checkpoint via YOLO('yolo11m.pt') auto-download, per the methodology's requirement to verify actual availability before committing to a name.",
+      "source_url": "https://github.com/ultralytics/assets/releases/download/v8.4.0/yolo11m.pt",
+      "license": "AGPL-3.0 (Ultralytics OSS license) \u2014 commercial closed-source use requires Ultralytics Enterprise.",
+      "reason_for_inclusion": "(C) plausible stronger/newer pretrained detector realistic for eventual mobile deployment \u2014 a genuinely different architecture generation (YOLO11 vs YOLOv8), not just a bigger/smaller YOLOv8. Exercises the COCO<->OIV7 common-class mapping machinery (Stairs excluded, 7-of-8 hazard subset) since this is the only vocabulary-mismatched candidate in this experiment."
+    },
+    "checkpoint": {
+      "filename": "yolo11m.pt",
+      "sha256": "d5ffc1a674953a08e11a8d21e022781b1b23a19b730afc309290bd9fb5305b95",
+      "size_bytes": 40684120,
+      "size_mb": 38.8,
+      "n_params": 20114688,
+      "n_params_millions": 20.11,
+      "vocabulary": "coco",
+      "num_classes": 80,
+      "class_map_verification": {
+        "missing": [],
+        "ok": true,
+        "num_declared": 7
+      }
+    },
+    "hazard_common_class": {
+      "precision": 0.454049135577798,
+      "recall": 0.6920943134535368,
+      "f1": 0.5483516483516484,
+      "map50": 0.6889679908825458,
+      "tp": 499,
+      "fp": 600,
+      "fn": 222,
+      "num_gt": 721,
+      "classes_included": [
+        "Bicycle",
+        "Bus",
+        "Car",
+        "Dog",
+        "Motorcycle",
+        "Person",
+        "Truck"
+      ],
+      "classes_excluded": [
+        "Stairs"
+      ]
+    },
+    "hazard_native": {
+      "precision": 0.454049135577798,
+      "recall": 0.6920943134535368,
+      "f1": 0.5483516483516484,
+      "map50": 0.6889679908825458,
+      "note": "COCO vocabulary has no 'Stairs' class at all \u2014 native metrics here are the SAME 7-class common-class result (excludes: ['Stairs']). This is a real structural vocabulary gap, not a mapping omission."
+    },
+    "person": {
+      "precision": 0.293015332197615,
+      "recall": 0.5676567656765676,
+      "f1": 0.3865168539325842,
+      "ap50": 0.25736179917714236,
+      "tp": 172,
+      "fp": 415,
+      "fn": 131,
+      "num_gt": 303
+    },
+    "latency_ms": {
+      "median_ms": 28.970399998797802,
+      "p95_ms": 61.14719999823137,
+      "mean_ms": 31.82446105259403,
+      "n": 380,
+      "note": "Windows/CUDA relative compute proxy, NOT iPhone. Inference-only (no preprocessing step in this experiment)."
+    },
+    "peak_gpu_memory_mb_conf0.4_pass": 203.38,
+    "coreml_export": {
+      "attempted": false,
+      "success": null,
+      "error": null
+    },
+    "precision_matched_person_recall": {
+      "threshold": 0.95,
+      "recall": 0.006600660066006601,
+      "precision_at_threshold": 1.0,
+      "reached": true,
+      "target_precision": 0.6666666666666666,
+      "definition": "Person recall at the lowest swept confidence threshold whose Person precision >= the baseline's official (conf=0.4) Person precision."
+    },
+    "guardrail_matched_person_recall": {
+      "threshold": 0.9,
+      "recall": 0.12211221122112212,
+      "precision_at_threshold": 0.8,
+      "reached": true,
+      "target_precision": 0.757,
+      "definition": "Person recall at the lowest swept confidence threshold whose common-class hazard precision >= the hazard-precision guardrail floor (baseline-0.05)."
+    },
+    "evaluation_policy_verdict": "FAILED"
+  },
+  "D_yolov8l_oiv7_diagnostic_upper_bound": {
+    "spec": {
+      "role": "larger diagnostic upper-bound (explicitly labeled unlikely-to-ship)",
+      "architecture_family": "YOLOv8 (large)",
+      "pretrained_dataset": "Open Images V7 (601 classes) \u2014 same vocabulary as baseline",
+      "source_url": "https://github.com/ultralytics/assets/releases/download/v8.3.0/yolov8l-oiv7.pt",
+      "license": "AGPL-3.0 (Ultralytics OSS license) \u2014 commercial closed-source use requires Ultralytics Enterprise.",
+      "reason_for_inclusion": "(D) optional larger diagnostic upper-bound purely to probe whether raw capacity increase (same architecture family/training data as baseline, just bigger) raises Person recall at all. EXPLICITLY LABELED UNLIKELY TO SHIP on a phone (88.6MB, ~44M params) \u2014 a capacity-ceiling probe, not a deployment candidate."
+    },
+    "checkpoint": {
+      "filename": "yolov8l-oiv7.pt",
+      "sha256": "7cb0716bb760110d75c04586760084d616555c452c9ace7ed4b44980e8762236",
+      "size_bytes": 88584203,
+      "size_mb": 84.48,
+      "n_params": 44093211,
+      "n_params_millions": 44.09,
+      "vocabulary": "oiv7",
+      "num_classes": 601,
+      "class_map_verification": {
+        "missing": [],
+        "ok": true,
+        "num_declared": 8
+      }
+    },
+    "hazard_common_class": {
+      "precision": 0.8047210300429185,
+      "recall": 0.5201109570041609,
+      "f1": 0.6318449873631004,
+      "map50": 0.648479451722103,
+      "tp": 375,
+      "fp": 91,
+      "fn": 346,
+      "num_gt": 721,
+      "classes_included": [
+        "Bicycle",
+        "Bus",
+        "Car",
+        "Dog",
+        "Motorcycle",
+        "Person",
+        "Truck"
+      ],
+      "classes_excluded": []
+    },
+    "hazard_native": {
+      "precision": 0.7971311475409836,
+      "recall": 0.5078328981723238,
+      "f1": 0.620414673046252,
+      "map50": 0.6015698470542257,
+      "note": "Full native hazard-8 (all 8 OmniSight hazard classes; same vocabulary as production)."
+    },
+    "person": {
+      "precision": 0.6542056074766355,
+      "recall": 0.23102310231023102,
+      "f1": 0.34146341463414637,
+      "ap50": 0.19877046319307706,
+      "tp": 70,
+      "fp": 37,
+      "fn": 233,
+      "num_gt": 303
+    },
+    "latency_ms": {
+      "median_ms": 35.1474999988568,
+      "p95_ms": 48.690999999962514,
+      "mean_ms": 36.486054736987604,
+      "n": 380,
+      "note": "Windows/CUDA relative compute proxy, NOT iPhone. Inference-only (no preprocessing step in this experiment)."
+    },
+    "peak_gpu_memory_mb_conf0.4_pass": 372.62,
+    "coreml_export": {
+      "attempted": false,
+      "success": null,
+      "error": null
+    },
+    "precision_matched_person_recall": {
+      "threshold": 0.45,
+      "recall": 0.21122112211221122,
+      "precision_at_threshold": 0.7272727272727273,
+      "reached": true,
+      "target_precision": 0.6666666666666666,
+      "definition": "Person recall at the lowest swept confidence threshold whose Person precision >= the baseline's official (conf=0.4) Person precision."
+    },
+    "guardrail_matched_person_recall": {
+      "threshold": 0.35,
+      "recall": 0.264026402640264,
+      "precision_at_threshold": 0.765625,
+      "reached": true,
+      "target_precision": 0.757,
+      "definition": "Person recall at the lowest swept confidence threshold whose common-class hazard precision >= the hazard-precision guardrail floor (baseline-0.05)."
+    },
+    "evaluation_policy_verdict": "INCONCLUSIVE"
+  }
+}

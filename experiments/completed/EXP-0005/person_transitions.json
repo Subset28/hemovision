@@ -1,0 +1,483 @@
+{
+  "B_yolov8n_oiv7_smaller": {
+    "transitions_by_baseline_bucket": {
+      "TRUE_DETECTOR_MISS": {
+        "n": 92,
+        "to_TP": 0,
+        "new_bucket_counts": {
+          "TRUE_DETECTOR_MISS": 85,
+          "LOW_CONFIDENCE_PERSON": 7
+        }
+      },
+      "LOW_CONFIDENCE_PERSON": {
+        "n": 82,
+        "to_TP": 1,
+        "new_bucket_counts": {
+          "LOW_CONFIDENCE_PERSON": 57,
+          "TRUE_DETECTOR_MISS": 21,
+          "LOCALIZATION_FAILURE": 3,
+          "TP": 1
+        }
+      },
+      "SEMANTIC_CLASS_CONFUSION": {
+        "n": 13,
+        "to_TP": 0,
+        "new_bucket_counts": {
+          "TRUE_DETECTOR_MISS": 8,
+          "LOW_CONFIDENCE_PERSON": 4,
+          "LOCALIZATION_FAILURE": 1
+        }
+      },
+      "LOCALIZATION_FAILURE": {
+        "n": 52,
+        "to_TP": 0,
+        "new_bucket_counts": {
+          "TRUE_DETECTOR_MISS": 32,
+          "LOW_CONFIDENCE_PERSON": 12,
+          "LOCALIZATION_FAILURE": 8
+        }
+      }
+    },
+    "size_transitions": {
+      "small": {
+        "TRUE_DETECTOR_MISS": {
+          "n": 68,
+          "to_TP": 0
+        },
+        "LOW_CONFIDENCE_PERSON": {
+          "n": 49,
+          "to_TP": 0
+        },
+        "SEMANTIC_CLASS_CONFUSION": {
+          "n": 3,
+          "to_TP": 0
+        },
+        "LOCALIZATION_FAILURE": {
+          "n": 33,
+          "to_TP": 0
+        }
+      },
+      "non_small": {
+        "TRUE_DETECTOR_MISS": {
+          "n": 24,
+          "to_TP": 0
+        },
+        "LOW_CONFIDENCE_PERSON": {
+          "n": 33,
+          "to_TP": 1
+        },
+        "SEMANTIC_CLASS_CONFUSION": {
+          "n": 10,
+          "to_TP": 0
+        },
+        "LOCALIZATION_FAILURE": {
+          "n": 19,
+          "to_TP": 0
+        }
+      }
+    },
+    "true_miss_detail": {
+      "gained_any_person_candidate": 50,
+      "gained_tp": 0,
+      "gained_other_human_class": 0,
+      "remains_complete_miss": 42
+    },
+    "baseline_tp_regressions": {
+      "n_baseline_tp": 64,
+      "remained_tp": 35,
+      "regressed": 29,
+      "regression_detail": [
+        {
+          "sample_id": "oiv7-a52d7879d01b7465",
+          "gt_index": 0,
+          "new_state": "LOW_CONFIDENCE_PERSON"
+        },
+        {
+          "sample_id": "oiv7-87df0c78b0443f76",
+          "gt_index": 0,
+          "new_state": "LOW_CONFIDENCE_PERSON"
+        },
+        {
+          "sample_id": "oiv7-a5cd3858e29bafe3",
+          "gt_index": 1,
+          "new_state": "LOW_CONFIDENCE_PERSON"
+        },
+        {
+          "sample_id": "oiv7-f5cd12a4f38f3079",
+          "gt_index": 1,
+          "new_state": "LOW_CONFIDENCE_PERSON"
+        },
+        {
+          "sample_id": "oiv7-c864c741b7fa44f4",
+          "gt_index": 0,
+          "new_state": "LOW_CONFIDENCE_PERSON"
+        },
+        {
+          "sample_id": "oiv7-4bedb60e198caba5",
+          "gt_index": 0,
+          "new_state": "LOW_CONFIDENCE_PERSON"
+        },
+        {
+          "sample_id": "oiv7-a99155f23ba94544",
+          "gt_index": 0,
+          "new_state": "LOW_CONFIDENCE_PERSON"
+        },
+        {
+          "sample_id": "oiv7-e73a7d4187158151",
+          "gt_index": 2,
+          "new_state": "LOW_CONFIDENCE_PERSON"
+        },
+        {
+          "sample_id": "oiv7-0f48108b3973c7ec",
+          "gt_index": 1,
+          "new_state": "LOCALIZATION_FAILURE"
+        },
+        {
+          "sample_id": "oiv7-7c1d922420d9ae86",
+          "gt_index": 1,
+          "new_state": "TRUE_DETECTOR_MISS"
+        },
+        {
+          "sample_id": "oiv7-7e19197da3818c53",
+          "gt_index": 5,
+          "new_state": "LOW_CONFIDENCE_PERSON"
+        },
+        {
+          "sample_id": "oiv7-ec737163fc7941cb",
+          "gt_index": 1,
+          "new_state": "LOW_CONFIDENCE_PERSON"
+        },
+        {
+          "sample_id": "oiv7-e73a7d4187158151",
+          "gt_index": 4,
+          "new_state": "LOW_CONFIDENCE_PERSON"
+        },
+        {
+          "sample_id": "oiv7-a5b2ac4f2041db39",
+          "gt_index": 0,
+          "new_state": "LOW_CONFIDENCE_PERSON"
+        },
+        {
+          "sample_id": "oiv7-d46c7361fb1eed0f",
+          "gt_index": 0,
+          "new_state": "LOW_CONFIDENCE_PERSON"
+        },
+        {
+          "sample_id": "oiv7-a52d7879d01b7465",
+          "gt_index": 4,
+          "new_state": "LOW_CONFIDENCE_PERSON"
+        },
+        {
+          "sample_id": "oiv7-3eecc3ae67fdeec0",
+          "gt_index": 0,
+          "new_state": "LOW_CONFIDENCE_PERSON"
+        },
+        {
+          "sample_id": "oiv7-90bf07553eef753f",
+          "gt_index": 0,
+          "new_state": "LOW_CONFIDENCE_PERSON"
+        },
+        {
+          "sample_id": "oiv7-c620d8d3c2e67be9",
+          "gt_index": 0,
+          "new_state": "LOW_CONFIDENCE_PERSON"
+        },
+        {
+          "sample_id": "oiv7-87df0c78b0443f76",
+          "gt_index": 1,
+          "new_state": "LOW_CONFIDENCE_PERSON"
+        },
+        {
+          "sample_id": "oiv7-ef1c7e16c5ab4a44",
+          "gt_index": 0,
+          "new_state": "LOW_CONFIDENCE_PERSON"
+        },
+        {
+          "sample_id": "oiv7-a7fff35b5cbb0fb0",
+          "gt_index": 0,
+          "new_state": "TRUE_DETECTOR_MISS"
+        },
+        {
+          "sample_id": "oiv7-86cf240adb1303b2",
+          "gt_index": 2,
+          "new_state": "LOW_CONFIDENCE_PERSON"
+        },
+        {
+          "sample_id": "oiv7-ce114649741dcc26",
+          "gt_index": 0,
+          "new_state": "LOW_CONFIDENCE_PERSON"
+        },
+        {
+          "sample_id": "oiv7-ec737163fc7941cb",
+          "gt_index": 0,
+          "new_state": "TRUE_DETECTOR_MISS"
+        },
+        {
+          "sample_id": "oiv7-e73a7d4187158151",
+          "gt_index": 3,
+          "new_state": "LOW_CONFIDENCE_PERSON"
+        },
+        {
+          "sample_id": "oiv7-1e73dd071c85fe3d",
+          "gt_index": 0,
+          "new_state": "LOW_CONFIDENCE_PERSON"
+        },
+        {
+          "sample_id": "oiv7-9bb741c2739076ed",
+          "gt_index": 0,
+          "new_state": "LOW_CONFIDENCE_PERSON"
+        },
+        {
+          "sample_id": "oiv7-b5cfa1114ce0d3b3",
+          "gt_index": 0,
+          "new_state": "LOW_CONFIDENCE_PERSON"
+        }
+      ]
+    }
+  },
+  "C_yolo11m_coco_newer_arch": {
+    "transitions_by_baseline_bucket": {
+      "TRUE_DETECTOR_MISS": {
+        "n": 92,
+        "to_TP": 17,
+        "new_bucket_counts": {
+          "TRUE_DETECTOR_MISS": 45,
+          "TP": 17,
+          "LOW_CONFIDENCE_PERSON": 22,
+          "LOCALIZATION_FAILURE": 8
+        }
+      },
+      "LOW_CONFIDENCE_PERSON": {
+        "n": 82,
+        "to_TP": 64,
+        "new_bucket_counts": {
+          "TP": 64,
+          "TRUE_DETECTOR_MISS": 2,
+          "LOW_CONFIDENCE_PERSON": 12,
+          "LOCALIZATION_FAILURE": 4
+        }
+      },
+      "SEMANTIC_CLASS_CONFUSION": {
+        "n": 13,
+        "to_TP": 12,
+        "new_bucket_counts": {
+          "TP": 12,
+          "LOW_CONFIDENCE_PERSON": 1
+        }
+      },
+      "LOCALIZATION_FAILURE": {
+        "n": 52,
+        "to_TP": 20,
+        "new_bucket_counts": {
+          "TP": 20,
+          "LOCALIZATION_FAILURE": 13,
+          "TRUE_DETECTOR_MISS": 7,
+          "LOW_CONFIDENCE_PERSON": 12
+        }
+      }
+    },
+    "size_transitions": {
+      "small": {
+        "TRUE_DETECTOR_MISS": {
+          "n": 68,
+          "to_TP": 14
+        },
+        "LOW_CONFIDENCE_PERSON": {
+          "n": 49,
+          "to_TP": 39
+        },
+        "SEMANTIC_CLASS_CONFUSION": {
+          "n": 3,
+          "to_TP": 3
+        },
+        "LOCALIZATION_FAILURE": {
+          "n": 33,
+          "to_TP": 16
+        }
+      },
+      "non_small": {
+        "TRUE_DETECTOR_MISS": {
+          "n": 24,
+          "to_TP": 3
+        },
+        "LOW_CONFIDENCE_PERSON": {
+          "n": 33,
+          "to_TP": 25
+        },
+        "SEMANTIC_CLASS_CONFUSION": {
+          "n": 10,
+          "to_TP": 9
+        },
+        "LOCALIZATION_FAILURE": {
+          "n": 19,
+          "to_TP": 4
+        }
+      }
+    },
+    "true_miss_detail": {
+      "gained_any_person_candidate": 83,
+      "gained_tp": 17,
+      "gained_other_human_class": 0,
+      "remains_complete_miss": 9
+    },
+    "baseline_tp_regressions": {
+      "n_baseline_tp": 64,
+      "remained_tp": 59,
+      "regressed": 5,
+      "regression_detail": [
+        {
+          "sample_id": "oiv7-a5cd3858e29bafe3",
+          "gt_index": 1,
+          "new_state": "LOW_CONFIDENCE_PERSON"
+        },
+        {
+          "sample_id": "oiv7-591eff0709a14d1c",
+          "gt_index": 1,
+          "new_state": "LOW_CONFIDENCE_PERSON"
+        },
+        {
+          "sample_id": "oiv7-a52d7879d01b7465",
+          "gt_index": 4,
+          "new_state": "LOW_CONFIDENCE_PERSON"
+        },
+        {
+          "sample_id": "oiv7-9bb741c2739076ed",
+          "gt_index": 0,
+          "new_state": "LOW_CONFIDENCE_PERSON"
+        },
+        {
+          "sample_id": "oiv7-b5cfa1114ce0d3b3",
+          "gt_index": 0,
+          "new_state": "LOW_CONFIDENCE_PERSON"
+        }
+      ]
+    }
+  },
+  "D_yolov8l_oiv7_diagnostic_upper_bound": {
+    "transitions_by_baseline_bucket": {
+      "TRUE_DETECTOR_MISS": {
+        "n": 92,
+        "to_TP": 1,
+        "new_bucket_counts": {
+          "TRUE_DETECTOR_MISS": 79,
+          "TP": 1,
+          "LOW_CONFIDENCE_PERSON": 12
+        }
+      },
+      "LOW_CONFIDENCE_PERSON": {
+        "n": 82,
+        "to_TP": 11,
+        "new_bucket_counts": {
+          "LOW_CONFIDENCE_PERSON": 59,
+          "TP": 11,
+          "TRUE_DETECTOR_MISS": 11,
+          "LOCALIZATION_FAILURE": 1
+        }
+      },
+      "SEMANTIC_CLASS_CONFUSION": {
+        "n": 13,
+        "to_TP": 0,
+        "new_bucket_counts": {
+          "TRUE_DETECTOR_MISS": 9,
+          "LOW_CONFIDENCE_PERSON": 4
+        }
+      },
+      "LOCALIZATION_FAILURE": {
+        "n": 52,
+        "to_TP": 1,
+        "new_bucket_counts": {
+          "TRUE_DETECTOR_MISS": 28,
+          "LOCALIZATION_FAILURE": 7,
+          "LOW_CONFIDENCE_PERSON": 16,
+          "TP": 1
+        }
+      }
+    },
+    "size_transitions": {
+      "small": {
+        "TRUE_DETECTOR_MISS": {
+          "n": 68,
+          "to_TP": 0
+        },
+        "LOW_CONFIDENCE_PERSON": {
+          "n": 49,
+          "to_TP": 2
+        },
+        "SEMANTIC_CLASS_CONFUSION": {
+          "n": 3,
+          "to_TP": 0
+        },
+        "LOCALIZATION_FAILURE": {
+          "n": 33,
+          "to_TP": 0
+        }
+      },
+      "non_small": {
+        "TRUE_DETECTOR_MISS": {
+          "n": 24,
+          "to_TP": 1
+        },
+        "LOW_CONFIDENCE_PERSON": {
+          "n": 33,
+          "to_TP": 9
+        },
+        "SEMANTIC_CLASS_CONFUSION": {
+          "n": 10,
+          "to_TP": 0
+        },
+        "LOCALIZATION_FAILURE": {
+          "n": 19,
+          "to_TP": 1
+        }
+      }
+    },
+    "true_miss_detail": {
+      "gained_any_person_candidate": 71,
+      "gained_tp": 1,
+      "gained_other_human_class": 0,
+      "remains_complete_miss": 21
+    },
+    "baseline_tp_regressions": {
+      "n_baseline_tp": 64,
+      "remained_tp": 57,
+      "regressed": 7,
+      "regression_detail": [
+        {
+          "sample_id": "oiv7-c864c741b7fa44f4",
+          "gt_index": 0,
+          "new_state": "LOW_CONFIDENCE_PERSON"
+        },
+        {
+          "sample_id": "oiv7-0f48108b3973c7ec",
+          "gt_index": 1,
+          "new_state": "LOW_CONFIDENCE_PERSON"
+        },
+        {
+          "sample_id": "oiv7-591eff0709a14d1c",
+          "gt_index": 1,
+          "new_state": "TRUE_DETECTOR_MISS"
+        },
+        {
+          "sample_id": "oiv7-90bf07553eef753f",
+          "gt_index": 0,
+          "new_state": "LOW_CONFIDENCE_PERSON"
+        },
+        {
+          "sample_id": "oiv7-c620d8d3c2e67be9",
+          "gt_index": 0,
+          "new_state": "LOW_CONFIDENCE_PERSON"
+        },
+        {
+          "sample_id": "oiv7-ce114649741dcc26",
+          "gt_index": 0,
+          "new_state": "LOW_CONFIDENCE_PERSON"
+        },
+        {
+          "sample_id": "oiv7-b5cfa1114ce0d3b3",
+          "gt_index": 0,
+          "new_state": "LOW_CONFIDENCE_PERSON"
+        }
+      ]
+    }
+  }
+}

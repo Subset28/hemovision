@@ -1,0 +1,274 @@
+{
+  "per_candidate_verdicts": {
+    "A_yolov8m_oiv7_baseline": {
+      "verdict": "INCONCLUSIVE",
+      "reasons": [
+        "primary metric 'person.recall' delta (+0.0000) is below the minimum meaningful delta (0.03)"
+      ],
+      "guardrail_results": [
+        {
+          "metric": "hazard.precision",
+          "value": 0.8070175438596491,
+          "threshold": 0.757017543859649,
+          "comparator": "gte",
+          "satisfied": true,
+          "margin": 0.050000000000000044
+        },
+        {
+          "metric": "hazard.recall",
+          "value": 0.4804177545691906,
+          "threshold": 0.4604177545691906,
+          "comparator": "gte",
+          "satisfied": true,
+          "margin": 0.020000000000000018
+        },
+        {
+          "metric": "latency.p95_ms",
+          "value": 69.72740000128397,
+          "threshold": 85.68869999999151,
+          "comparator": "lte",
+          "satisfied": true,
+          "margin": 15.961299998707545
+        }
+      ],
+      "candidate_metrics": {
+        "hazard": {
+          "precision": 0.8070175438596491,
+          "recall": 0.4804177545691906
+        },
+        "person": {
+          "precision": 0.6666666666666666,
+          "recall": 0.21122112211221122,
+          "num_gt": 303
+        },
+        "latency": {
+          "p95_ms": 69.72740000128397
+        }
+      },
+      "precision_matched_person_recall": {
+        "threshold": 0.4,
+        "recall": 0.21122112211221122,
+        "precision_at_threshold": 0.6666666666666666,
+        "reached": true,
+        "target_precision": 0.6666666666666666,
+        "definition": "Person recall at the lowest swept confidence threshold whose Person precision >= the baseline's official (conf=0.4) Person precision."
+      },
+      "guardrail_matched_person_recall": {
+        "threshold": 0.35,
+        "recall": 0.24422442244224424,
+        "precision_at_threshold": 0.7725409836065574,
+        "reached": true,
+        "target_precision": 0.757,
+        "definition": "Person recall at the lowest swept confidence threshold whose common-class hazard precision >= the hazard-precision guardrail floor (baseline-0.05)."
+      }
+    },
+    "B_yolov8n_oiv7_smaller": {
+      "verdict": "FAILED",
+      "reasons": [
+        "guardrail 'hazard.recall' violated: 0.3238 does not satisfy gte 0.4604 (hazard recall must not drop more than 0.02 below baseline)",
+        "major class regression: hazard.recall dropped 0.157 (0.480 -> 0.324), exceeds allowed 0.100"
+      ],
+      "guardrail_results": [
+        {
+          "metric": "hazard.precision",
+          "value": 0.7823343848580442,
+          "threshold": 0.757017543859649,
+          "comparator": "gte",
+          "satisfied": true,
+          "margin": 0.02531684099839515
+        },
+        {
+          "metric": "hazard.recall",
+          "value": 0.3237597911227154,
+          "threshold": 0.4604177545691906,
+          "comparator": "gte",
+          "satisfied": false,
+          "margin": 0.13665796344647518
+        },
+        {
+          "metric": "latency.p95_ms",
+          "value": 54.46970000048168,
+          "threshold": 85.68869999999151,
+          "comparator": "lte",
+          "satisfied": true,
+          "margin": 31.218999999509833
+        }
+      ],
+      "candidate_metrics": {
+        "hazard": {
+          "precision": 0.7823343848580442,
+          "recall": 0.3237597911227154
+        },
+        "person": {
+          "precision": 0.6923076923076923,
+          "recall": 0.1188118811881188,
+          "num_gt": 303
+        },
+        "latency": {
+          "p95_ms": 54.46970000048168
+        }
+      },
+      "precision_matched_person_recall": {
+        "threshold": 0.35,
+        "recall": 0.1551155115511551,
+        "precision_at_threshold": 0.6811594202898551,
+        "reached": true,
+        "target_precision": 0.6666666666666666,
+        "definition": "Person recall at the lowest swept confidence threshold whose Person precision >= the baseline's official (conf=0.4) Person precision."
+      },
+      "guardrail_matched_person_recall": {
+        "threshold": 0.35,
+        "recall": 0.1551155115511551,
+        "precision_at_threshold": 0.7700831024930748,
+        "reached": true,
+        "target_precision": 0.757,
+        "definition": "Person recall at the lowest swept confidence threshold whose common-class hazard precision >= the hazard-precision guardrail floor (baseline-0.05)."
+      }
+    },
+    "C_yolo11m_coco_newer_arch": {
+      "verdict": "FAILED",
+      "reasons": [
+        "guardrail 'hazard.precision' violated: 0.4540 does not satisfy gte 0.7570 (hazard precision must not drop more than 0.05 below baseline)"
+      ],
+      "guardrail_results": [
+        {
+          "metric": "hazard.precision",
+          "value": 0.454049135577798,
+          "threshold": 0.757017543859649,
+          "comparator": "gte",
+          "satisfied": false,
+          "margin": 0.302968408281851
+        },
+        {
+          "metric": "hazard.recall",
+          "value": 0.6920943134535368,
+          "threshold": 0.4604177545691906,
+          "comparator": "gte",
+          "satisfied": true,
+          "margin": 0.23167655888434618
+        },
+        {
+          "metric": "latency.p95_ms",
+          "value": 61.14719999823137,
+          "threshold": 85.68869999999151,
+          "comparator": "lte",
+          "satisfied": true,
+          "margin": 24.54150000176014
+        }
+      ],
+      "candidate_metrics": {
+        "hazard": {
+          "precision": 0.454049135577798,
+          "recall": 0.6920943134535368
+        },
+        "person": {
+          "precision": 0.293015332197615,
+          "recall": 0.5676567656765676,
+          "num_gt": 303
+        },
+        "latency": {
+          "p95_ms": 61.14719999823137
+        }
+      },
+      "precision_matched_person_recall": {
+        "threshold": 0.95,
+        "recall": 0.006600660066006601,
+        "precision_at_threshold": 1.0,
+        "reached": true,
+        "target_precision": 0.6666666666666666,
+        "definition": "Person recall at the lowest swept confidence threshold whose Person precision >= the baseline's official (conf=0.4) Person precision."
+      },
+      "guardrail_matched_person_recall": {
+        "threshold": 0.9,
+        "recall": 0.12211221122112212,
+        "precision_at_threshold": 0.8,
+        "reached": true,
+        "target_precision": 0.757,
+        "definition": "Person recall at the lowest swept confidence threshold whose common-class hazard precision >= the hazard-precision guardrail floor (baseline-0.05)."
+      }
+    },
+    "D_yolov8l_oiv7_diagnostic_upper_bound": {
+      "verdict": "INCONCLUSIVE",
+      "reasons": [
+        "primary metric 'person.recall' delta (+0.0198) is below the minimum meaningful delta (0.03)"
+      ],
+      "guardrail_results": [
+        {
+          "metric": "hazard.precision",
+          "value": 0.7971311475409836,
+          "threshold": 0.757017543859649,
+          "comparator": "gte",
+          "satisfied": true,
+          "margin": 0.04011360368133454
+        },
+        {
+          "metric": "hazard.recall",
+          "value": 0.5078328981723238,
+          "threshold": 0.4604177545691906,
+          "comparator": "gte",
+          "satisfied": true,
+          "margin": 0.0474151436031332
+        },
+        {
+          "metric": "latency.p95_ms",
+          "value": 48.690999999962514,
+          "threshold": 85.68869999999151,
+          "comparator": "lte",
+          "satisfied": true,
+          "margin": 36.997700000029
+        }
+      ],
+      "candidate_metrics": {
+        "hazard": {
+          "precision": 0.7971311475409836,
+          "recall": 0.5078328981723238
+        },
+        "person": {
+          "precision": 0.6542056074766355,
+          "recall": 0.23102310231023102,
+          "num_gt": 303
+        },
+        "latency": {
+          "p95_ms": 48.690999999962514
+        }
+      },
+      "precision_matched_person_recall": {
+        "threshold": 0.45,
+        "recall": 0.21122112211221122,
+        "precision_at_threshold": 0.7272727272727273,
+        "reached": true,
+        "target_precision": 0.6666666666666666,
+        "definition": "Person recall at the lowest swept confidence threshold whose Person precision >= the baseline's official (conf=0.4) Person precision."
+      },
+      "guardrail_matched_person_recall": {
+        "threshold": 0.35,
+        "recall": 0.264026402640264,
+        "precision_at_threshold": 0.765625,
+        "reached": true,
+        "target_precision": 0.757,
+        "definition": "Person recall at the lowest swept confidence threshold whose common-class hazard precision >= the hazard-precision guardrail floor (baseline-0.05)."
+      }
+    }
+  },
+  "representative_candidate": "D_yolov8l_oiv7_diagnostic_upper_bound",
+  "true_miss_recovery_by_candidate": {
+    "B_yolov8n_oiv7_smaller": {
+      "gained_any_person_candidate": 50,
+      "gained_tp": 0,
+      "gained_other_human_class": 0,
+      "remains_complete_miss": 42
+    },
+    "C_yolo11m_coco_newer_arch": {
+      "gained_any_person_candidate": 83,
+      "gained_tp": 17,
+      "gained_other_human_class": 0,
+      "remains_complete_miss": 9
+    },
+    "D_yolov8l_oiv7_diagnostic_upper_bound": {
+      "gained_any_person_candidate": 71,
+      "gained_tp": 1,
+      "gained_other_human_class": 0,
+      "remains_complete_miss": 21
+    }
+  }
+}
