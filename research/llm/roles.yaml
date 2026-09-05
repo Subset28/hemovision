@@ -60,13 +60,31 @@
 # this one-attempt-per-step retry. The dry-run pipeline's `_call_llm` (see
 # research/dry_run/pipeline.py) resolves only `preferred_model`, never
 # iterates `fallback_models`, for exactly this reason.
+# Phase H FINAL controlled retry (DRYRUN-0005, user-authorized, 3-call cap,
+# --structured-output): pinned to `liquid/lfm-2.5-2.6b:free` for BOTH
+# researcher and reviewer (revision reuses the researcher role) per the
+# user's explicit instruction ("the same model for multiple logical roles
+# is acceptable for Phase H"). Re-verified live via the public,
+# unauthenticated /api/v1/models catalog GET immediately before this run
+# (not counted against the 3-call budget): free (pricing 0/0) AND
+# advertises both `response_format` and `structured_outputs` in
+# supported_parameters -- the only one of the three models attempted in
+# Phase H so far that actually supports the native structured-output
+# mechanism now being used (research/llm/model_catalog.py's
+# supports_structured_output() gate). max_tokens raised 1024->2048: this
+# model's supported_parameters also lists `reasoning`/`include_reasoning`
+# (it may emit chain-of-thought tokens that count against max_tokens),
+# and DRYRUN-0002's prior "empty completion" against this exact model is
+# a plausible reasoning-token-exhaustion case per the OpenRouter audit
+# report's section 1 findings -- this is a narrow, safe budget increase,
+# not a change to any validation/safety/authorization logic.
 researcher:
-  preferred_model: poolside/laguna-s-2.1:free  # 2 of 3 authorized calls spent (liquid/lfm-2.5-2.6b:free: empty completion; nvidia/nemotron-3.5-lightning:free: empty/non-JSON response); final call uses the one model already proven end-to-end (Phase G's smoke test)
+  preferred_model: liquid/lfm-2.5-2.6b:free
   fallback_models:
     - poolside/laguna-s-2.1:free
     - meta-llama/llama-3.1-8b-instruct:free
     - anthropic/claude-3.5-sonnet
-  max_tokens: 1024
+  max_tokens: 2048
   timeout: 60
   call_budget_category: research
 
@@ -80,15 +98,13 @@ experiment_designer:
   call_budget_category: design
 
 reviewer:
-  # Updated for the same reason as `researcher` above (DRYRUN-0002 retry) —
-  # same model reused for a different logical role, per instruction #4
-  # ("the same valid model may temporarily serve multiple roles").
-  preferred_model: poolside/laguna-s-2.1:free  # 2 of 3 authorized calls spent (liquid/lfm-2.5-2.6b:free: empty completion; nvidia/nemotron-3.5-lightning:free: empty/non-JSON response); final call uses the one model already proven end-to-end (Phase G's smoke test)
+  # Same reasoning as `researcher` above (Phase H FINAL controlled retry).
+  preferred_model: liquid/lfm-2.5-2.6b:free
   fallback_models:
     - poolside/laguna-s-2.1:free
     - meta-llama/llama-3.1-8b-instruct:free
     - openai/gpt-4o-mini
-  max_tokens: 768
+  max_tokens: 1536
   timeout: 45
   call_budget_category: review
 
