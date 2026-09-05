@@ -1,0 +1,173 @@
+{
+  "actually_queued": false,
+  "artifact_type": "DRY_RUN_REVISION_ONLY",
+  "call_records": [
+    {
+      "actual_model_returned": "nvidia/nemotron-3-super-120b-a12b:free",
+      "choices_present": true,
+      "content_length": 8475,
+      "content_present": true,
+      "dryrun_id": "DRYRUN-0007",
+      "envelope_parsed": true,
+      "error": null,
+      "failure_category": null,
+      "finish_reason": "stop",
+      "http_status": 200,
+      "latency_ms": 15906.000000000859,
+      "local_schema_validation_result": {
+        "error_count": 0,
+        "is_valid": true
+      },
+      "message_present": true,
+      "model_used": "nvidia/nemotron-3-super-120b-a12b:free",
+      "network_attempted": true,
+      "provider_error_code": null,
+      "provider_error_message": null,
+      "reasoning_configuration": "DISABLED",
+      "request_id": "gen-1788635456-PfIPZ73AdprnuYKYYmPx",
+      "requested_model": "nvidia/nemotron-3-super-120b-a12b:free",
+      "role": "researcher",
+      "selected_model": "nvidia/nemotron-3-super-120b-a12b:free",
+      "step": "revision_only",
+      "structured_output_capability_state": true,
+      "structured_parse_result": null,
+      "succeeded": true,
+      "timestamp": "2026-09-05T19:10:55.461126+00:00",
+      "token_usage": {
+        "cached_tokens": 0,
+        "completion_tokens": 2242,
+        "prompt_tokens": 8182,
+        "reasoning_tokens": 0,
+        "total_tokens": 10424
+      }
+    }
+  ],
+  "calls_budget": 1,
+  "calls_made": 1,
+  "dryrun_id": "DRYRUN-0007",
+  "final_validation": {
+    "errors": [],
+    "is_valid": true,
+    "needs_human_review": [
+      {
+        "code": "REPRODUCIBILITY_QUALITY",
+        "level": "NEEDS_HUMAN_REVIEW",
+        "message": "reproducibility_requirements is empty \u2014 cannot mechanically judge reproducibility; human review required."
+      },
+      {
+        "code": "SCIENTIFIC_MERIT",
+        "level": "NEEDS_HUMAN_REVIEW",
+        "message": "Whether this hypothesis is scientifically interesting/worth the resource spend is not mechanically checkable by this validator \u2014 always requires human review regardless of whether every other check passes."
+      }
+    ],
+    "warnings": []
+  },
+  "generated_at": "2026-09-05T19:11:11.377035+00:00",
+  "queue_eligible_in_principle": true,
+  "redundancy_conflicts": [],
+  "reviewer_critique_reconciled_against": {
+    "confounding_notes": "The primary confound is whether Ultralytics' yolov8m-oiv7.pt baseline was already initialized from COCO weights (undocumented per verified context). If so, the experimental condition may not differ meaningfully from the baseline, weakening interpretability. However, since this is unknown, the test remains valid for determining whether COCO initialization improves outcomes relative to whatever initialization the baseline used. Other confounds (e.g., random seed) are mitigated by matched training duration and identical fine-tuning procedure.",
+    "dataset_can_answer_question": true,
+    "feasibility_notes": "The proposal is feasible within the family's scope: it requires only changing the model checkpoint, using standard YOLOv8 training commands, and running inference on the existing benchmark set. No new data collection, code changes, or hardware (Mac/iPhone) is needed. Compute requirements are modest and align with prior experiments.",
+    "leakage_risk_notes": "There is a potential leakage risk: the OmniSight evaluation benchmark is drawn from OIV7's validation split. If Ultralytics' original training of yolov8m-oiv7.pt included this split (unknown per verified context), then fine-tuning on OIV7 (including the validation split) could lead to overfitting and inflated recall, compromising validity. The proposal does not specify whether the OIV7 fine-tuning dataset excludes the validation split used for evaluation. This must be clarified to ensure isolation.",
+    "novelty_assessment": "The proposal is novel relative to EXP-0001 through EXP-0005. Those experiments tested confidence thresholding, inference-time resolution, semantic aliasing, preprocessing transforms, and model-size scaling within the same OIV7-only training paradigm. This proposal changes the pretraining data source (COCO) before fine-tuning on OIV7, isolating representation quality as a variable while holding architecture, fine-tuning dataset, and inference settings constant. It does not repeat any previously tested independent variable.",
+    "privacy_safety_ok": true,
+    "recommends_revision": true,
+    "revision_notes": "Clarify whether the Open Images V7 fine-tuning dataset excludes the validation split used for OmniSight's evaluation benchmark (data/manifests/eval_manifest.jsonl). If not, the evaluation risks contamination and inflated performance. Specify that the fine-tuning dataset must be strictly disjoint from the evaluation set to ensure valid generalization measurement.",
+    "sample_size_adequate": true,
+    "scientific_validity_assessment": "The hypothesis is scientifically valid: it posits that COCO pretraining provides richer person-feature representations that may transfer to improved person recall on OIV7 without degrading hazard precision, contingent on fine-tuning preserving OIV7 calibration. The mechanism addresses a plausible limitation \u2014 suboptimal initialization for person-like structures \u2014 and is grounded in transfer learning principles. The proposal avoids confounds by fixing architecture, optimizer, epochs, augmentations, and evaluation protocol, making it a clean test of the pretraining source.",
+    "success_criteria_deterministic": true,
+    "summary": "The proposal introduces a novel and scientifically sound approach to improving person recall by investigating COCO pretraining's effect on representation learning, isolated from architecture and inference-time changes. It targets a verified failure mode (low person recall) and uses deterministic success criteria. However, the evaluation's validity hinges on dataset isolation, which must be confirmed to avoid leakage. With this clarification, the experiment is worth running to resolve an open question about transfer learning's role in accessibility-relevant hazard detection.",
+    "targets_verified_failure_mode": true,
+    "worth_running": true
+  },
+  "revised_proposal": {
+    "acknowledges_rejected_hypothesis_ids": [],
+    "allowed_path_scope": [],
+    "baseline_comparison": "The control condition (ImageNet-initialized) serves as the baseline for comparison. The shipped production checkpoint (yolov8m-oiv7.pt) is not used as a causal control due to UNKNOWN provenance (see constraints). Instead, both experimental and control conditions are newly trained to ensure isolation of the independent variable.",
+    "baseline_metrics": {},
+    "baseline_run_id": "RUN-20260904-002",
+    "compute_resource_estimate": {},
+    "control_condition": "YOLOv8m initialized from ImageNet-pretrained weights (public Ultralytics yolov8m.pt), fine-tuned on Open Images V7 hazard dataset using standardized training config.",
+    "controlled_variables": {
+      "architecture": "YOLOv8m",
+      "augmentations": "standard YOLOv8 augmentation (mosaic, mixup, hsv, flip, scale, translate)",
+      "batch_size": 16,
+      "confidence_threshold": 0.4,
+      "dataset_version": "Open Images V7 validation split for evaluation; training uses a disjoint training split (see procedure)",
+      "epochs": "300 (matched to typical YOLOv8 training schedule)",
+      "eval_manifest": "data/manifests/eval_manifest.jsonl (fixed 380-image benchmark)",
+      "fine_tuning_dataset": "Open Images V7 (hazard classes: person, car, truck, bus, bicycle, motorcycle, stairs, dog)",
+      "image_size": 640,
+      "iou_threshold": 0.7,
+      "loss_function": "YOLOv8 detection loss (bbox, cls, dfl)",
+      "lr_schedule": "cosine decay with warmup (Ultralytics YOLOv8 default)",
+      "optimizer": "SGD with momentum 0.937",
+      "output_artifact_naming": "exp_{init_provenance}_seed{seed}_last.pt",
+      "random_seeds": [
+        42,
+        123,
+        456
+      ],
+      "train_manifest": "to be constructed from OIV7 training split, excluding eval_manifest.jsonl IDs via deterministic hash-based split",
+      "training_framework": "Ultralytics YOLOv8 (version to be specified in reproducibility artifact)"
+    },
+    "coreml_model_replacement_approved": false,
+    "data_privacy_classification": "NONE",
+    "dataset_version": "",
+    "dependent_variables": [
+      "person.recall",
+      "hazard.precision",
+      "person.precision",
+      "true_detector_miss_count"
+    ],
+    "evidence_references": [
+      "MEM-0003",
+      "MEM-0004",
+      "MEM-0015",
+      "MEM-0021"
+    ],
+    "expected_artifacts": [],
+    "experiment_id": "EXP-9007",
+    "external_api_required": false,
+    "external_upload_approved": false,
+    "family": "training_data",
+    "hypothesis": "A YOLOv8m model initialized with COCO-pretrained weights and fine-tuned on Open Images V7 will achieve lower TRUE_DETECTOR_MISS counts (higher Person recall) than a YOLOv8m model initialized with ImageNet-pretrained weights and fine-tuned on OIV7, due to superior initial person-feature representations from COCO's rich person annotations, while maintaining hazard precision above the guardrail floor of 0.757, because COCO provides broader person-context generalization that transfers to accessibility-relevant depictions without overfitting to OIV7-specific artifacts.",
+    "implementation_scope": "",
+    "inconclusive_if": "person.recall increases by \u22650.03 but hazard.precision cannot be stably measured due to high variance across seeds, OR if true_detector_miss_count reduction is offset by increases in other FN buckets (e.g., localization failure), preventing clear attribution.",
+    "independent_variables": [
+      "initialization_checkpoint_provenance"
+    ],
+    "isolation_requirements": "",
+    "mac_iphone_deployment_approved": false,
+    "mac_iphone_required": false,
+    "materially_new_rationale": "Unlike EXP-0005, which varied model size but kept initialization and training data (OIV7-only) constant and found negligible gains (+0.0198), this proposal varies initialization provenance (COCO vs. ImageNet) while keeping architecture, fine-tuning dataset, and training procedure identical. It avoids the confound of the baseline checkpoint's UNKNOWN provenance by not using it as a causal control. Unlike EXP-0001-0004, it does not rely on inference-time or post-processing changes. It differs from the architecture-only switch in MEM-0015 (YOLO11m) by holding architecture constant and isolating pretraining as the variable, thus testing whether representation quality\u2014not just architecture or dataset\u2014drives recall gains. The train/eval isolation procedure addresses the leakage risk noted in the review by guaranteeing disjoint sets via deterministic manifest construction.",
+    "model_config_ref": "",
+    "motivation": "Baseline Person recall is 0.211 (MEM-0003), with 92/239 Person FNs being TRUE_DETECTOR_MISS (MEM-0015). Prior attempts to improve recall via thresholding (EXP-0001), resolution (EXP-0002), semantic aliasing (EXP-0003), preprocessing (EXP-0004), and model scaling (EXP-0005) either failed or yielded negligible gains (<0.02). MEM-0015 shows that architecture changes (e.g., YOLO11m) can recover TRUE_DETECTOR_MISS cases but are confounded by training data differences (COCO vs. OIV7). This proposal isolates pretraining as the independent variable by using identical architecture, fine-tuning procedure, and dataset, but varying only the initialization checkpoint's provenance (COCO vs. ImageNet), thus testing whether representation quality from a strong person-labeled dataset improves downstream hazard detection for missed detections.",
+    "new_training_approved": false,
+    "prior_experiment_ids": [
+      "EXP-0001",
+      "EXP-0002",
+      "EXP-0003",
+      "EXP-0004",
+      "EXP-0005"
+    ],
+    "private_user_data_use_approved": false,
+    "procedure": "1. Download Open Images V7 and construct a deterministic train/eval split: use the existing eval_manifest.jsonl (380 images) as the fixed evaluation set; derive the training set from the OIV7 training split by excluding any image IDs present in eval_manifest.jsonl via SHA256 hash matching to ensure zero overlap. 2. Download COCO-pretrained yolov8m.pt and ImageNet-pretrained yolov8m.pt weights (or train backbones from scratch on respective datasets if needed, freezing early layers to match Ultralytics' practice). 3. For each initialization (COCO, ImageNet) and each seed in [42, 123, 456]: fine-tune on the constructed OIV7 training set using identical Ultralytics YOLOv8 training settings (epochs=300, batch=16, LR0=0.01, etc.). 4. Export the best model (by val loss) for each run. 5. Run inference on the fixed eval_manifest.jsonl at conf=0.4, iou=0.7, imgsz=640. 6. Compute person.recall, hazard.precision, person.precision, and true_detector_miss_count (by matching predictions to GT and counting GTs with zero detections above threshold). 7. Report mean and std across seeds; require consistent direction of effect.",
+    "production_impact": false,
+    "production_impact_description": "This proposal involves changing only the model checkpoint used during benchmark evaluation. It does not modify any production code (ios/, benchmark/config.py) or introduce runtime changes. Any deployment would require separate human review and integration into the production model replacement process, which is outside the scope of this dry-run proposal.",
+    "production_swift_modification_approved": false,
+    "rejects_hypothesis_if": "person.recall increases by <0.03 OR hazard.precision falls below 0.757, even if recall improves OR true_detector_miss_count does not decrease by a meaningful margin (\u226510 cases).",
+    "reproducibility_requirements": "",
+    "research_question": "Does fine-tuning a YOLOv8m model initialized from COCO-pretrained weights on Open Images V7 hazard classes reduce TRUE_DETECTOR_MISS Person cases compared to fine-tuning from ImageNet-pretrained weights, when both models are trained identically on OIV7 and evaluated at conf=0.4, iou=0.7, imgsz=640?",
+    "schema_version": "1.0",
+    "signing_distribution_change_approved": false,
+    "success_criteria": {
+      "min_meaningful_delta": 0.03,
+      "primary_metric": "person.recall"
+    },
+    "supports_hypothesis_if": "person.recall increases by \u22650.03 (e.g., from 0.211 to \u22650.241) AND hazard.precision remains \u22650.757 (guardrail floor from MEM-0004) AND true_detector_miss_count decreases significantly (e.g., by \u226510 absolute cases out of 92) relative to control.",
+    "title": "Isolating the Effect of COCO Pretraining on Person Representation Learning for TRUE_DETECTOR_MISS Reduction in YOLOv8m via Controlled Initialization"
+  },
+  "stopped_reason": ""
+}
