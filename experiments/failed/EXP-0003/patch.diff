@@ -1,0 +1,132 @@
+diff --git a/experiments/queued/EXP-0003/analysis.md b/experiments/queued/EXP-0003/analysis.md
+deleted file mode 100644
+index 934cde3..0000000
+--- a/experiments/queued/EXP-0003/analysis.md
++++ /dev/null
+@@ -1,3 +0,0 @@
+-# EXP-0003 â€” Analysis
+-
+-(not yet run)
+diff --git a/experiments/queued/EXP-0003/benchmark.log b/experiments/queued/EXP-0003/benchmark.log
+deleted file mode 100644
+index e69de29..0000000
+diff --git a/experiments/queued/EXP-0003/conclusion.md b/experiments/queued/EXP-0003/conclusion.md
+deleted file mode 100644
+index 8bca9e1..0000000
+--- a/experiments/queued/EXP-0003/conclusion.md
++++ /dev/null
+@@ -1,3 +0,0 @@
+-# EXP-0003 â€” Conclusion
+-
+-(not yet run)
+diff --git a/experiments/queued/EXP-0003/config.yaml b/experiments/queued/EXP-0003/config.yaml
+deleted file mode 100644
+index d05271d..0000000
+--- a/experiments/queued/EXP-0003/config.yaml
++++ /dev/null
+@@ -1,18 +0,0 @@
+-experiment_id: EXP-0003
+-experiment_family: class_confusion
+-independent_variable: scoring-time class grouping map (measurement only, not a production
+-  change)
+-controls:
+-  model: yolov8m-oiv7.pt (same weights, same predictions)
+-  conf_threshold: 0.4
+-  iou_threshold: 0.7
+-  manifest: data/manifests/eval_manifest.jsonl (unchanged)
+-configuration: {}
+-baseline_run_id: RUN-20260904-002
+-validation_requirement: OFFLINE_SIMULATABLE
+-estimated_cost:
+-  runtime_min: 2
+-  gpu_mem_gb: 0
+-  cpu: low
+-  disk_mb: 1
+-  llm_calls: 0
+diff --git a/experiments/queued/EXP-0003/hypothesis.md b/experiments/queued/EXP-0003/hypothesis.md
+deleted file mode 100644
+index 6db50ce..0000000
+--- a/experiments/queued/EXP-0003/hypothesis.md
++++ /dev/null
+@@ -1,25 +0,0 @@
+-# EXP-0003 â€” Hypothesis
+-
+-**Family**: class_confusion
+-**Validation requirement**: OFFLINE_SIMULATABLE
+-**Parent experiment**: (none)
+-
+-## Hypothesis
+-
+-A meaningful fraction of Person recall loss is attributable to predictions falling into semantically related classes (Man/Human body/Clothing/Woman) rather than true missed detections.
+-
+-## Motivation
+-
+-35.1% of missed Person boxes had a DIFFERENT class predicted at the same location (IoU>=0.3) per reports/baseline/person_failure_analysis.md â€” this is a labeling choice, not a confidence problem, and is NOT fixable by lowering the threshold.
+-
+-## Rationale
+-
+-Recomputing recall with a measurement-time class-grouping remap ({Person, Man, Woman} scored as one super-class) quantifies how much 'true' person-detection capability is understated by strict single-label scoring, without changing any production label output.
+-
+-## Expected outcome
+-
+-Quantifies the 'understated capability' gap; does not itself justify a production change.
+-
+-## Risks
+-
+-None â€” measurement-only, does not change any production label or threshold.
+diff --git a/experiments/queued/EXP-0003/methodology.md b/experiments/queued/EXP-0003/methodology.md
+deleted file mode 100644
+index d593808..0000000
+--- a/experiments/queued/EXP-0003/methodology.md
++++ /dev/null
+@@ -1,27 +0,0 @@
+-# EXP-0003 â€” Methodology
+-
+-## Independent variable
+-
+-scoring-time class grouping map (measurement only, not a production change)
+-
+-## Controls (held constant)
+-
+-- `model`: yolov8m-oiv7.pt (same weights, same predictions)
+-- `conf_threshold`: 0.4
+-- `iou_threshold`: 0.7
+-- `manifest`: data/manifests/eval_manifest.jsonl (unchanged)
+-
+-## Evaluation method
+-
+-Re-score the EXISTING baseline predictions.jsonl with a {Person,Man,Woman} super-class remap applied only at scoring time; compare recomputed recall against the strict-label baseline recall.
+-
+-## Success criteria (checked by research/evaluation_policy.py)
+-
+-- `primary_metric`: person_superclass.recall
+-- `min_meaningful_delta`: 0.05
+-
+-## Baseline compared against
+-
+-`RUN-20260904-002` (see `benchmark/results/baseline/run_metadata.json`
+-if this is the canonical baseline, or `benchmark/results/diagnostics/` for a
+-diagnostic-derived baseline).
+diff --git a/experiments/queued/EXP-0003/patch.diff b/experiments/queued/EXP-0003/patch.diff
+deleted file mode 100644
+index e69de29..0000000
+diff --git a/experiments/queued/EXP-0003/results.json b/experiments/queued/EXP-0003/results.json
+deleted file mode 100644
+index 0967ef4..0000000
+--- a/experiments/queued/EXP-0003/results.json
++++ /dev/null
+@@ -1 +0,0 @@
+-{}
+
+# --- untracked files (not shown above; git diff does not include them) ---
+# benchmark/results/diagnostics/person_confusion_analysis.json
+# benchmark/results/diagnostics/person_counterfactuals.json
+# experiments/active/EXP-0003/analysis.md
+# experiments/active/EXP-0003/benchmark.log
+# experiments/active/EXP-0003/conclusion.md
+# experiments/active/EXP-0003/config.yaml
+# experiments/active/EXP-0003/hypothesis.md
+# experiments/active/EXP-0003/methodology.md
+# experiments/active/EXP-0003/patch.diff
+# experiments/active/EXP-0003/results.json
+# reports/baseline/person_class_confusion_analysis.md

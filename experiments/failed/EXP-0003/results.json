@@ -1,0 +1,63 @@
+{
+  "baseline_metrics": {
+    "person": {
+      "precision": 0.6666666666666666,
+      "recall": 0.21122112211221122,
+      "num_gt": 303
+    },
+    "hazard": {
+      "precision": 0.8070175438596491,
+      "recall": 0.4804177545691906
+    },
+    "latency": {
+      "p95_ms": 57.12579999999434
+    }
+  },
+  "candidate_metrics": {
+    "person": {
+      "precision": 0.3842364532019704,
+      "recall": 0.25742574257425743,
+      "num_gt": 303
+    },
+    "hazard": {
+      "precision": 0.6785079928952042,
+      "recall": 0.49869451697127937
+    },
+    "latency": {
+      "p95_ms": 57.12579999999434
+    }
+  },
+  "raw_evaluation_policy_verdict": "FAILED",
+  "final_experiment_status": "FAILED",
+  "guardrail_results": [
+    {
+      "metric": "hazard.precision",
+      "value": 0.6785079928952042,
+      "threshold": 0.757017543859649,
+      "comparator": "gte",
+      "satisfied": false,
+      "margin": 0.07850955096444479
+    },
+    {
+      "metric": "hazard.recall",
+      "value": 0.49869451697127937,
+      "threshold": 0.4604177545691906,
+      "comparator": "gte",
+      "satisfied": true,
+      "margin": 0.03827676240208877
+    },
+    {
+      "metric": "latency.p95_ms",
+      "value": 57.12579999999434,
+      "threshold": 85.68869999999151,
+      "comparator": "lte",
+      "satisfied": true,
+      "margin": 28.56289999999717
+    }
+  ],
+  "reasons": [
+    "guardrail 'hazard.precision' violated: 0.6785 does not satisfy gte 0.7570 (hazard precision must not drop more than 0.05 below baseline)"
+  ],
+  "notes": "Diagnostic/measurement-only experiment \u2014 no production code or config changed. 'Candidate' metrics here are counterfactual B (whole-person alias set accepted as Person at IoU>=0.5, confidence>=0.4) \u2014 the most direct scoring-time realization of the hypothesis. Counterfactuals A (restated baseline), C (+subparts), and D (confidence-floor sweep) are computed and fully reported in analysis.md / reports/baseline/person_class_confusion_analysis.md but not themselves fed into this pass/fail check. The standard hazard guardrails (precision/recall floors, latency, sample-size floors) are applied UNMODIFIED, per the EXP-0003 spec's instruction not to loosen the evaluation policy for a diagnostic-shaped experiment \u2014 a hard guardrail violation here means a real evidence-based FAILED verdict, not an INCONCLUSIVE hand-wave and not a forced PASSED.",
+  "result_run_id": "EXP-0003-person-confusion-analysis-inline (no new inference; reuses RUN-20260904-002 predictions + Phase B.5 low_conf_predictions.jsonl)"
+}

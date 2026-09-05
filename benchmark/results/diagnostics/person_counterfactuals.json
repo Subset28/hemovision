@@ -1,0 +1,190 @@
+{
+  "A_person_only_baseline": {
+    "person": {
+      "precision": 0.6666666666666666,
+      "recall": 0.21122112211221122,
+      "f1": 0.3208020050125313,
+      "tp": 64,
+      "fp": 32,
+      "fn": 239,
+      "num_gt": 303
+    },
+    "hazard": {
+      "precision": 0.8070175438596491,
+      "recall": 0.4804177545691906,
+      "f1": 0.602291325695581,
+      "tp": 368,
+      "fp": 88,
+      "fn": 398,
+      "num_gt": 766
+    },
+    "recovered_gts": 0,
+    "new_false_positives": 0
+  },
+  "B_whole_person_alias_conf0.4": {
+    "person": {
+      "precision": 0.3842364532019704,
+      "recall": 0.25742574257425743,
+      "f1": 0.308300395256917,
+      "tp": 78,
+      "fp": 125,
+      "fn": 225,
+      "num_gt": 303
+    },
+    "hazard": {
+      "precision": 0.6785079928952042,
+      "recall": 0.49869451697127937,
+      "f1": 0.5748683220466516,
+      "tp": 382,
+      "fp": 181,
+      "fn": 384,
+      "num_gt": 766
+    },
+    "recovered_gts": 14,
+    "new_false_positives": 93
+  },
+  "C_plus_subparts_conf0.4": {
+    "person": {
+      "precision": 0.33191489361702126,
+      "recall": 0.25742574257425743,
+      "f1": 0.2899628252788104,
+      "tp": 78,
+      "fp": 157,
+      "fn": 225,
+      "num_gt": 303
+    },
+    "hazard": {
+      "precision": 0.6420168067226891,
+      "recall": 0.49869451697127937,
+      "f1": 0.5613519470977223,
+      "tp": 382,
+      "fp": 213,
+      "fn": 384,
+      "num_gt": 766
+    },
+    "recovered_gts": 14,
+    "new_false_positives": 125,
+    "recovered_gts_beyond_B": 0
+  },
+  "D_confidence_conditioned_alias_sweep": {
+    "0.25": {
+      "person": {
+        "precision": 0.3321678321678322,
+        "recall": 0.31353135313531355,
+        "f1": 0.3225806451612903,
+        "tp": 95,
+        "fp": 191,
+        "fn": 208,
+        "num_gt": 303
+      },
+      "hazard": {
+        "precision": 0.6176470588235294,
+        "recall": 0.52088772845953,
+        "f1": 0.5651558073654391,
+        "tp": 399,
+        "fp": 247,
+        "fn": 367,
+        "num_gt": 766
+      },
+      "recovered_gts": 31,
+      "new_false_positives": 159
+    },
+    "0.4": {
+      "person": {
+        "precision": 0.3842364532019704,
+        "recall": 0.25742574257425743,
+        "f1": 0.308300395256917,
+        "tp": 78,
+        "fp": 125,
+        "fn": 225,
+        "num_gt": 303
+      },
+      "hazard": {
+        "precision": 0.6785079928952042,
+        "recall": 0.49869451697127937,
+        "f1": 0.5748683220466516,
+        "tp": 382,
+        "fp": 181,
+        "fn": 384,
+        "num_gt": 766
+      },
+      "recovered_gts": 14,
+      "new_false_positives": 93
+    },
+    "0.6": {
+      "person": {
+        "precision": 0.5454545454545454,
+        "recall": 0.21782178217821782,
+        "f1": 0.3113207547169811,
+        "tp": 66,
+        "fp": 55,
+        "fn": 237,
+        "num_gt": 303
+      },
+      "hazard": {
+        "precision": 0.7692307692307693,
+        "recall": 0.4830287206266319,
+        "f1": 0.5934242181234964,
+        "tp": 370,
+        "fp": 111,
+        "fn": 396,
+        "num_gt": 766
+      },
+      "recovered_gts": 2,
+      "new_false_positives": 23
+    },
+    "0.8": {
+      "person": {
+        "precision": 0.64,
+        "recall": 0.21122112211221122,
+        "f1": 0.31761786600496283,
+        "tp": 64,
+        "fp": 36,
+        "fn": 239,
+        "num_gt": 303
+      },
+      "hazard": {
+        "precision": 0.8,
+        "recall": 0.4804177545691906,
+        "f1": 0.6003262642740621,
+        "tp": 368,
+        "fp": 92,
+        "fn": 398,
+        "num_gt": 766
+      },
+      "recovered_gts": 0,
+      "new_false_positives": 4
+    }
+  },
+  "_methodology": {
+    "match_iou": 0.5,
+    "alias_conf_floor_B_and_C": 0.4,
+    "whole_person_aliases": [
+      "Boy",
+      "Girl",
+      "Human body",
+      "Man",
+      "Woman"
+    ],
+    "person_subparts": [
+      "Human arm",
+      "Human ear",
+      "Human eye",
+      "Human face",
+      "Human foot",
+      "Human hair",
+      "Human hand",
+      "Human head",
+      "Human leg",
+      "Human mouth",
+      "Human nose"
+    ],
+    "d_sweep_floors": [
+      0.25,
+      0.4,
+      0.6,
+      0.8
+    ],
+    "note": "All counterfactuals reuse the real official baseline Person detections (conf=0.4) plus alias/subpart detections drawn from the existing conf=0.01 low-confidence capture (benchmark/results/diagnostics/low_conf_predictions.jsonl) -- filtered to each counterfactual's own confidence floor. No new inference was run. benchmark/config.py and benchmark/results/baseline/ are never modified."
+  }
+}

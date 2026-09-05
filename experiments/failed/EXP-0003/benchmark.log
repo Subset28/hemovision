@@ -1,0 +1,15 @@
+[2026-09-04T23:53:36.142537+00:00] branch experiment/EXP-0003 created from 02feca4fa1a3a3aceb1bf3b260660717ea8c41ff
+human_class_map verified against live model.names: 43 classes, all present.
+Wrote benchmark\results\diagnostics\person_confusion_analysis.json: total_fn=239 counts={'LOW_CONFIDENCE_PERSON': 82, 'TRUE_DETECTOR_MISS': 92, 'LOCALIZATION_FAILURE': 52, 'SEMANTIC_CLASS_CONFUSION': 13}
+Wrote benchmark\results\diagnostics\person_counterfactuals.json
+A person P=0.6667 R=0.2112 hazard P=0.8070 R=0.4804
+B person P=0.3842 R=0.2574 hazard P=0.6785 R=0.4987 recovered=14 new_fp=93
+C person P=0.3319 R=0.2574 hazard P=0.6420 R=0.4987 recovered=14 new_fp=125 recovered_beyond_B=0
+D floor=0.25 person P=0.3322 R=0.3135 recovered=31 new_fp=159
+D floor=0.4 person P=0.3842 R=0.2574 recovered=14 new_fp=93
+D floor=0.6 person P=0.5455 R=0.2178 recovered=2 new_fp=23
+D floor=0.8 person P=0.6400 R=0.2112 recovered=0 new_fp=4
+Wrote reports/baseline/person_class_confusion_analysis.md
+[2026-09-04T23:53:42.695837+00:00] pytest exit_ok=True
+[2026-09-04T23:53:42.750115+00:00] evaluation_policy verdict=FAILED -> final_status=FAILED
+[2026-09-04T23:53:42.750115+00:00] verdict explanation: FAILED: guardrail 'hazard.precision' violated: 0.6785 does not satisfy gte 0.7570 (hazard precision must not drop more than 0.05 below baseline)
