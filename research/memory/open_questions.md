@@ -33,3 +33,10 @@ WebSearch, never training-data recall alone) — this is not started.
   (`docs/DATASETS.md` Section 8) would change any of these findings — Open
   Images V7 is explicitly documented as not representative of real
   accessibility-usage conditions.
+
+## EXP-0004 (2026-09-05T00:48:38.175398+00:00)
+
+- Family: preprocessing
+- Status: INCONCLUSIVE
+- Hypothesis: A single, simple image preprocessing transform (contrast/sharpening/CLAHE) applied before inference improves difficult Person detection without unacceptable latency cost.
+- Reasons: primary metric 'person.recall' delta (+0.0198) is below the minimum meaningful delta (0.03)

@@ -1,0 +1,235 @@
+{
+  "per_candidate_verdicts": {
+    "identity": {
+      "verdict": "INCONCLUSIVE",
+      "reasons": [
+        "primary metric 'person.recall' delta (+0.0000) is below the minimum meaningful delta (0.03)"
+      ],
+      "guardrail_results": [
+        {
+          "metric": "hazard.precision",
+          "value": 0.8070175438596491,
+          "threshold": 0.757017543859649,
+          "comparator": "gte",
+          "satisfied": true,
+          "margin": 0.050000000000000044
+        },
+        {
+          "metric": "hazard.recall",
+          "value": 0.4804177545691906,
+          "threshold": 0.4604177545691906,
+          "comparator": "gte",
+          "satisfied": true,
+          "margin": 0.020000000000000018
+        },
+        {
+          "metric": "latency.p95_ms",
+          "value": 57.55769999996119,
+          "threshold": 85.68869999999151,
+          "comparator": "lte",
+          "satisfied": true,
+          "margin": 28.131000000030326
+        }
+      ],
+      "candidate_metrics": {
+        "hazard": {
+          "precision": 0.8070175438596491,
+          "recall": 0.4804177545691906
+        },
+        "person": {
+          "precision": 0.6666666666666666,
+          "recall": 0.21122112211221122,
+          "num_gt": 303
+        },
+        "latency": {
+          "p95_ms": 57.55769999996119
+        }
+      }
+    },
+    "clahe": {
+      "verdict": "INCONCLUSIVE",
+      "reasons": [
+        "primary metric 'person.recall' delta (-0.0099) is below the minimum meaningful delta (0.03)"
+      ],
+      "guardrail_results": [
+        {
+          "metric": "hazard.precision",
+          "value": 0.8048245614035088,
+          "threshold": 0.757017543859649,
+          "comparator": "gte",
+          "satisfied": true,
+          "margin": 0.04780701754385974
+        },
+        {
+          "metric": "hazard.recall",
+          "value": 0.47911227154047,
+          "threshold": 0.4604177545691906,
+          "comparator": "gte",
+          "satisfied": true,
+          "margin": 0.018694516971279385
+        },
+        {
+          "metric": "latency.p95_ms",
+          "value": 32.85970000069938,
+          "threshold": 85.68869999999151,
+          "comparator": "lte",
+          "satisfied": true,
+          "margin": 52.82899999929214
+        }
+      ],
+      "candidate_metrics": {
+        "hazard": {
+          "precision": 0.8048245614035088,
+          "recall": 0.47911227154047
+        },
+        "person": {
+          "precision": 0.6777777777777778,
+          "recall": 0.20132013201320131,
+          "num_gt": 303
+        },
+        "latency": {
+          "p95_ms": 32.85970000069938
+        }
+      }
+    },
+    "unsharp": {
+      "verdict": "INCONCLUSIVE",
+      "reasons": [
+        "primary metric 'person.recall' delta (+0.0033) is below the minimum meaningful delta (0.03)"
+      ],
+      "guardrail_results": [
+        {
+          "metric": "hazard.precision",
+          "value": 0.8065934065934066,
+          "threshold": 0.757017543859649,
+          "comparator": "gte",
+          "satisfied": true,
+          "margin": 0.04957586273375758
+        },
+        {
+          "metric": "hazard.recall",
+          "value": 0.47911227154047,
+          "threshold": 0.4604177545691906,
+          "comparator": "gte",
+          "satisfied": true,
+          "margin": 0.018694516971279385
+        },
+        {
+          "metric": "latency.p95_ms",
+          "value": 19.7067999997671,
+          "threshold": 85.68869999999151,
+          "comparator": "lte",
+          "satisfied": true,
+          "margin": 65.98190000022441
+        }
+      ],
+      "candidate_metrics": {
+        "hazard": {
+          "precision": 0.8065934065934066,
+          "recall": 0.47911227154047
+        },
+        "person": {
+          "precision": 0.6914893617021277,
+          "recall": 0.2145214521452145,
+          "num_gt": 303
+        },
+        "latency": {
+          "p95_ms": 19.7067999997671
+        }
+      }
+    },
+    "gamma": {
+      "verdict": "INCONCLUSIVE",
+      "reasons": [
+        "primary metric 'person.recall' delta (+0.0198) is below the minimum meaningful delta (0.03)"
+      ],
+      "guardrail_results": [
+        {
+          "metric": "hazard.precision",
+          "value": 0.7948717948717948,
+          "threshold": 0.757017543859649,
+          "comparator": "gte",
+          "satisfied": true,
+          "margin": 0.03785425101214579
+        },
+        {
+          "metric": "hazard.recall",
+          "value": 0.4856396866840731,
+          "threshold": 0.4604177545691906,
+          "comparator": "gte",
+          "satisfied": true,
+          "margin": 0.025221932114882495
+        },
+        {
+          "metric": "latency.p95_ms",
+          "value": 19.192400000974885,
+          "threshold": 85.68869999999151,
+          "comparator": "lte",
+          "satisfied": true,
+          "margin": 66.49629999901663
+        }
+      ],
+      "candidate_metrics": {
+        "hazard": {
+          "precision": 0.7948717948717948,
+          "recall": 0.4856396866840731
+        },
+        "person": {
+          "precision": 0.660377358490566,
+          "recall": 0.23102310231023102,
+          "num_gt": 303
+        },
+        "latency": {
+          "p95_ms": 19.192400000974885
+        }
+      }
+    },
+    "autocontrast": {
+      "verdict": "INCONCLUSIVE",
+      "reasons": [
+        "primary metric 'person.recall' delta (-0.0132) is below the minimum meaningful delta (0.03)"
+      ],
+      "guardrail_results": [
+        {
+          "metric": "hazard.precision",
+          "value": 0.801762114537445,
+          "threshold": 0.757017543859649,
+          "comparator": "gte",
+          "satisfied": true,
+          "margin": 0.044744570677795914
+        },
+        {
+          "metric": "hazard.recall",
+          "value": 0.4751958224543081,
+          "threshold": 0.4604177545691906,
+          "comparator": "gte",
+          "satisfied": true,
+          "margin": 0.014778067885117485
+        },
+        {
+          "metric": "latency.p95_ms",
+          "value": 41.87460000139254,
+          "threshold": 85.68869999999151,
+          "comparator": "lte",
+          "satisfied": true,
+          "margin": 43.81409999859898
+        }
+      ],
+      "candidate_metrics": {
+        "hazard": {
+          "precision": 0.801762114537445,
+          "recall": 0.4751958224543081
+        },
+        "person": {
+          "precision": 0.6521739130434783,
+          "recall": 0.19801980198019803,
+          "num_gt": 303
+        },
+        "latency": {
+          "p95_ms": 41.87460000139254
+        }
+      }
+    }
+  },
+  "representative_candidate": "gamma"
+}

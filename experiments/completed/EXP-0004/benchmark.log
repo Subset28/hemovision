@@ -1,0 +1,20 @@
+[2026-09-05T00:46:35.096838+00:00] branch experiment/EXP-0004 created from 2fb84931b64cd1138bbb822fa591cbe506fab717
+EXP-0004: running benchmark.diagnostics.preprocessing_eval.run_all() (5 candidates x 2 confidence passes x 380 images, real inference)
+Wrote benchmark\results\diagnostics\preprocessing_analysis.json
+[identity] hazard P=0.8070 R=0.4804 | person P=0.6667 R=0.2112 F1=0.3208 AP50=0.1743 | preprocess p95=0.175ms inference p95=57.405ms | skipped=0
+[clahe] hazard P=0.8048 R=0.4791 | person P=0.6778 R=0.2013 F1=0.3104 AP50=0.1668 | preprocess p95=14.052ms inference p95=20.214ms | skipped=0
+[unsharp] hazard P=0.8066 R=0.4791 | person P=0.6915 R=0.2145 F1=0.3275 AP50=0.1783 | preprocess p95=2.604ms inference p95=17.190ms | skipped=0
+[gamma] hazard P=0.7949 R=0.4856 | person P=0.6604 R=0.2310 F1=0.3423 AP50=0.1866 | preprocess p95=1.754ms inference p95=17.810ms | skipped=0
+[autocontrast] hazard P=0.8018 R=0.4752 | person P=0.6522 R=0.1980 F1=0.3038 AP50=0.1632 | preprocess p95=25.729ms inference p95=18.999ms | skipped=0
+identity control reproduces official baseline exactly: True
+Identity control exactly reproduced the official baseline (correctness check passed).
+[identity] evaluation_policy verdict=INCONCLUSIVE person.recall_delta=+0.0000
+[clahe] evaluation_policy verdict=INCONCLUSIVE person.recall_delta=-0.0099
+[unsharp] evaluation_policy verdict=INCONCLUSIVE person.recall_delta=+0.0033
+[gamma] evaluation_policy verdict=INCONCLUSIVE person.recall_delta=+0.0198
+[autocontrast] evaluation_policy verdict=INCONCLUSIVE person.recall_delta=-0.0132
+Representative candidate selected for DB verdict: 'gamma' (cleared_guardrails=True)
+Wrote reports/baseline/person_preprocessing_analysis.md
+[2026-09-05T00:48:38.032268+00:00] pytest exit_ok=True
+[2026-09-05T00:48:38.086396+00:00] evaluation_policy verdict=INCONCLUSIVE -> final_status=INCONCLUSIVE
+[2026-09-05T00:48:38.086396+00:00] verdict explanation: INCONCLUSIVE: primary metric 'person.recall' delta (+0.0198) is below the minimum meaningful delta (0.03)

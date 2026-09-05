@@ -1,0 +1,63 @@
+{
+  "baseline_metrics": {
+    "hazard": {
+      "precision": 0.8070175438596491,
+      "recall": 0.4804177545691906
+    },
+    "person": {
+      "precision": 0.6666666666666666,
+      "recall": 0.21122112211221122,
+      "num_gt": 303
+    },
+    "latency": {
+      "p95_ms": 57.12579999999434
+    }
+  },
+  "candidate_metrics": {
+    "hazard": {
+      "precision": 0.7948717948717948,
+      "recall": 0.4856396866840731
+    },
+    "person": {
+      "precision": 0.660377358490566,
+      "recall": 0.23102310231023102,
+      "num_gt": 303
+    },
+    "latency": {
+      "p95_ms": 19.192400000974885
+    }
+  },
+  "raw_evaluation_policy_verdict": "INCONCLUSIVE",
+  "final_experiment_status": "INCONCLUSIVE",
+  "guardrail_results": [
+    {
+      "metric": "hazard.precision",
+      "value": 0.7948717948717948,
+      "threshold": 0.757017543859649,
+      "comparator": "gte",
+      "satisfied": true,
+      "margin": 0.03785425101214579
+    },
+    {
+      "metric": "hazard.recall",
+      "value": 0.4856396866840731,
+      "threshold": 0.4604177545691906,
+      "comparator": "gte",
+      "satisfied": true,
+      "margin": 0.025221932114882495
+    },
+    {
+      "metric": "latency.p95_ms",
+      "value": 19.192400000974885,
+      "threshold": 85.68869999999151,
+      "comparator": "lte",
+      "satisfied": true,
+      "margin": 66.49629999901663
+    }
+  ],
+  "reasons": [
+    "primary metric 'person.recall' delta (+0.0198) is below the minimum meaningful delta (0.03)"
+  ],
+  "notes": "Real inference re-run (2 passes: conf=0.4 official + conf=0.01 diagnostic capture) for 5 pre-registered candidates over the full 380-image eval manifest, same weights/imgsz=640/iou=0.7/manifest as the canonical baseline \u2014 preprocessing was the ONLY changed variable per candidate. Identity/no-op control exactly reproduced the official baseline (correctness check passed). Representative candidate for this experiment's stored DB verdict: 'gamma' (selection rule: best person.recall delta among candidates clearing all guardrails; falls back to numerically-best-regardless if none clear \u2014 see research/_exp0004_preregister.py). Every candidate's own metrics/verdict are recorded in results.json['per_candidate_verdicts'] and reports/baseline/person_preprocessing_analysis.md regardless of which one is representative. 380 static images, no video/tracking/LiDAR/TTS/real-camera processing \u2014 this is a Windows/CUDA, static-image, offline measurement only.",
+  "result_run_id": "EXP-0004-preprocessing-inline-representative=gamma"
+}
