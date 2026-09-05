@@ -551,8 +551,239 @@ def _write_person_confusion_report(out_path: Path, agg: dict, counterfactuals: d
     out_path.write_text("\n".join(lines), encoding="utf-8")
 
 
+def run_exp_0004(exp: Experiment, exp_dir: Path) -> ExperimentRunResult:
+    """EXP-0004 (preprocessing): real inference over the eval manifest for 5
+    pre-registered candidates (identity control + CLAHE + unsharp-mask +
+    gamma + auto-contrast-stretch — see research/_exp0004_preregister.py for
+    the full pre-registration written BEFORE this runner was executed),
+    preprocessing being the ONLY changed variable per candidate. Delegates
+    all the actual inference/analysis work to
+    benchmark/diagnostics/preprocessing_eval.py::run_all() (which reuses
+    benchmark.metrics.greedy_match and person_confusion_analysis.py's
+    matching/classification primitives directly — no reimplementation), and
+    packages the numerically-best-by-person.recall candidate (subject to the
+    guardrails; see research/_exp0004_preregister.py's
+    representative_candidate_selection convention) as the "candidate" fed to
+    the UNMODIFIED default_hazard_policy. Every candidate's own metrics and
+    verdict are computed and reported in results.json regardless.
+    """
+    import importlib
+    import json as _json
+
+    from benchmark.config import REPO_ROOT as BREPO
+
+    peval = importlib.import_module("benchmark.diagnostics.preprocessing_eval")
+
+    log_lines = ["EXP-0004: running benchmark.diagnostics.preprocessing_eval.run_all() "
+                 "(5 candidates x 2 confidence passes x 380 images, real inference)"]
+
+    analysis = peval.run_all()
+    peval.ANALYSIS_OUT_PATH.write_text(_json.dumps(analysis, indent=2), encoding="utf-8")
+    log_lines.append(f"Wrote {peval.ANALYSIS_OUT_PATH.relative_to(BREPO)}")
+    log_lines.extend(analysis["log_lines"])
+
+    identity_check = analysis["identity_control_check"]
+    if not identity_check["exact_match"]:
+        raise RunnerError(
+            "identity/no-op preprocessing control did NOT reproduce the official baseline "
+            f"exactly — mismatches: {identity_check['mismatches']}. Per methodology, no "
+            "candidate's delta can be trusted until this holds; treating as a benchmark "
+            "execution failure (REJECTED), not a FAILED evaluation-policy verdict."
+        )
+    log_lines.append("Identity control exactly reproduced the official baseline (correctness check passed).")
+
+    baseline_ref = analysis["baseline_reference"]
+    baseline_metrics_common = {
+        "hazard": {"precision": baseline_ref["hazard"]["precision"], "recall": baseline_ref["hazard"]["recall"]},
+        "person": {
+            "precision": baseline_ref["person"]["precision"],
+            "recall": baseline_ref["person"]["recall"],
+            "num_gt": baseline_ref["person"]["num_gt"],
+        },
+        "latency": {"p95_ms": baseline_ref["latency_p95_ms"]},
+    }
+
+    policy = default_hazard_policy(baseline_metrics_common["hazard"]["precision"], baseline_metrics_common["hazard"]["recall"])
+
+    per_candidate_verdicts = {}
+    best_name = None
+    best_delta = None
+    best_cleared_name = None
+    best_cleared_delta = None
+    for name in analysis["candidate_order"]:
+        c = analysis["candidates"][name]
+        cand_metrics = {
+            "hazard": {"precision": c["hazard"]["precision"], "recall": c["hazard"]["recall"]},
+            "person": {"precision": c["person"]["precision"], "recall": c["person"]["recall"], "num_gt": c["person"]["num_gt"]},
+            "latency": {"p95_ms": c["latency"]["total_ms"]["p95_ms"]},
+        }
+        verdict = policy.evaluate(baseline_metrics_common, cand_metrics)
+        per_candidate_verdicts[name] = {
+            "verdict": verdict.result,
+            "reasons": verdict.reasons,
+            "guardrail_results": verdict.guardrail_results,
+            "candidate_metrics": cand_metrics,
+        }
+        delta = cand_metrics["person"]["recall"] - baseline_metrics_common["person"]["recall"]
+        if name != "identity":
+            if best_delta is None or delta > best_delta:
+                best_delta = delta
+                best_name = name
+            hard_guardrail_violation = any(
+                (not g.get("satisfied", True)) for g in verdict.guardrail_results if g.get("status") != "missing"
+            ) and verdict.result == "FAILED"
+            if not hard_guardrail_violation and (best_cleared_delta is None or delta > best_cleared_delta):
+                best_cleared_delta = delta
+                best_cleared_name = name
+        log_lines.append(f"[{name}] evaluation_policy verdict={verdict.result} person.recall_delta={delta:+.4f}")
+
+    representative_name = best_cleared_name or best_name
+    log_lines.append(f"Representative candidate selected for DB verdict: {representative_name!r} "
+                      f"(cleared_guardrails={best_cleared_name is not None})")
+
+    representative = analysis["candidates"][representative_name]
+    candidate_metrics = {
+        "hazard": {"precision": representative["hazard"]["precision"], "recall": representative["hazard"]["recall"]},
+        "person": {
+            "precision": representative["person"]["precision"],
+            "recall": representative["person"]["recall"],
+            "num_gt": representative["person"]["num_gt"],
+        },
+        "latency": {"p95_ms": representative["latency"]["total_ms"]["p95_ms"]},
+    }
+
+    _write_preprocessing_report(
+        BREPO / "reports" / "baseline" / "person_preprocessing_analysis.md",
+        analysis, per_candidate_verdicts, representative_name,
+    )
+    log_lines.append("Wrote reports/baseline/person_preprocessing_analysis.md")
+
+    notes = (
+        "Real inference re-run (2 passes: conf=0.4 official + conf=0.01 diagnostic capture) "
+        f"for 5 pre-registered candidates over the full 380-image eval manifest, same "
+        "weights/imgsz=640/iou=0.7/manifest as the canonical baseline — preprocessing was the "
+        "ONLY changed variable per candidate. Identity/no-op control exactly reproduced the "
+        f"official baseline (correctness check passed). Representative candidate for this "
+        f"experiment's stored DB verdict: {representative_name!r} "
+        f"(selection rule: best person.recall delta among candidates clearing all guardrails; "
+        f"falls back to numerically-best-regardless if none clear — see "
+        "research/_exp0004_preregister.py). Every candidate's own metrics/verdict are recorded "
+        "in results.json['per_candidate_verdicts'] and reports/baseline/person_preprocessing_analysis.md "
+        "regardless of which one is representative. 380 static images, no video/tracking/LiDAR/"
+        "TTS/real-camera processing — this is a Windows/CUDA, static-image, offline measurement only."
+    )
+
+    result = ExperimentRunResult(
+        baseline_metrics=baseline_metrics_common,
+        candidate_metrics=candidate_metrics,
+        policy=policy,
+        verdict_interpretation={"PASSED": "PASSED", "FAILED": "FAILED", "INCONCLUSIVE": "INCONCLUSIVE"},
+        notes=notes,
+        result_run_id=f"EXP-0004-preprocessing-inline-representative={representative_name}",
+        log_lines=log_lines,
+    )
+    # Stash the full per-candidate breakdown so the orchestrator's results.json
+    # includes it (results.json is built from ExperimentRunResult's baseline/
+    # candidate metrics + notes in research/orchestrator.py; per_candidate_verdicts
+    # and the full analysis are additionally written directly here so they are
+    # never lost even though the orchestrator's own results.json schema only
+    # has room for one baseline/candidate pair).
+    extra_results_path = exp_dir / "results_per_candidate.json"
+    extra_results_path.write_text(
+        _json.dumps({"per_candidate_verdicts": per_candidate_verdicts, "representative_candidate": representative_name}, indent=2),
+        encoding="utf-8",
+    )
+    return result
+
+
+def _write_preprocessing_report(out_path: Path, analysis: dict, per_candidate_verdicts: dict, representative_name: str) -> None:
+    baseline_ref = analysis["baseline_reference"]
+    lines = []
+    lines.append("# Person Preprocessing Analysis (EXP-0004)")
+    lines.append("")
+    lines.append(
+        "Diagnostic/measurement-only experiment. 380 static Open Images V7 photographs, "
+        "Windows/CUDA proxy hardware — no video/tracking/LiDAR/TTS/real-camera processing/real "
+        "accessibility scenarios. Every latency figure below is a Windows/CUDA inference-compute "
+        "proxy only, not iPhone, not end-to-end. See "
+        "`experiments/*/EXP-0004/{hypothesis.md,methodology.md,analysis.md,conclusion.md}` for "
+        "the full pre-registration and reasoning."
+    )
+    lines.append("")
+    lines.append(
+        f"Official baseline (`{baseline_ref['run_id']}`): hazard P={baseline_ref['hazard']['precision']:.4f} "
+        f"R={baseline_ref['hazard']['recall']:.4f}; Person P={baseline_ref['person']['precision']:.4f} "
+        f"R={baseline_ref['person']['recall']:.4f} (num_gt={baseline_ref['person']['num_gt']}); "
+        f"latency p95={baseline_ref['latency_p95_ms']:.2f}ms (inference only, no preprocessing)."
+    )
+    lines.append("")
+    identity_check = analysis["identity_control_check"]
+    lines.append(
+        f"**Identity/no-op control reproduces baseline exactly: {identity_check['exact_match']}** "
+        "(the correctness check every other candidate's delta depends on)."
+    )
+    lines.append("")
+    lines.append("## Comparison table")
+    lines.append("")
+    lines.append("| Candidate | Hazard P | Hazard R | Hazard F1 | Hazard mAP50 | Person P | Person R | Person F1 | Person AP50 | "
+                  "Preproc p95 (ms) | Inference p95 (ms) | Total p95 (ms) | Verdict |")
+    lines.append("|---|---|---|---|---|---|---|---|---|---|---|---|---|")
+    for name in analysis["candidate_order"]:
+        c = analysis["candidates"][name]
+        v = per_candidate_verdicts[name]["verdict"]
+        marker = " (representative)" if name == representative_name else ""
+        lines.append(
+            f"| {name}{marker} | {c['hazard']['precision']:.4f} | {c['hazard']['recall']:.4f} | "
+            f"{c['hazard']['f1']:.4f} | {c['hazard']['map50']:.4f} | {c['person']['precision']:.4f} | "
+            f"{c['person']['recall']:.4f} | {c['person']['f1']:.4f} | {c['person']['ap50']:.4f} | "
+            f"{c['latency']['preprocess_ms']['p95_ms']:.3f} | {c['latency']['inference_ms']['p95_ms']:.2f} | "
+            f"{c['latency']['total_ms']['p95_ms']:.2f} | {v} |"
+        )
+    lines.append("")
+    lines.append(f"**Overall representative candidate**: `{representative_name}` "
+                  f"(final status = {per_candidate_verdicts[representative_name]['verdict']}).")
+    lines.append("")
+    lines.append("## Per-candidate failure-bucket transitions (of the 239 baseline Person FNs)")
+    lines.append("")
+    for name in analysis["candidate_order"]:
+        if name == "identity":
+            continue
+        c = analysis["candidates"][name]
+        lines.append(f"### {name}")
+        lines.append("")
+        lines.append("| Baseline bucket | n | -> TP | new-bucket breakdown |")
+        lines.append("|---|---|---|---|")
+        for bucket, t in c["transitions_by_baseline_bucket"].items():
+            lines.append(f"| {bucket} | {t['n']} | {t['to_TP']} | {t['new_bucket_counts']} |")
+        regr = c["baseline_tp_regressions"]
+        lines.append("")
+        lines.append(
+            f"Baseline Person TP regressions: {regr['regressed']}/{regr['n_baseline_tp']} regressed "
+            f"({regr['remained_tp']} remained TP)."
+        )
+        lines.append("")
+        tmd = c["true_miss_detail"]
+        lines.append(
+            f"TRUE_DETECTOR_MISS (92 baseline) recovery: gained_any_person_candidate={tmd['gained_any_person_candidate']}, "
+            f"gained_tp={tmd['gained_tp']}, gained_other_human_class={tmd['gained_other_human_class']}, "
+            f"remains_complete_miss={tmd['remains_complete_miss']}."
+        )
+        lines.append("")
+
+    lines.append("## Notes")
+    lines.append("")
+    lines.append(
+        "See `benchmark/results/diagnostics/preprocessing_analysis.json` for the complete "
+        "per-candidate, per-record data (confidence-distribution shifts, IoU shifts, size-based "
+        "split, raw per-image latency) this report summarizes."
+    )
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    out_path.write_text("\n".join(lines), encoding="utf-8")
+
+
 RUNNERS = {
     "EXP-0001": run_exp_0001,
     "EXP-0002": run_exp_0002,
     "EXP-0003": run_exp_0003,
+    "EXP-0004": run_exp_0004,
 }

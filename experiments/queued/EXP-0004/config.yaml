@@ -7,6 +7,8 @@ controls:
   iou_threshold: 0.7
   imgsz: 640
   manifest: data/manifests/eval_manifest.jsonl (unchanged)
+  matching_algorithm: benchmark.metrics.greedy_match (reused, not reimplemented)
+  low_confidence_capture_probe: 0.01
 configuration: {}
 baseline_run_id: RUN-20260904-002
 validation_requirement: OFFLINE_SIMULATABLE
