@@ -1,0 +1,140 @@
+{
+  "actually_queued": false,
+  "artifact_type": "PHASE_I_PROPOSAL",
+  "call_records": [
+    {
+      "actual_model_returned": "nvidia/nemotron-3-super-120b-a12b:free",
+      "choices_present": true,
+      "content_length": 6895,
+      "content_present": true,
+      "dryrun_id": "CANDIDATE-0001",
+      "envelope_parsed": true,
+      "error": null,
+      "failure_category": null,
+      "finish_reason": "stop",
+      "http_status": 200,
+      "latency_ms": 17452.9999999977,
+      "local_schema_validation_result": null,
+      "message_present": true,
+      "model_used": "nvidia/nemotron-3-super-120b-a12b:free",
+      "network_attempted": true,
+      "provider_error_code": null,
+      "provider_error_message": null,
+      "reasoning_configuration": "DISABLED",
+      "request_id": "gen-1788642120-HF8nLiMkX7OG1v6oZTuE",
+      "requested_model": "nvidia/nemotron-3-super-120b-a12b:free",
+      "role": "researcher",
+      "selected_model": "nvidia/nemotron-3-super-120b-a12b:free",
+      "step": "phase_i_researcher",
+      "structured_output_capability_state": true,
+      "structured_parse_result": null,
+      "succeeded": true,
+      "timestamp": "2026-09-05T21:01:59.117845+00:00",
+      "token_usage": {
+        "cached_tokens": 0,
+        "completion_tokens": 1771,
+        "prompt_tokens": 4986,
+        "reasoning_tokens": 0,
+        "total_tokens": 6757
+      }
+    }
+  ],
+  "candidate_id": "CANDIDATE-0001",
+  "generated_at": "2026-09-05T21:02:16.581221+00:00",
+  "proposal": {
+    "acknowledges_rejected_hypothesis_ids": [],
+    "allowed_path_scope": [
+      "ios/",
+      "research/",
+      "experiments/"
+    ],
+    "baseline_comparison": "Compare recall and precision of the temporally filtered detection stream against the baseline static-image detection stream (MEM-0002, MEM-0003) using the same ground truth and evaluation policy.",
+    "baseline_metrics": {
+      "hazard_f1": 0.602291325695581,
+      "hazard_map50": 0.5822603224286523,
+      "hazard_precision": 0.8070175438596491,
+      "hazard_recall": 0.4804177545691906,
+      "num_images_evaluated": 380,
+      "overall_precision": 0.7342615012106537,
+      "overall_recall": 0.2467453213995118,
+      "run_id": "RUN-20260904-002"
+    },
+    "baseline_run_id": "RUN-20260904-002",
+    "compute_resource_estimate": {
+      "estimated_gpu_hours": 4,
+      "gpu": "RTX 3070 Ti"
+    },
+    "control_condition": "Baseline YOLOv8m-OIV7 inference on static images at conf=0.4, iou=0.7, imgsz=640 (production operating point).",
+    "controlled_variables": {
+      "confidence_threshold": 0.4,
+      "dataset_split": "benchmark/results/baseline/",
+      "imgsz": 640,
+      "iou_threshold": 0.7,
+      "model": "yolov8m-oiv7.pt"
+    },
+    "coreml_model_replacement_approved": false,
+    "data_privacy_classification": "NONE",
+    "dataset_version": "PREREQUISITE: OmniSight-specific video evaluation dataset (docs/DATASETS.md Section 8) must be constructed and versioned before this experiment can run, as current baseline uses static Images V7 (MEM-0017) which lacks temporal coherence.",
+    "dependent_variables": [
+      "person.recall",
+      "hazard.precision",
+      "person.false_positive_rate"
+    ],
+    "evidence_references": [
+      "MEM-0003",
+      "MEM-0010",
+      "MEM-0015",
+      "MEM-0017",
+      "MEM-0020",
+      "MEM-0027"
+    ],
+    "expected_artifacts": [
+      "temporal_filter_results.json",
+      "frame_by_frame_detections.pkl",
+      "evaluation_log.txt"
+    ],
+    "experiment_id": "EXP-9001",
+    "external_api_required": false,
+    "external_upload_approved": false,
+    "family": "temporal_pipeline",
+    "hypothesis": "Requiring temporal consistency (detection in \u22652 of 3 consecutive frames) will recover a subset of TRUE_DETECTOR_MISS cases by filtering false negatives caused by transient occlusion, motion blur, or low-contrast frames, while maintaining precision because spurious detections are unlikely to persist across frames. This mechanism is supported by MEM-0015 (yolo11m recovering 17/92 TRUE_DETECTOR_MISS cases) and MEM-0020 (occlusion-tagged failures are confounded with small size and clutter), suggesting that transient factors contribute to misses.",
+    "implementation_scope": "Offline video processing script using PyTorch/OpenCV for detection and temporal filtering; no changes to model weights or inference code.",
+    "inconclusive_if": "person.recall increases by \u22650.03 but hazard.precision cannot be measured due to lack of video ground truth for false positives, OR if video evaluation infrastructure fails to produce stable results across runs.",
+    "independent_variables": [
+      "temporal_window_size",
+      "consistency_threshold"
+    ],
+    "isolation_requirements": "Train/eval isolation is irrelevant as this is inference-only on a fixed benchmark. Zero overlap guaranteed by using a held-out video evaluation set not used in any training (to be constructed per MEM-0025).",
+    "mac_iphone_deployment_approved": false,
+    "mac_iphone_required": true,
+    "materially_new_rationale": "Unlike all rejected directions (threshold, resolution, preprocessing, model scaling, class aliasing), this approach leverages temporal information intrinsic to video streams, which is orthogonal to single-frame image properties. It does not alter the detector confidence threshold or architecture, thus avoiding precision collapse (MEM-0010) or negligible gains from model scaling (MEM-0014, MEM-0015). It is substantially different from EXP-0003 (class aliasing) and EXP-0004 (preprocessing) as it operates post-detection across frames, not on single-frame features or semantic mapping.",
+    "model_config_ref": "yolov8m-oiv7.pt (same as baseline, MEM-0001)",
+    "motivation": "The current evaluation uses static images (MEM-0017), but OmniSight operates on video streams. Single-frame detectors fail on transient challenges (e.g., occlusion, motion blur) that may be resolved in neighboring frames. Temporal filtering leverages the inherent temporal prior in accessibility scenarios (e.g., a person does not appear/disappear instantaneously) to recover missed detections without lowering the confidence threshold, thus avoiding precision collapse seen in EXP-0001 (MEM-0010).",
+    "new_training_approved": false,
+    "prior_experiment_ids": [
+      "EXP-0001",
+      "EXP-0002",
+      "EXP-0003",
+      "EXP-0004",
+      "EXP-0005"
+    ],
+    "private_user_data_use_approved": false,
+    "procedure": "1. Extract frame sequences from the OmniSight video evaluation set (to be constructed per MEM-0025). 2. Run baseline YOLOv8m-OIV7 detector at conf=0.4 on each frame. 3. Apply temporal filter: a detection is retained only if the same class (Person) is detected in \u22652 of 3 consecutive frames (using spatial overlap via IoU > 0.3 for association). 4. Compute person.recall and hazard.precision against ground truth using standard evaluation protocol (research/experiment_policy.py). 5. Compare to baseline static-image results (MEM-0002, MEM-0003).",
+    "production_impact": false,
+    "production_impact_description": "This proposal is for offline evaluation only. It does not modify ios/ or benchmark/config.py. Any production use would require separate integration and validation.",
+    "production_swift_modification_approved": false,
+    "rejects_hypothesis_if": "person.recall increases by <0.03 OR hazard.precision falls below 0.757.",
+    "reproducibility_requirements": "Fixed random seed (if any), deterministic frame association (IoU > 0.3), archived video dataset version, and exact temporal window/consistency parameters reported.",
+    "research_question": "Does applying a temporal consistency filter (requiring Person detection in \u22652 of N consecutive frames) improve Person recall on the OmniSight evaluation set without violating the hazard-precision guardrail (\u22650.757)?",
+    "schema_version": "1.0",
+    "signing_distribution_change_approved": false,
+    "success_criteria": {
+      "min_meaningful_delta": 0.03,
+      "primary_metric": "person.recall"
+    },
+    "supports_hypothesis_if": "person.recall increases by \u22650.03 (absolute) relative to baseline (0.211 \u2192 \u22650.241) AND hazard.precision remains \u22650.757 (guardrail floor from MEM-0004).",
+    "title": "Temporal Consistency Filtering for Person Detection Recovery in OmniSight"
+  },
+  "raw_selected_problem": "Temporal/video evidence \u2014 using multiple frames rather than a single image.",
+  "raw_selection_rationale": "The baseline Person recall is critically low at 0.211 (MEM-0003), and rejected_directions show that single-frame interventions (threshold, resolution, preprocessing, model scaling, class aliasing) have failed or yielded negligible gains (MEM-0010 through MEM-0014). Strongest finding MEM-0015 indicates that architecture/training-data differences (e.g., yolo11m) can recover TRUE_DETECTOR_MISS cases (17/92), but this is confounded with vocabulary shift and rejected on precision grounds. Unresolved question MEM-0027 explicitly asks whether a combination of interventions (e.g., different architecture family AND targeted preprocessing) could recover more TRUE_DETECTOR_MISS cases than any single lever tested. Temporal integration addresses the core limitation of static-image evaluation (MEM-0017, MEM-0018) by leveraging temporal coherence in video, which is inherent to OmniSight\u2019s use case but absent in Open Images V7. This approach is distinct from all rejected directions and avoids precision degradation by operating post-detection via tracking or temporal filtering, making it a promising orthogonal lever."
+}
