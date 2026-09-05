@@ -4,6 +4,16 @@
 and `reports/phase_i/PHASE_I_READINESS_AUDIT.md`/`PHASE_I_SAFETY_INVARIANTS.md`
 for everything before this document.
 
+**UPDATE (post-CANDIDATE-0001, same day)**: `research/experiment_validator.py`
+gained a `NEEDS_HUMAN_APPROVAL` level, distinct from `ERROR` — a proposal
+that correctly describes a future need for human authorization (Mac/iPhone
+deployment, new training, production modification, external data/API,
+private data) is now structurally/scientifically `is_valid=True` and
+reviewer-eligible, while remaining queue-ineligible until approved. See
+`reports/phase_i/CANDIDATE_0001_POSTMORTEM.md` for the full incident and
+fix. The admissibility gate below (`is_valid`) already used the correct
+property before this fix; only the validator's own severity levels changed.
+
 ## Authority boundary
 
 Phase I is authorized for **proposal / review / bounded-revision only**.

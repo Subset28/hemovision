@@ -132,7 +132,13 @@ class TestRunReviewerOnly:
         assert result.calls_made == 1
         assert result.reviewer_critique is not None
         assert result.reviewer_critique.recommends_revision is False
-        assert result.queue_eligible_in_principle is True
+        # Phase-I CANDIDATE-0001 postmortem fix: family="training_data" with
+        # new_training_approved=False (always False from LLM output) is now
+        # correctly NEEDS_HUMAN_APPROVAL, not queue-eligible -- this fixture
+        # is structurally/scientifically valid (is_valid=True) but requires
+        # a human training approval before it could ever be queued.
+        assert result.final_validation.is_valid is True
+        assert result.queue_eligible_in_principle is False
 
     def test_one_logical_step_one_call(self, tmp_path, monkeypatch):
         import research.dry_run.pipeline as pipeline_mod

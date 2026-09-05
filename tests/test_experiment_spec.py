@@ -361,25 +361,33 @@ def test_acknowledged_reproposal_without_rationale_still_fails():
 
 
 def test_protected_production_action_requires_explicit_approval():
+    """UNAPPROVED_PRODUCTION_IMPACT is NEEDS_HUMAN_APPROVAL, not ERROR (Phase-I
+    CANDIDATE-0001 postmortem fix) -- the proposal is still structurally/
+    scientifically valid (is_valid=True), just not queue-eligible."""
     spec = ExperimentSpec(proposal=_minimal_proposal(
         production_impact=True, production_impact_description="modifies StepHazardDetector.swift",
         production_swift_modification_approved=False,
     ))
     result = validate(spec)
-    assert any(i.code == "UNAPPROVED_PRODUCTION_IMPACT" for i in result.errors)
+    assert any(i.code == "UNAPPROVED_PRODUCTION_IMPACT" for i in result.needs_human_approval)
+    assert result.is_valid  # NOT an error -- a correctly-described future requirement
+    assert not is_queue_eligible(result)  # but still blocks the queue
 
     spec2 = ExperimentSpec(proposal=_minimal_proposal(
         production_impact=True, production_impact_description="modifies StepHazardDetector.swift",
         production_swift_modification_approved=True,
     ))
     result2 = validate(spec2)
-    assert not any(i.code == "UNAPPROVED_PRODUCTION_IMPACT" for i in result2.errors)
+    assert not any(i.code == "UNAPPROVED_PRODUCTION_IMPACT" for i in result2.needs_human_approval)
+    assert is_queue_eligible(result2)
 
 
 def test_private_data_use_requires_approval():
     spec = ExperimentSpec(proposal=_minimal_proposal(data_privacy_classification="PRIVATE_USER_DATA"))
     result = validate(spec)
-    assert any(i.code == "UNAPPROVED_PRIVATE_DATA_USE" for i in result.errors)
+    assert any(i.code == "UNAPPROVED_PRIVATE_DATA_USE" for i in result.needs_human_approval)
+    assert result.is_valid
+    assert not is_queue_eligible(result)
 
 
 def test_external_api_required_does_not_imply_authorization(monkeypatch):
@@ -394,15 +402,16 @@ def test_external_api_required_does_not_imply_authorization(monkeypatch):
 
     spec = ExperimentSpec(proposal=_minimal_proposal(external_api_required=True, external_upload_approved=False))
     result = validate(spec)
-    assert any(i.code == "UNAPPROVED_EXTERNAL_API" for i in result.errors), (
-        "external_api_required=True must still fail validation even though OPENROUTER_API_KEY "
+    assert any(i.code == "UNAPPROVED_EXTERNAL_API" for i in result.needs_human_approval), (
+        "external_api_required=True must still fail QUEUE eligibility even though OPENROUTER_API_KEY "
         "is present in the environment — key presence must never imply authorization."
     )
+    assert not is_queue_eligible(result)
 
     monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
     spec2 = ExperimentSpec(proposal=_minimal_proposal(external_api_required=True, external_upload_approved=False))
     result2 = validate(spec2)
-    assert any(i.code == "UNAPPROVED_EXTERNAL_API" for i in result2.errors), (
+    assert any(i.code == "UNAPPROVED_EXTERNAL_API" for i in result2.needs_human_approval), (
         "the same failure must occur identically with the key absent — proving external_api_required's "
         "gating logic never conditions on os.environ at all."
     )

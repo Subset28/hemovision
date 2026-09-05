@@ -81,7 +81,31 @@ def _is_placeholder(text: str) -> bool:
 # ValidationResult
 # ---------------------------------------------------------------------------
 
-Level = str  # "ERROR" | "WARNING" | "NEEDS_HUMAN_REVIEW"
+# "ERROR" | "WARNING" | "NEEDS_HUMAN_REVIEW" | "NEEDS_HUMAN_APPROVAL"
+#
+# NEEDS_HUMAN_APPROVAL (Phase-I CANDIDATE-0001-postmortem addition, see
+# reports/phase_i/CANDIDATE_0001_POSTMORTEM.md) is DELIBERATELY DISTINCT
+# from ERROR. It answers a different question:
+#   ERROR                = the proposal is structurally/scientifically
+#                           invalid (missing hypothesis, unknown family,
+#                           contradictory success criteria, ...).
+#   NEEDS_HUMAN_APPROVAL  = the proposal is scientifically fine but
+#                           DESCRIBES an operation (production Swift change,
+#                           Mac/iPhone deployment, private-data use, external
+#                           API/data acquisition, new training) that requires
+#                           an explicit human-authority approval flag which
+#                           is not yet granted. This is never conflated with
+#                           "the proposal is malformed" -- a scientifically
+#                           valid proposal MUST be allowed to say "this needs
+#                           future human approval" without that fact alone
+#                           making the proposal invalid. See is_valid() vs.
+#                           is_queue_eligible() below: is_valid() ignores
+#                           NEEDS_HUMAN_APPROVAL entirely (so a reviewer can
+#                           still assess an otherwise-sound design);
+#                           is_queue_eligible() requires BOTH zero ERRORs AND
+#                           zero NEEDS_HUMAN_APPROVAL issues (so a missing
+#                           approval still, and always, blocks the queue).
+Level = str
 
 
 @dataclass
@@ -111,7 +135,17 @@ class ValidationResult:
         return [i for i in self.issues if i.level == "NEEDS_HUMAN_REVIEW"]
 
     @property
+    def needs_human_approval(self) -> list:
+        return [i for i in self.issues if i.level == "NEEDS_HUMAN_APPROVAL"]
+
+    @property
     def is_valid(self) -> bool:
+        """Structural/scientific validity ONLY -- deliberately does NOT
+        consider NEEDS_HUMAN_APPROVAL issues. A proposal that correctly
+        describes a future need for human authorization (e.g.
+        mac_iphone_required=True with the approval not yet granted) is
+        still `is_valid=True`: it is a well-formed, reviewable proposal,
+        just not yet queue-eligible. See is_queue_eligible()."""
         return len(self.errors) == 0
 
     def __bool__(self) -> bool:
@@ -357,28 +391,48 @@ def _validate_proposal(p: ExperimentProposal, result: ValidationResult, db, memo
             if not is_known_metric(g):
                 result.add("ERROR", "INVALID_METRIC_NAME", f"success_criteria.guardrail_metrics contains unknown metric {g!r}")
 
-    # -- production modification without human-authority approval --
+    # -- Human-authority approval gates (Phase-I CANDIDATE-0001 postmortem
+    #    fix): these are NEEDS_HUMAN_APPROVAL, never ERROR. A proposal that
+    #    correctly DESCRIBES a future need for one of these approvals is
+    #    scientifically/structurally fine -- it is not yet QUEUE-eligible
+    #    (is_queue_eligible() below checks these too), but it IS reviewable
+    #    (is_valid ignores this level entirely). See this module's Level
+    #    comment above for the full rationale; see
+    #    reports/phase_i/CANDIDATE_0001_POSTMORTEM.md for the incident that
+    #    prompted this fix -- CANDIDATE-0001 was incorrectly REJECTED
+    #    (treated as scientifically invalid) purely for accurately stating
+    #    mac_iphone_required=True with no fabricated approval.
     if p.production_impact and not p.production_swift_modification_approved:
         result.add(
-            "ERROR", "UNAPPROVED_PRODUCTION_IMPACT",
+            "NEEDS_HUMAN_APPROVAL", "UNAPPROVED_PRODUCTION_IMPACT",
             "production_impact=True but production_swift_modification_approved=False — "
-            "a production-impacting proposal requires explicit human approval before it can be queue-eligible.",
+            "a production-impacting proposal requires explicit human approval before it can be queue-eligible. "
+            "The proposal itself is not thereby invalid.",
         )
     if p.mac_iphone_required and not p.mac_iphone_deployment_approved:
         result.add(
-            "ERROR", "UNAPPROVED_MAC_IPHONE_DEPLOYMENT",
-            "mac_iphone_required=True but mac_iphone_deployment_approved=False.",
+            "NEEDS_HUMAN_APPROVAL", "UNAPPROVED_MAC_IPHONE_DEPLOYMENT",
+            "mac_iphone_required=True but mac_iphone_deployment_approved=False — this proposal correctly "
+            "describes a future device-validation need; it requires human approval before queueing, but is "
+            "not thereby an invalid proposal.",
+        )
+    if p.family == "training_data" and not p.new_training_approved:
+        result.add(
+            "NEEDS_HUMAN_APPROVAL", "UNAPPROVED_NEW_TRAINING",
+            f"family={p.family!r} implies new training but new_training_approved=False — requires human "
+            "approval before queueing, but is not thereby an invalid proposal.",
         )
 
-    # -- unapproved external-data/privacy path --
+    # -- unapproved external-data/privacy path -- same NEEDS_HUMAN_APPROVAL
+    #    treatment as above, same rationale.
     if p.data_privacy_classification == "PRIVATE_USER_DATA" and not p.private_user_data_use_approved:
         result.add(
-            "ERROR", "UNAPPROVED_PRIVATE_DATA_USE",
+            "NEEDS_HUMAN_APPROVAL", "UNAPPROVED_PRIVATE_DATA_USE",
             "data_privacy_classification=PRIVATE_USER_DATA but private_user_data_use_approved=False.",
         )
     if p.external_api_required and not p.external_upload_approved:
         result.add(
-            "ERROR", "UNAPPROVED_EXTERNAL_API",
+            "NEEDS_HUMAN_APPROVAL", "UNAPPROVED_EXTERNAL_API",
             "external_api_required=True but external_upload_approved=False. NOTE: the presence of "
             "OPENROUTER_API_KEY in the environment has no bearing on this flag whatsoever — see "
             "research/experiment_validator.py's module docstring and tests/test_experiment_spec.py's "
@@ -461,7 +515,15 @@ def _validate_result(spec: ExperimentSpec, result: ValidationResult) -> None:
 
 
 def is_queue_eligible(validation_result: ValidationResult) -> bool:
-    """True iff validate() produced zero ERROR-level issues. Warnings and
-    NEEDS_HUMAN_REVIEW flags may still require a human to look before actual
-    approval, but they do not block this mechanical gate."""
-    return validation_result.is_valid
+    """True iff validate() produced zero ERROR-level AND zero
+    NEEDS_HUMAN_APPROVAL issues. Warnings and NEEDS_HUMAN_REVIEW flags may
+    still require a human to look before actual approval, but they do not
+    block this mechanical gate.
+
+    NEEDS_HUMAN_APPROVAL is included here deliberately (Phase-I
+    CANDIDATE-0001 postmortem fix): a proposal that accurately describes a
+    still-missing human authorization (production impact, Mac/iPhone
+    deployment, private data use, external API/data, new training) must
+    NEVER become queue-eligible merely because is_valid() (structural/
+    scientific validity only) is True. Queue admission requires BOTH."""
+    return validation_result.is_valid and not validation_result.needs_human_approval

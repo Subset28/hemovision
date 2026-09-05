@@ -132,7 +132,32 @@ def _validation_to_dict(v: Optional[ValidationResult]) -> Optional[dict]:
         "errors": [vars(i) for i in v.errors],
         "warnings": [vars(i) for i in v.warnings],
         "needs_human_review": [vars(i) for i in v.needs_human_review],
+        "needs_human_approval": [vars(i) for i in v.needs_human_approval],
         "is_valid": v.is_valid,
+    }
+
+
+def _authorization_assessment(proposal: ExperimentProposal) -> dict:
+    """Deterministic REQUIRED/APPROVED/NOT_REQUIRED status per Phase F
+    human-authority flag (Phase-I CANDIDATE-0001 postmortem, section 7:
+    generalize across all approvals). Two flags
+    (coreml_model_replacement_approved, signing_distribution_change_approved)
+    have no deterministic "this proposal requires it" trigger anywhere in
+    the current canonical schema -- documented as a known gap, not silently
+    declared safe; both remain hard-coded False regardless."""
+    def status(required: bool, approved: bool) -> str:
+        if not required:
+            return "NOT_REQUIRED"
+        return "APPROVED" if approved else "REQUIRED"
+
+    return {
+        "production_swift_modification_approved": status(proposal.production_impact, proposal.production_swift_modification_approved),
+        "mac_iphone_deployment_approved": status(proposal.mac_iphone_required, proposal.mac_iphone_deployment_approved),
+        "new_training_approved": status(proposal.family == "training_data", proposal.new_training_approved),
+        "private_user_data_use_approved": status(proposal.data_privacy_classification == "PRIVATE_USER_DATA", proposal.private_user_data_use_approved),
+        "external_upload_approved": status(proposal.external_api_required, proposal.external_upload_approved),
+        "coreml_model_replacement_approved": "NO_DETERMINISTIC_TRIGGER_IN_SCHEMA",
+        "signing_distribution_change_approved": "NO_DETERMINISTIC_TRIGGER_IN_SCHEMA",
     }
 
 
@@ -480,6 +505,7 @@ def _write_final_report(record: "cs.CandidateRecord", result: PhaseICycleResult,
         "redundancy_conflicts": result.redundancy_conflicts,
         "calls_made": result.calls_made,
         "calls_budget": result.calls_budget,
+        "authorization_assessment": _authorization_assessment(final_proposal),
         "human_approvals_required": [
             "new_training_approved", "production_swift_modification_approved",
             "coreml_model_replacement_approved", "external_upload_approved",
