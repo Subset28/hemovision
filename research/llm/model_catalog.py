@@ -158,13 +158,19 @@ class CapabilityEvidence:
 
 def supports_structured_output(model_id: str, catalog_entry: Optional[dict]) -> bool:
     """True iff the catalog entry's `supported_parameters` list contains
-    `"response_format"` — the field OpenRouter's structured-outputs docs
-    (https://openrouter.ai/docs/features/structured-outputs) document as the
-    request-time opt-in, and the exact field OMNISIGHT's own audit used to
-    distinguish `liquid/lfm-2.5-2.6b:free` (supported) from
-    `nvidia/nemotron-3.5-lightning:free` / `poolside/laguna-s-2.1:free` (not
-    supported). Fail closed: missing/malformed `supported_parameters` means
-    "unknown", treated as unsupported."""
+    BOTH `"response_format"` (the request-time field OmniLab actually sends)
+    AND `"structured_outputs"` (per OpenRouter's own structured-outputs docs
+    -- https://openrouter.ai/docs/features/structured-outputs -- THIS is the
+    documented capability indicator, not `response_format` alone: "This is
+    the documented way to confirm support—not the presence of
+    response_format alone. The response_format parameter is what you *use*
+    in requests, but structured_outputs is what *indicates* the capability
+    exists."). A prior version of this function checked `response_format`
+    only -- a confirmed bug found during Phase H's catalog-verification
+    audit (deterministic re-check of inclusionai/ling-3.0-flash-sante:free,
+    which has NEITHER field, via raw requests.get, not WebFetch/LLM
+    summarization). Fail closed: missing/malformed `supported_parameters`,
+    or either field absent, means unsupported."""
     return structured_output_capability_evidence(model_id, catalog_entry).supports_structured_output
 
 
@@ -176,12 +182,15 @@ def structured_output_capability_evidence(model_id: str, catalog_entry: Optional
     if not isinstance(params, list):
         return CapabilityEvidence(params, False, "catalog entry has no 'supported_parameters' list")
 
-    supported = "response_format" in params
-    reason = (
-        "'response_format' present in supported_parameters"
-        if supported
-        else "'response_format' absent from supported_parameters"
-    )
+    has_response_format = "response_format" in params
+    has_structured_outputs = "structured_outputs" in params
+    supported = has_response_format and has_structured_outputs
+    if supported:
+        reason = "'response_format' and 'structured_outputs' both present in supported_parameters"
+    elif not has_structured_outputs:
+        reason = "'structured_outputs' absent from supported_parameters (the documented OpenRouter capability indicator)"
+    else:
+        reason = "'response_format' absent from supported_parameters"
     return CapabilityEvidence(params, supported, reason)
 
 
@@ -463,3 +472,56 @@ def find_eligible_free_models(
             )
         )
     return candidates
+
+
+CATALOG_SNAPSHOT_SOURCE = "https://openrouter.ai/api/v1/models"
+
+
+def save_catalog_snapshot(
+    model_id: str,
+    catalog_entry: Optional[dict],
+    *,
+    eligibility_result: str,
+    rejection_reason: Optional[str] = None,
+    snapshot_dir: Optional["Path"] = None,
+) -> "Path":
+    """Persist a small, sanitized, PUBLIC-metadata-only snapshot of one
+    model's catalog entry at decision time (Phase H catalog-verification
+    audit, section 5: "the previous process has exposed an evidence-quality
+    problem" -- an earlier WebFetch/LLM-summarized check claimed
+    capabilities a deterministic raw fetch later contradicted, and no raw
+    evidence survived to adjudicate which was right). Every field here is
+    already public on openrouter.ai/models -- never the API key, never a
+    request/response body, never a prompt.
+
+    Does NOT store the full ~400+ model catalog -- one small JSON file per
+    snapshot, named by model + timestamp, under `research/catalog_snapshots/`
+    (gitignored, like other local runtime state -- this is an audit trail
+    for THIS machine's decisions, not a source-controlled artifact).
+    """
+    import json
+
+    from research.config import RESEARCH_DIR
+
+    snapshot_dir = snapshot_dir or (RESEARCH_DIR / "catalog_snapshots")
+    snapshot_dir.mkdir(parents=True, exist_ok=True)
+
+    entry = catalog_entry if isinstance(catalog_entry, dict) else {}
+    snapshot = {
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "catalog_source": CATALOG_SNAPSHOT_SOURCE,
+        "model_id": model_id,
+        "pricing": entry.get("pricing"),
+        "supported_parameters": entry.get("supported_parameters"),
+        "reasoning": entry.get("reasoning"),
+        "context_length": entry.get("context_length"),
+        "top_provider": entry.get("top_provider"),
+        "eligibility_result": eligibility_result,  # e.g. "ELIGIBLE" / "REJECTED"
+        "rejection_reason": rejection_reason,
+    }
+
+    safe_name = model_id.replace("/", "_").replace(":", "_")
+    ts_compact = snapshot["timestamp"].replace(":", "").replace("-", "").split(".")[0]
+    path = snapshot_dir / f"{safe_name}_{ts_compact}.json"
+    path.write_text(json.dumps(snapshot, indent=2), encoding="utf-8")
+    return path

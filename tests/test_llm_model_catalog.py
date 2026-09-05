@@ -15,6 +15,7 @@ from research.llm.model_catalog import (
     evaluate_model_for_role,
     find_eligible_free_models,
     is_free_model,
+    structured_output_capability_evidence,
     supports_structured_output,
 )
 
@@ -71,6 +72,41 @@ class TestSupportsStructuredOutput:
 
     def test_no_catalog_entry_rejected(self):
         assert supports_structured_output("some/model", None) is False
+
+    def test_response_format_alone_without_structured_outputs_is_rejected(self):
+        """Regression test for a real, confirmed bug (Phase H catalog-
+        verification audit): the prior version of this function accepted
+        `response_format` alone as sufficient evidence of structured-output
+        capability. Per OpenRouter's own docs
+        (https://openrouter.ai/docs/features/structured-outputs):
+        "This is the documented way to confirm support—not the presence of
+        response_format alone. The response_format parameter is what you
+        *use* in requests, but structured_outputs is what *indicates* the
+        capability exists." A deterministic raw-catalog check (requests.get,
+        not WebFetch/LLM summarization) of a real model,
+        inclusionai/ling-3.0-flash-sante:free, at the time of this audit had
+        neither field -- but several free models DO advertise
+        `response_format` without `structured_outputs` (per the same raw
+        catalog scan), which the old rule would have wrongly accepted."""
+        entry = {"supported_parameters": ["max_tokens", "response_format", "tool_choice"]}
+        evidence = structured_output_capability_evidence("some/model", entry)
+        assert evidence.supports_structured_output is False
+        assert "structured_outputs" in evidence.reason
+
+    def test_structured_outputs_alone_without_response_format_is_rejected(self):
+        """The inverse gap -- structured_outputs without response_format --
+        is not observed in the live catalog today, but OmniLab's request
+        actually sends `response_format` as the field name, so a model
+        lacking it is unsupported regardless of the structured_outputs flag."""
+        entry = {"supported_parameters": ["max_tokens", "structured_outputs"]}
+        assert supports_structured_output("some/model", entry) is False
+
+    def test_eligibility_decision_is_reproducible(self):
+        """Same input -> same output, called twice."""
+        entry = {"supported_parameters": ["response_format", "structured_outputs"]}
+        first = supports_structured_output("some/model", entry)
+        second = supports_structured_output("some/model", entry)
+        assert first == second is True
 
 
 class TestEvaluateModelForRole:

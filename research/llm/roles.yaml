@@ -78,25 +78,46 @@
 # a plausible reasoning-token-exhaustion case per the OpenRouter audit
 # report's section 1 findings -- this is a narrow, safe budget increase,
 # not a change to any validation/safety/authorization logic.
-# Phase H reasoning-capability-negotiation follow-up (post-DRYRUN-0006,
-# NOT yet live-tested -- prepared and recommended, awaiting approval):
-# liquid/lfm-2.5-2.6b:free's real catalog entry is
-# `"reasoning": {"mandatory": true}` with no supported_efforts/
-# supports_max_tokens to bound it -- per Phase H's stated preference order
-# ("if reasoning is mandatory but cannot be bounded, consider selecting a
-# DIFFERENT current free model"), switched to `inclusionai/ling-3.0-flash-
-# sante:free`. Re-verified live via the public, unauthenticated
-# /api/v1/models catalog GET (not counted against any call budget): free
-# (pricing 0/0), advertises response_format + structured_outputs, and its
-# reasoning object is `{"mandatory": false, "default_enabled": true}` --
-# disabling reasoning is an OFFICIALLY documented control for this model
-# (research/llm/model_catalog.py::build_reasoning_decision() will select
-# REASONING_DISABLED, sending reasoning:{"enabled": false}, never a
-# guessed field). Also has far more headroom than LFM: 262,144-token
-# context, 32,768-token completion cap (vs. LFM's 65,536/8,192).
+# Phase H catalog-verification audit (superseding the entry above --
+# `inclusionai/ling-3.0-flash-sante:free` was rejected before any live
+# call by a deterministic re-check): the earlier WebFetch-based check that
+# recommended `inclusionai/ling-3.0-flash-sante:free` was WRONG. A
+# deterministic raw `requests.get` against OpenRouter's public
+# /api/v1/models catalog (no WebFetch/LLM summarization -- exact
+# machine-parsed JSON) shows this model's `supported_parameters` does NOT
+# include `response_format` or `structured_outputs` at all. No raw
+# snapshot survives from the earlier claim, so this is classified as a
+# verification/tooling error (WebFetch summarizing a large paginated JSON
+# catalog is unreliable for this precision-critical use), not a proven
+# catalog change -- see reports/openrouter/ for the full writeup.
+#
+# This ALSO surfaced a second, separate, confirmed bug: research/llm/
+# model_catalog.py::supports_structured_output() was checking
+# `response_format` alone, but OpenRouter's own docs
+# (https://openrouter.ai/docs/features/structured-outputs) name
+# `structured_outputs` as the actual documented capability indicator --
+# fixed to require BOTH fields.
+#
+# A full deterministic scan (requests.get, not WebFetch) of the live free
+# catalog for models satisfying the CORRECTED rule found 4 real
+# candidates (excluding `openrouter/free`, never used per policy):
+# dots-studio/dots-3-note-preview:free (reasoning.mandatory=false, huge
+# 512k/460k context/output), liquid/lfm-2.5-2.6b:free (reasoning.mandatory
+# =true, unbounded -- already excluded), z-ai/glm-5.2:free
+# (reasoning.mandatory=false, supported_efforts present, 256k/230k),
+# nvidia/nemotron-3-super-120b-a12b:free (reasoning.mandatory=false, AND
+# supports_max_tokens=true AND supported_efforts present -- the most
+# completely-specified reasoning metadata of the three viable candidates,
+# giving two independent fallback negotiation paths if disabling somehow
+# fails again; 262k/236k context/output; established vendor, larger/more
+# capable architecture than any model tried so far in Phase H).
+# Selected: nvidia/nemotron-3-super-120b-a12b:free.
 researcher:
-  preferred_model: inclusionai/ling-3.0-flash-sante:free
+  preferred_model: nvidia/nemotron-3-super-120b-a12b:free
   fallback_models:
+    - z-ai/glm-5.2:free
+    - dots-studio/dots-3-note-preview:free
+    - inclusionai/ling-3.0-flash-sante:free
     - liquid/lfm-2.5-2.6b:free
     - poolside/laguna-s-2.1:free
     - meta-llama/llama-3.1-8b-instruct:free
@@ -104,7 +125,7 @@ researcher:
   # max_tokens 4096: a locally-measured representative valid
   # ExperimentProposal is only ~400-450 tokens
   # (tests/test_dry_run_pipeline.py::VALID_PROPOSAL) -- 4096 is ~9x that,
-  # comfortable headroom, and stays well under this model's 32,768-token
+  # comfortable headroom, and stays well under this model's 235,929-token
   # completion cap even before accounting for reasoning being disabled.
   max_tokens: 4096
   timeout: 60
@@ -120,9 +141,12 @@ experiment_designer:
   call_budget_category: design
 
 reviewer:
-  # Same reasoning as `researcher` above (Phase H reasoning-negotiation follow-up).
-  preferred_model: inclusionai/ling-3.0-flash-sante:free
+  # Same reasoning as `researcher` above (Phase H catalog-verification audit).
+  preferred_model: nvidia/nemotron-3-super-120b-a12b:free
   fallback_models:
+    - z-ai/glm-5.2:free
+    - dots-studio/dots-3-note-preview:free
+    - inclusionai/ling-3.0-flash-sante:free
     - liquid/lfm-2.5-2.6b:free
     - poolside/laguna-s-2.1:free
     - meta-llama/llama-3.1-8b-instruct:free

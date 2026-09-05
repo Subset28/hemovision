@@ -25,6 +25,10 @@ research/orchestrator_state.json
 # research/memory_seed.py)
 research/memory.db
 
+# Phase H catalog-verification audit trail — local, regenerable public-
+# metadata snapshots (research/llm/model_catalog.py::save_catalog_snapshot)
+research/catalog_snapshots/
+
 # macOS
 .DS_Store
 

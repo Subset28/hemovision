@@ -254,6 +254,29 @@ def cmd_dry_run(args: argparse.Namespace) -> int:
     run_budget = RunBudget(max_calls=args.max_calls)
     dry_run_budget = DryRunCallBudget(max_calls=args.max_calls)
 
+    if model_catalog is not None:
+        # Persist a small, sanitized (public-metadata-only) snapshot for
+        # every role's currently-configured model, at THIS decision point --
+        # independently auditable evidence for "this model supported X at
+        # call time" (Phase H catalog-verification audit, section 5: an
+        # earlier WebFetch/LLM-summarized check made a claim no raw snapshot
+        # survived to verify or refute).
+        from research.llm.model_catalog import (
+            ModelCapabilityError,
+            ModelNotFreeError,
+            evaluate_model_for_role,
+            save_catalog_snapshot,
+        )
+
+        for role_name in ("researcher", "reviewer"):
+            preferred = router._role_config(role_name).preferred_model
+            entry = model_catalog.get(preferred)
+            try:
+                evaluate_model_for_role(role_name, preferred, entry, require_structured_output=True)
+                save_catalog_snapshot(preferred, entry, eligibility_result="ELIGIBLE")
+            except (ModelNotFreeError, ModelCapabilityError) as e:
+                save_catalog_snapshot(preferred, entry, eligibility_result="REJECTED", rejection_reason=str(e))
+
     result = run_dry_run_cycle(
         router=router, authorized=authorization, run_budget=run_budget, dry_run_budget=dry_run_budget,
         model_catalog=model_catalog, require_structured_output=args.structured_output,

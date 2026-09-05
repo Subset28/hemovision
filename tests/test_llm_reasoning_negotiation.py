@@ -136,7 +136,7 @@ class TestCallLlmReasoningWiring:
         catalog = {
             "test/mandatory-model": {
                 "pricing": {"prompt": "0", "completion": "0"},
-                "supported_parameters": ["response_format"],
+                "supported_parameters": ["response_format", "structured_outputs"],
                 "reasoning": {"mandatory": True},
             },
         }
@@ -156,7 +156,7 @@ class TestCallLlmReasoningWiring:
         catalog = {
             "test/optional-model": {
                 "pricing": {"prompt": "0", "completion": "0"},
-                "supported_parameters": ["response_format"],
+                "supported_parameters": ["response_format", "structured_outputs"],
                 "reasoning": {"mandatory": False, "default_enabled": True},
             },
         }
@@ -187,7 +187,7 @@ class TestCallLlmReasoningWiring:
         catalog = {
             "test/optional-model": {
                 "pricing": {"prompt": "0", "completion": "0"},
-                "supported_parameters": ["response_format"],
+                "supported_parameters": ["response_format", "structured_outputs"],
                 "reasoning": {"mandatory": False},
             },
         }
@@ -228,7 +228,7 @@ class TestCallLlmReasoningWiring:
         catalog = {
             "test/mandatory-model": {
                 "pricing": {"prompt": "0", "completion": "0"},
-                "supported_parameters": ["response_format"],
+                "supported_parameters": ["response_format", "structured_outputs"],
                 "reasoning": {"mandatory": True},
             },
         }

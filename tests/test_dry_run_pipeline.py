@@ -537,7 +537,7 @@ class TestStructuredOutputWiring:
         provider = RecordingProvider([_proposal_json(), _review_json()])
         router = _isolated_router(provider)
         permissive_catalog = {
-            "test/model": {"pricing": {"prompt": "0", "completion": "0"}, "supported_parameters": ["response_format"]},
+            "test/model": {"pricing": {"prompt": "0", "completion": "0"}, "supported_parameters": ["response_format", "structured_outputs"]},
         }
         # Point both roles at the same permissive catalog entry for this test.
         for role_cfg in router._roles.values():
