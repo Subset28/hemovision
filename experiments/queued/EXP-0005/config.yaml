@@ -1,0 +1,29 @@
+experiment_id: EXP-0005
+experiment_family: model_variant
+independent_variable: model checkpoint/architecture
+controls:
+  imgsz: 640
+  conf_threshold_primary: 0.4
+  conf_threshold_diagnostic_sweep_capture: 0.01
+  iou_threshold_nms: 0.7
+  manifest: data/manifests/eval_manifest.jsonl (unchanged, 380 images, 4916 boxes)
+  matching_algorithm: benchmark.metrics.greedy_match (reused, not reimplemented)
+  class_map: benchmark/diagnostics/model_variant_class_map.py (verified against each
+    live model.names before use)
+  hazard_precision_guardrail_floor: 0.757
+  candidates_never_touch:
+  - benchmark/config.py
+  - benchmark/model.py
+  - benchmark/results/baseline/
+  - ios/
+  hardware: Windows/CUDA (RTX 3070 Ti) -- same machine/process pattern as every prior
+    EXP in this lab; explicitly NOT iPhone/ANE
+configuration: {}
+baseline_run_id: RUN-20260904-002
+validation_requirement: REQUIRES_MAC
+estimated_cost:
+  runtime_min: 60
+  gpu_mem_gb: 8
+  cpu: high
+  disk_mb: 200
+  llm_calls: 0

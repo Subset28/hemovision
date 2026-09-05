@@ -105,7 +105,14 @@ REGISTRY: dict[str, FamilySpec] = {
         typical_guardrails=("hazard.precision", "hazard.recall", "latency.p95_ms"),
         windows_evaluatable=True,
         production_validation_requirement="REQUIRES_MAC",
-        allowed_path_prefixes=("benchmark/", "research/", "experiments/"),
+        # "tests/" and "reports/" added for EXP-0005, the same narrow pattern
+        # EXP-0003/EXP-0004 used: a model-variant comparison's own
+        # deliverables legitimately include new regression tests for its
+        # class-mapping/evaluation code and a standalone human-readable
+        # comparison report under reports/baseline/ -- neither is a
+        # production/ios/ change, and no new model checkpoint file is ever
+        # committed (benchmark/models/*.pt is gitignored).
+        allowed_path_prefixes=("benchmark/", "research/", "experiments/", "tests/", "reports/"),
     ),
     "training_data": FamilySpec(
         key="training_data",

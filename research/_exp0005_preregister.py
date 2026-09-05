@@ -1,0 +1,323 @@
+"""One-time unblock + pre-registration update for EXP-0005 (model_variant).
+
+Run BEFORE `omnilab experiment EXP-0005` is invoked (and before any
+candidate result is looked at). Does two things, in order:
+
+  1. Transitions EXP-0005's execution_status BLOCKED -> QUEUED (already a
+     legal transition in research/db.py's ALLOWED_TRANSITIONS -- no schema
+     change was needed) and moves its directory
+     experiments/blocked/EXP-0005/ -> experiments/queued/EXP-0005/ via
+     research/experiment_lifecycle.py.
+  2. Replaces the seeded stub's generic evaluation_method/success_criteria/
+     controls with the full, candidate-by-candidate pre-registration
+     required by the EXP-0005 task spec, mirroring EXP-0004's
+     _exp0004_preregister.py pattern: parameters, rationale, expected
+     benefit, possible failure mode, and compute-cost expectation for each
+     of the 4 pre-registered candidates, decided and written BEFORE any
+     result was inspected.
+
+hypothesis.md/methodology.md/config.yaml are regenerated from these DB
+fields by research/experiment_schema.py at every QUEUED/RUNNING artifact
+write, so writing it here (once, before running) IS the pre-registration
+record -- dated by this update's git commit, which lands BEFORE the
+run_exp_0005 commit (same convention as EXP-0004).
+
+Not part of the reusable research/ pipeline itself (no runner imports this
+module) -- a deliberate one-shot setup script, analogous to
+research/seed_experiments.py's and research/_exp0004_preregister.py's
+one-shot nature.
+"""
+
+from __future__ import annotations
+
+from research.db import OmniLabDB
+from research.experiment_lifecycle import find_current_dir, move_to_status
+from research.experiment_schema import write_queued_artifacts
+
+EVALUATION_METHOD = """\
+Standalone diagnostic script (benchmark/diagnostics/model_variant_eval.py, \
+class mapping in benchmark/diagnostics/model_variant_class_map.py) runs REAL \
+inference over the full 380-image eval manifest for 4 pre-registered model \
+checkpoints (the current production baseline plus 3 alternatives), at a \
+HELD-CONSTANT input resolution (imgsz=640) and NMS IoU (0.7) passed \
+explicitly to every candidate's own ultralytics predict() call — the ONLY \
+changed variable per candidate is the model checkpoint/architecture itself. \
+benchmark/config.py, benchmark/model.py, and benchmark/results/baseline/ \
+(RUN-20260904-002) are never modified; no candidate is exported to \
+CoreML/run on-device — that requires macOS/iPhone (see risks) and is \
+explicitly out of scope for this Windows-only diagnostic phase.
+
+PRE-REGISTERED CANDIDATE SET (chosen and parameterized BEFORE any result \
+was inspected — see benchmark/diagnostics/model_variant_eval.py::CANDIDATE_SPECS \
+for the executable form of this same set):
+
+A. yolov8m-oiv7.pt (current production baseline, unchanged). Architecture: \
+YOLOv8 medium. Vocabulary: Open Images V7, 601 classes (same as production). \
+Params: 26.20M (measured via model.model.info()-equivalent parameter count). \
+File size: 52.7MB. Source: Ultralytics official release asset \
+(github.com/ultralytics/assets releases v8.3.0), same provenance-verification \
+method as Phase B's original acquisition. License: AGPL-3.0 (Ultralytics OSS) \
+-- commercial closed-source use requires an Ultralytics Enterprise license, \
+same consideration that already applies to the shipped app today. Rationale \
+for inclusion: reference point every other candidate is judged against.
+
+B. yolov8n-oiv7.pt (smaller/faster, SAME vocabulary). Architecture: YOLOv8 \
+nano. Vocabulary: Open Images V7, 601 classes -- verified an official \
+Ultralytics OIV7 nano release actually exists (checked via the same release- \
+asset URL pattern as yolov8m-oiv7.pt, HTTP 302 confirmed before committing \
+to this name), so NO COCO vocabulary compromise is needed for this probe -- \
+Person is directly, natively comparable to the baseline with zero mapping. \
+Params: 3.50M. File size: 7.2MB. Rationale for inclusion: mobile-realistic \
+smaller/faster variant; expected benefit is latency/footprint, expected risk \
+is further recall loss from reduced capacity (same architecture family and \
+training data as baseline, strictly less capacity) -- a directional test of \
+whether MORE capacity (not less) is the actual lever, by symmetry with \
+candidate D. Expected outcome: recall same-or-worse than baseline, latency \
+better. License/source: same as A (Ultralytics OIV7 release asset, AGPL-3.0).
+
+C. yolo11m.pt (newer architecture generation, COCO-trained). Architecture: \
+YOLO11 medium -- a genuinely different architecture generation from YOLOv8, \
+not just a different size within the same family. Vocabulary: COCO, 80 \
+classes -- verified via `ultralytics.YOLO('yolo11m.pt')`'s actual \
+auto-download (github.com/ultralytics/assets release v8.4.0) that no \
+official Ultralytics OIV7-trained YOLO11 checkpoint exists; COCO is the only \
+reliably-downloadable YOLO11 checkpoint at this size, so this candidate \
+necessarily exercises the COCO<->OIV7 common-class mapping machinery (see \
+CONTROLS below). Params: 20.11M. File size: 40.7MB. Rationale for inclusion: \
+the single most direct test of whether a newer architecture/training \
+pipeline (not just bigger/smaller within the SAME architecture) can do \
+something the baseline's YOLOv8 architecture/OIV7 training genuinely cannot \
+-- the one candidate explicitly chosen to probe architecture generation, not \
+just capacity. Expected benefit: possible recall gains from better anchor- \
+free detection head design and more recent training recipes. Possible \
+failure mode (stated explicitly, before results were seen): COCO's \
+confidence calibration and NMS behavior differ from OIV7's; a fixed \
+conf=0.4 comparison could show an apparent recall gain that is actually a \
+calibration artifact (more/lower-confidence boxes surviving threshold) \
+rather than genuine detection improvement -- this is EXACTLY why the \
+precision-matched and guardrail-matched sweeps (see success criteria) are \
+pre-registered as required secondary comparisons, not optional. License: \
+AGPL-3.0 (Ultralytics OSS) -- commercial closed-source use requires \
+Ultralytics Enterprise, same as every other candidate here.
+
+D. yolov8l-oiv7.pt (larger diagnostic upper-bound, SAME vocabulary/ \
+architecture family as baseline). Architecture: YOLOv8 large. Vocabulary: \
+Open Images V7, 601 classes (same as baseline, natively comparable). Params: \
+44.09M. File size: 88.6MB. EXPLICITLY LABELED UNLIKELY TO SHIP on a phone \
+before any result is seen -- this candidate exists purely to probe whether \
+raw capacity increase (same architecture, same training data/vocabulary, \
+just bigger) raises Person recall at all, isolating "capacity" from \
+"architecture/training-data/vocabulary" as a variable (candidate C conflates \
+all of those at once; D changes ONLY capacity). Expected outcome: if D shows \
+little/no improvement despite ~1.7x the baseline's parameters, that is \
+evidence AGAINST "yolov8m's capacity is the limiting factor" specifically \
+(as opposed to its architecture family, training data, or label vocabulary \
+more broadly) -- see the explicit capacity-vs-architecture framing in the \
+task's analysis questions, which this experiment must answer carefully \
+(a better model succeeding supports but does not PROVE capacity is the \
+cause, since architecture/training-data/vocabulary/optimization all differ \
+too). License/source: same as A/B (Ultralytics OIV7 release asset, AGPL-3.0).
+
+VOCABULARY HANDLING (critical, pre-registered before results): candidates A, \
+B, D share the baseline's exact Open Images V7 vocabulary (601 classes) -- \
+Person and the full hazard-8 are natively, directly comparable with zero \
+mapping. Candidate C is COCO-trained (80 classes) -- benchmark/diagnostics/ \
+model_variant_class_map.py provides a verified 1:1 COCO<->OIV7 mapping for \
+7 of the 8 hazard classes (Person, Car, Truck, Bus, Bicycle, Motorcycle, \
+Dog); COCO has NO 'stairs' class at all (verified by grepping the real, live \
+model.names of a loaded COCO checkpoint, not assumed) -- Stairs is \
+EXCLUDED from any COCO-involving comparison rather than fabricating a \
+"closest" equivalent. The PRIMARY cross-model comparison table is therefore \
+the 7-class common-class hazard set (hazard-8 minus Stairs) plus Person \
+specifically (verified achievable identically across all 4 candidates \
+BEFORE candidate selection was finalized). Each OIV7-vocabulary candidate's \
+own full native hazard-8 metrics (including Stairs) are ALSO preserved and \
+reported, never discarded, per the task's explicit requirement to keep both \
+representations.
+
+Person failure-bucket transitions (per EXP-0003's existing 239-record \
+classification in benchmark/results/diagnostics/person_confusion_analysis.json) \
+are recomputed per candidate by reusing person_confusion_analysis.py's own \
+matching (_match_person_boxes_in_sample, benchmark.metrics.greedy_match) and \
+classification decision tree (_classify_one) directly via \
+benchmark/diagnostics/preprocessing_eval.py's analyze_candidate_transitions \
+(imported, not reimplemented -- that function only depends on a \
+predictions-by-sample shape that is identical whether the underlying \
+"candidate" swap is a preprocessing transform, as in EXP-0004, or a \
+different model checkpoint, as here). Baseline Person TPs (64) are \
+re-checked under every candidate for regressions with the same rigor as \
+gains. Small-Person analysis (<2% GT area, EXP-0003's existing convention) \
+is reported per candidate via the same reused machinery's size_transitions \
+breakdown.
+
+Two real inference passes are run per candidate: conf=0.4 (the official \
+operating point, used for the primary common-class/native hazard and \
+Person precision/recall/F1/AP50 fed to research/evaluation_policy.py) and \
+conf=0.01 (mirrors Phase B.5/EXP-0003/EXP-0004's diagnostic-capture \
+convention, used for the failure-bucket-transition analysis AND for a \
+19-point confidence-threshold sweep (0.05..0.95) computed by filtering that \
+ONE capture, never by re-running inference -- mirrors \
+benchmark/diagnostics/threshold_sweep.py's established pattern). From that \
+sweep, two pre-registered secondary comparisons are computed per candidate, \
+BEFORE any candidate's numbers were inspected: \
+(i) precision-matched Person recall -- Person recall at the lowest swept \
+threshold whose Person precision >= the baseline's own official (conf=0.4) \
+Person precision: catches a candidate whose fixed-threshold recall gain is \
+actually just a lower effective confidence bar, not a real detection \
+improvement; \
+(ii) guardrail-matched Person recall -- Person recall at the lowest swept \
+threshold whose common-class hazard precision >= the pre-registered \
+hazard-precision guardrail floor (0.757, see CONTROLS): the recall a \
+candidate could deliver while still satisfying the SAME precision floor \
+every other experiment in this lab is held to.
+
+Peak GPU memory is measured via torch.cuda.reset_peak_memory_stats() \
+immediately before each candidate's own conf=0.4 pass and \
+torch.cuda.max_memory_allocated() immediately after -- reset per candidate \
+so figures are never accumulated across candidates. All latency is labeled \
+"Windows/CUDA relative compute proxy, NOT iPhone" everywhere it is reported; \
+inference time is measured in isolation (no preprocessing step exists in \
+this experiment, unlike EXP-0004).
+
+CoreML EXPORT ATTEMPTS: model.export(format='coreml') is attempted for the \
+2 candidates most plausible for near-term device validation (A, the current \
+baseline, and B, the smallest/most mobile-realistic alternative) using \
+coremltools' conversion code path, which is DIFFERENT from actually running \
+the resulting .mlpackage (execution requires macOS/Apple Neural Engine and \
+is out of scope here). Success/failure is reported honestly regardless of \
+outcome -- see risks for the known Windows limitation.
+
+Overall verdict convention (same as EXP-0003/EXP-0004, stated explicitly \
+before results were seen): each candidate is independently scored through \
+the SAME UNMODIFIED research.evaluation_policy.default_hazard_policy \
+guardrail set, using the appropriate hazard figure (native hazard-8 for A/ \
+B/D, common-class hazard-7 for C, since a native hazard-8 comparison is \
+structurally impossible for a COCO candidate) as this experiment's \
+"hazard.precision"/"hazard.recall" and the common Person recall as the \
+primary metric. The candidate with the largest fixed-conf=0.4 person.recall \
+improvement that does NOT hard-fail a guardrail is selected as the \
+REPRESENTATIVE result fed into this experiment's single stored \
+baseline_metrics/candidate_metrics pair and DB verdict; if no candidate \
+clears the guardrails, the representative is the numerically-best candidate \
+by person.recall regardless (so a genuine FAILED/INCONCLUSIVE outcome is \
+never hidden). Every individual candidate's own metrics/verdict, PLUS the \
+precision-matched/guardrail-matched secondary comparisons, are computed and \
+reported regardless of which one is representative -- the representative \
+selection is a SUMMARY convention for the single DB row, never the whole \
+story (see analysis.md/reports/baseline/model_variant_analysis.md for the \
+full per-candidate breakdown, which is the actual evidentiary record).
+
+Explicit scope reminder: 380 static images, Windows/CUDA hardware, no \
+video/tracking/LiDAR/TTS/real-camera processing/real accessibility \
+scenarios, no CoreML/ANE execution. Any benchmark delta here is a Windows/ \
+CUDA, static-image, offline measurement — never a claim about real-world \
+OmniSight performance, and NEVER an automatic production model swap (a \
+winning candidate here is a candidate for FUTURE Mac/iPhone validation, not \
+an automatic change — ios/ is never touched by this experiment)."""
+
+SUCCESS_CRITERIA = {
+    "primary_metric": "person.recall (common-class space; identical across all candidates)",
+    "min_meaningful_delta": 0.03,
+    "guardrails": [
+        "hazard.precision >= 0.757 (baseline 0.807 - 0.05; native hazard-8 for OIV7-vocabulary candidates A/B/D, common-class hazard-7 for COCO candidate C)",
+        "hazard.recall >= baseline-0.02",
+        "latency.p95_ms <= baseline*1.5 (inference only, Windows/CUDA proxy)",
+    ],
+    "representative_candidate_selection": (
+        "best fixed-conf=0.4 person.recall delta among candidates clearing all guardrails; "
+        "if none clear, numerically-best person.recall candidate regardless "
+        "(does not hide a FAILED/INCONCLUSIVE outcome) -- same convention as EXP-0004"
+    ),
+    "secondary_required_comparisons": [
+        "precision_matched_person_recall (Person recall at the swept threshold matching baseline's own Person precision)",
+        "guardrail_matched_person_recall (Person recall at the swept threshold matching the 0.757 hazard-precision guardrail)",
+        "these exist specifically to catch a candidate whose fixed-threshold gain is a confidence-calibration artifact, not a genuine detection improvement -- pre-registered as REQUIRED reporting, not optional",
+    ],
+    "candidates_preregistered": [
+        "A_yolov8m_oiv7_baseline", "B_yolov8n_oiv7_smaller",
+        "C_yolo11m_coco_newer_arch", "D_yolov8l_oiv7_diagnostic_upper_bound",
+    ],
+    "overall_pass_requires": (
+        "at least one candidate clears BOTH the pre-registered minimum meaningful delta (0.03) "
+        "AND the hazard-precision guardrail (0.757), using the common-class comparison as primary "
+        "wherever vocabularies differ, with an acceptable latency tradeoff -- warranting future "
+        "Mac/iPhone validation (NOT an automatic production swap)."
+    ),
+    "overall_fail_if": "no candidate clears that bar.",
+    "overall_inconclusive_if": (
+        "vocabulary/dataset/compute limitations genuinely prevent a defensible conclusion "
+        "(e.g. a result driven entirely by confidence-calibration differences that the "
+        "precision-matched/guardrail-matched sweeps cannot resolve either way)."
+    ),
+    "headline_question": (
+        "does any candidate recover a meaningful fraction of the 92 TRUE_DETECTOR_MISS cases "
+        "that EXP-0004's preprocessing intervention could not touch at all (0/92)?"
+    ),
+}
+
+CONTROLS = {
+    "imgsz": 640,
+    "conf_threshold_primary": 0.4,
+    "conf_threshold_diagnostic_sweep_capture": 0.01,
+    "iou_threshold_nms": 0.7,
+    "manifest": "data/manifests/eval_manifest.jsonl (unchanged, 380 images, 4916 boxes)",
+    "matching_algorithm": "benchmark.metrics.greedy_match (reused, not reimplemented)",
+    "class_map": "benchmark/diagnostics/model_variant_class_map.py (verified against each live model.names before use)",
+    "hazard_precision_guardrail_floor": 0.757,
+    "candidates_never_touch": ["benchmark/config.py", "benchmark/model.py", "benchmark/results/baseline/", "ios/"],
+    "hardware": "Windows/CUDA (RTX 3070 Ti) -- same machine/process pattern as every prior EXP in this lab; explicitly NOT iPhone/ANE",
+}
+
+RISKS = (
+    "Runtime cost of 2 full inference passes (conf=0.4, conf=0.01) x 4 candidates = 8 passes over "
+    "380 images, on top of the already-captured official baseline. Each candidate requires "
+    "downloading a checkpoint (benchmark/models/*.pt, gitignored, never committed) from an "
+    "Ultralytics official release asset. CoreML export is attempted for 2 candidates but is known, "
+    "per ultralytics' own explicit platform check, to be UNSUPPORTED on Windows regardless of "
+    "coremltools being importable for spec-parsing -- this is expected to fail with an explicit, "
+    "documented AssertionError, not a silent/ambiguous failure; real on-device CoreML/ANE behavior "
+    "requires a Mac and is out of scope. Risk that the COCO candidate's fixed-threshold recall gain "
+    "is a confidence-calibration artifact rather than a genuine improvement -- explicitly why the "
+    "precision-matched/guardrail-matched sweeps are pre-registered as required, not left to "
+    "post-hoc rationalization. Risk of baseline Person TP regressions under any candidate -- "
+    "explicitly checked (baseline_tp_regressions) with the same rigor as gains, per EXP-0004's "
+    "established convention."
+)
+
+EXPECTED_OUTCOME = (
+    "Directional, evidence-based answer to whether swapping the pretrained detector checkpoint/ "
+    "architecture materially improves Person detection at a fair, precision-matched comparison, "
+    "with a full failure-bucket-transition and small-Person breakdown per candidate, and an "
+    "explicit accounting of whether any of the 4 candidates recovers TRUE_DETECTOR_MISS cases that "
+    "EXP-0004's preprocessing intervention could not touch at all. A result of 'no candidate wins "
+    "at matched precision' (overall FAILED) is an explicitly anticipated, acceptable outcome given "
+    "EXP-0001-0004's accumulated evidence, not a defect in the experiment design. This experiment "
+    "NEVER replaces the production model or touches ios/ regardless of outcome -- a winning "
+    "candidate here is a candidate for FUTURE Mac/iPhone validation only."
+)
+
+
+def main() -> None:
+    with OmniLabDB() as db:
+        exp = db.get_experiment("EXP-0005")
+        if exp.execution_status == "BLOCKED":
+            exp = db.transition_status("EXP-0005", "QUEUED", note="unblocked: EXP-0002/0003/0004 (threshold/class-confusion/preprocessing) exhausted per master spec ordering; proceeding to model_variant per user-directed EXP-0005 task")
+        db.update_fields(
+            "EXP-0005",
+            evaluation_method=EVALUATION_METHOD,
+            success_criteria=SUCCESS_CRITERIA,
+            controls=CONTROLS,
+            risks=RISKS,
+            expected_outcome=EXPECTED_OUTCOME,
+        )
+        exp = db.get_experiment("EXP-0005")
+
+    move_to_status("EXP-0005", "QUEUED")
+    exp_dir = find_current_dir("EXP-0005")
+    if exp_dir is not None:
+        write_queued_artifacts(exp, exp_dir)
+    print(f"EXP-0005 pre-registration written. execution_status={exp.execution_status}, dir={exp_dir}")
+
+
+if __name__ == "__main__":
+    main()

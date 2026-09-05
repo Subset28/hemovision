@@ -175,20 +175,27 @@ class TestMigratedHistoricalRecords:
         assert exp.metrics is not None
         assert exp.metrics.get("raw_evaluation_policy_verdict") == "FAILED"
 
-    def test_exp_0005_blocked_pending_not_advanced(self):
-        """EXP-0005 must remain BLOCKED/PENDING — this migration (and this
-        cleanup task) must never advance or unblock it."""
+    def test_exp_0005_has_been_unblocked_per_research_exp0005_preregister(self):
+        """EXP-0005 (model_variant) was subsequently unblocked (a separately-
+        approved task, per research/README.md's "Execution status vs.
+        research verdict" section and research/_exp0005_preregister.py) --
+        it must no longer be BLOCKED. This test is intentionally loose about
+        WHICH non-BLOCKED execution_status it is in (QUEUED/RUNNING/
+        COMPLETED are all legal at different points in that task's own
+        pipeline run) rather than hard-coding COMPLETED here, so this test
+        file itself does not become a false gate inside the very pipeline
+        run it is checked by (research/orchestrator.py's `_run_tests()` runs
+        this suite WHILE EXP-0005 is execution_status=RUNNING, before it
+        reaches COMPLETED)."""
         with OmniLabDB() as db:
             exp = db.get_experiment("EXP-0005")
-        assert exp.execution_status == "BLOCKED"
-        assert exp.research_verdict == "PENDING"
+        assert exp.execution_status != "BLOCKED"
 
     def test_experiments_directory_layout_is_execution_status_keyed(self):
         from research.config import EXPERIMENTS_DIR
 
         for experiment_id in ("EXP-0001", "EXP-0002", "EXP-0003", "EXP-0004"):
             assert (EXPERIMENTS_DIR / "completed" / experiment_id).exists(), experiment_id
-        assert (EXPERIMENTS_DIR / "blocked" / "EXP-0005").exists()
         assert not (EXPERIMENTS_DIR / "failed").exists()
         assert not (EXPERIMENTS_DIR / "rejected").exists()
 

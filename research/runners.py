@@ -785,9 +785,330 @@ def _write_preprocessing_report(out_path: Path, analysis: dict, per_candidate_ve
     out_path.write_text("\n".join(lines), encoding="utf-8")
 
 
+def run_exp_0005(exp: Experiment, exp_dir: Path) -> ExperimentRunResult:
+    """EXP-0005 (model_variant): real inference over the eval manifest for 4
+    pre-registered model checkpoints (current production baseline + 3
+    alternatives -- see research/_exp0005_preregister.py for the full
+    pre-registration written BEFORE this runner was executed), the model
+    checkpoint/architecture being the ONLY changed variable per candidate
+    (imgsz=640 and NMS iou=0.7 held constant, passed explicitly to every
+    candidate's own predict() call). Delegates all inference/analysis to
+    benchmark/diagnostics/model_variant_eval.py::run_all() (which reuses
+    benchmark.metrics.greedy_match and
+    benchmark/diagnostics/preprocessing_eval.py's matching/transition
+    primitives directly -- no reimplementation), and packages the
+    representative candidate (per the pre-registered selection rule: best
+    fixed-conf=0.4 person.recall delta among candidates clearing all
+    guardrails, else numerically-best regardless) as the "candidate" fed to
+    the UNMODIFIED default_hazard_policy. Every candidate's own metrics,
+    verdict, failure-bucket transitions, small-Person breakdown, and
+    precision-/guardrail-matched sweep results are computed and reported in
+    results.json/model_comparison.json/person_transitions.json regardless of
+    which one is representative -- see this experiment's methodology.md for
+    why a single representative is still selected for the DB row.
+    """
+    import importlib
+    import json as _json
+
+    from benchmark.config import REPO_ROOT as BREPO
+
+    mveval = importlib.import_module("benchmark.diagnostics.model_variant_eval")
+
+    log_lines = [
+        "EXP-0005: running benchmark.diagnostics.model_variant_eval.run_all() "
+        "(4 candidate checkpoints x 2 confidence passes x 380 images, real inference)"
+    ]
+
+    analysis = mveval.run_all()
+    mveval.ANALYSIS_OUT_PATH.write_text(_json.dumps(analysis, indent=2), encoding="utf-8")
+    log_lines.append(f"Wrote {mveval.ANALYSIS_OUT_PATH.relative_to(BREPO)}")
+    log_lines.extend(analysis["log_lines"])
+
+    baseline_ref = analysis["baseline_reference"]
+    # Anchor the guardrail/primary-metric baseline to the OFFICIAL
+    # RUN-20260904-002 hazard-8 numbers (0.807/0.480), consistent with the
+    # pre-registered hazard-precision guardrail floor (0.757 = 0.807-0.05)
+    # and with every other experiment in this lab -- NOT the freshly
+    # recomputed common-class(7)-subset baseline number, which differs
+    # slightly because Stairs is excluded from the common-class comparison.
+    baseline_metrics_common = {
+        "hazard": {"precision": baseline_ref["hazard_full8"]["precision"], "recall": baseline_ref["hazard_full8"]["recall"]},
+        "person": {
+            "precision": baseline_ref["person"]["precision"],
+            "recall": baseline_ref["person"]["recall"],
+            "num_gt": baseline_ref["person"]["num_gt"],
+        },
+        "latency": {"p95_ms": baseline_ref["latency_p95_ms"]},
+    }
+
+    policy = default_hazard_policy(baseline_metrics_common["hazard"]["precision"], baseline_metrics_common["hazard"]["recall"])
+
+    per_candidate_verdicts = {}
+    best_name = None
+    best_delta = None
+    best_cleared_name = None
+    best_cleared_delta = None
+    for name in analysis["candidate_order"]:
+        c = analysis["candidates"][name]
+        vocabulary = c["checkpoint"]["vocabulary"]
+        # Apples-to-apples hazard figure for THIS candidate: native hazard-8
+        # for an OIV7-vocabulary candidate (A/B/D), common-class hazard-7 for
+        # the COCO candidate (C) -- a native 8-class comparison is
+        # structurally impossible for C (no 'stairs' class exists in COCO).
+        hazard_for_policy = c["hazard_native"] if vocabulary == "oiv7" else c["hazard_common_class"]
+        cand_metrics = {
+            "hazard": {"precision": hazard_for_policy["precision"], "recall": hazard_for_policy["recall"]},
+            "person": {"precision": c["person"]["precision"], "recall": c["person"]["recall"], "num_gt": c["person"]["num_gt"]},
+            "latency": {"p95_ms": c["latency_ms"]["p95_ms"]},
+        }
+        verdict = policy.evaluate(baseline_metrics_common, cand_metrics)
+        per_candidate_verdicts[name] = {
+            "verdict": verdict.result,
+            "reasons": verdict.reasons,
+            "guardrail_results": verdict.guardrail_results,
+            "candidate_metrics": cand_metrics,
+            "precision_matched_person_recall": c["precision_matched_person_recall"],
+            "guardrail_matched_person_recall": c["guardrail_matched_person_recall"],
+        }
+        delta = cand_metrics["person"]["recall"] - baseline_metrics_common["person"]["recall"]
+        if name != "A_yolov8m_oiv7_baseline":  # never compare the baseline candidate to itself
+            if best_delta is None or delta > best_delta:
+                best_delta = delta
+                best_name = name
+            hard_guardrail_violation = any(
+                (not g.get("satisfied", True)) for g in verdict.guardrail_results if g.get("status") != "missing"
+            ) and verdict.result == "FAILED"
+            if not hard_guardrail_violation and (best_cleared_delta is None or delta > best_cleared_delta):
+                best_cleared_delta = delta
+                best_cleared_name = name
+        log_lines.append(
+            f"[{name}] evaluation_policy verdict={verdict.result} person.recall_delta={delta:+.4f} "
+            f"precision_matched_recall={c['precision_matched_person_recall']['recall']} "
+            f"guardrail_matched_recall={c['guardrail_matched_person_recall']['recall']}"
+        )
+
+    representative_name = best_cleared_name or best_name
+    log_lines.append(
+        f"Representative candidate selected for DB verdict: {representative_name!r} "
+        f"(cleared_guardrails={best_cleared_name is not None})"
+    )
+
+    representative = analysis["candidates"][representative_name]
+    representative_vocab = representative["checkpoint"]["vocabulary"]
+    representative_hazard = representative["hazard_native"] if representative_vocab == "oiv7" else representative["hazard_common_class"]
+    candidate_metrics = {
+        "hazard": {"precision": representative_hazard["precision"], "recall": representative_hazard["recall"]},
+        "person": {
+            "precision": representative["person"]["precision"],
+            "recall": representative["person"]["recall"],
+            "num_gt": representative["person"]["num_gt"],
+        },
+        "latency": {"p95_ms": representative["latency_ms"]["p95_ms"]},
+    }
+
+    # ---- headline answer: TRUE_DETECTOR_MISS recovery across ALL candidates
+    # (not just the representative) -- the single most important comparison
+    # in this experiment per the task spec. ----
+    true_miss_recovery = {
+        name: analysis["candidates"][name]["true_miss_detail"]
+        for name in analysis["candidate_order"]
+        if name != "A_yolov8m_oiv7_baseline"
+    }
+    log_lines.append(f"TRUE_DETECTOR_MISS (92 baseline) recovery by candidate: {true_miss_recovery}")
+
+    model_comparison = {
+        name: {
+            "spec": analysis["candidates"][name]["spec"],
+            "checkpoint": analysis["candidates"][name]["checkpoint"],
+            "hazard_common_class": analysis["candidates"][name]["hazard_common_class"],
+            "hazard_native": analysis["candidates"][name]["hazard_native"],
+            "person": analysis["candidates"][name]["person"],
+            "latency_ms": analysis["candidates"][name]["latency_ms"],
+            "peak_gpu_memory_mb_conf0.4_pass": analysis["candidates"][name]["peak_gpu_memory_mb_conf0.4_pass"],
+            "coreml_export": analysis["candidates"][name]["coreml_export"],
+            "precision_matched_person_recall": analysis["candidates"][name]["precision_matched_person_recall"],
+            "guardrail_matched_person_recall": analysis["candidates"][name]["guardrail_matched_person_recall"],
+            "evaluation_policy_verdict": per_candidate_verdicts[name]["verdict"] if name in per_candidate_verdicts else None,
+        }
+        for name in analysis["candidate_order"]
+    }
+    (exp_dir / "model_comparison.json").write_text(_json.dumps(model_comparison, indent=2), encoding="utf-8")
+    log_lines.append("Wrote model_comparison.json")
+
+    person_transitions = {
+        name: {
+            "transitions_by_baseline_bucket": analysis["candidates"][name]["transitions_by_baseline_bucket"],
+            "size_transitions": analysis["candidates"][name]["size_transitions"],
+            "true_miss_detail": analysis["candidates"][name]["true_miss_detail"],
+            "baseline_tp_regressions": analysis["candidates"][name]["baseline_tp_regressions"],
+        }
+        for name in analysis["candidate_order"]
+        if name != "A_yolov8m_oiv7_baseline"
+    }
+    (exp_dir / "person_transitions.json").write_text(_json.dumps(person_transitions, indent=2), encoding="utf-8")
+    log_lines.append("Wrote person_transitions.json")
+
+    _write_model_variant_report(
+        BREPO / "reports" / "baseline" / "model_variant_analysis.md",
+        analysis, per_candidate_verdicts, representative_name, true_miss_recovery,
+    )
+    log_lines.append("Wrote reports/baseline/model_variant_analysis.md")
+
+    notes = (
+        "Real inference re-run (2 passes: conf=0.4 official + conf=0.01 diagnostic capture) "
+        "for 4 pre-registered model-checkpoint candidates over the full 380-image eval manifest, "
+        "imgsz=640/iou=0.7 held constant, same manifest as the canonical baseline -- the model "
+        "checkpoint/architecture was the ONLY changed variable per candidate. Candidate C "
+        "(yolo11m, COCO-trained) required the COCO<->OIV7 common-class mapping (Stairs excluded, "
+        "structurally absent from COCO); Person is directly comparable across all 4 candidates. "
+        f"Representative candidate for this experiment's stored DB verdict: {representative_name!r} "
+        "(selection rule: best fixed-conf=0.4 person.recall delta among candidates clearing all "
+        "guardrails; falls back to numerically-best-regardless if none clear -- see "
+        "research/_exp0005_preregister.py). Every candidate's own metrics/verdict/failure-bucket "
+        "transitions/precision-matched sweep are recorded in model_comparison.json and "
+        "person_transitions.json regardless of which one is representative. 380 static images, "
+        "Windows/CUDA proxy hardware, no CoreML/ANE execution -- this is a Windows/CUDA, "
+        "static-image, offline measurement only. No production model was replaced; ios/ was never "
+        "touched."
+    )
+
+    result = ExperimentRunResult(
+        baseline_metrics=baseline_metrics_common,
+        candidate_metrics=candidate_metrics,
+        policy=policy,
+        verdict_interpretation={"PASSED": "PASS", "FAILED": "FAIL", "INCONCLUSIVE": "INCONCLUSIVE"},
+        notes=notes,
+        result_run_id=f"EXP-0005-model-variant-inline-representative={representative_name}",
+        log_lines=log_lines,
+    )
+    extra_results_path = exp_dir / "results_per_candidate.json"
+    extra_results_path.write_text(
+        _json.dumps({"per_candidate_verdicts": per_candidate_verdicts, "representative_candidate": representative_name,
+                     "true_miss_recovery_by_candidate": true_miss_recovery}, indent=2),
+        encoding="utf-8",
+    )
+    return result
+
+
+def _write_model_variant_report(out_path: Path, analysis: dict, per_candidate_verdicts: dict, representative_name: str, true_miss_recovery: dict) -> None:
+    baseline_ref = analysis["baseline_reference"]
+    lines = []
+    lines.append("# Model Variant Comparison Analysis (EXP-0005)")
+    lines.append("")
+    lines.append(
+        "Diagnostic/measurement-only experiment. 380 static Open Images V7 photographs, "
+        "Windows/CUDA proxy hardware (RTX 3070 Ti) -- no CoreML/ANE execution, no video/tracking/"
+        "LiDAR/TTS/real-camera processing/real accessibility scenarios. Every latency figure below "
+        "is a Windows/CUDA inference-compute proxy only, NOT iPhone. No production model is "
+        "replaced by this experiment regardless of outcome; ios/ is never touched. See "
+        "`experiments/*/EXP-0005/{hypothesis.md,methodology.md,analysis.md,conclusion.md}` for the "
+        "full pre-registration and reasoning."
+    )
+    lines.append("")
+    lines.append(
+        f"Official baseline (`{baseline_ref['run_id']}`): hazard-8 P={baseline_ref['hazard_full8']['precision']:.4f} "
+        f"R={baseline_ref['hazard_full8']['recall']:.4f}; Person P={baseline_ref['person']['precision']:.4f} "
+        f"R={baseline_ref['person']['recall']:.4f} (num_gt={baseline_ref['person']['num_gt']}); "
+        f"latency p95={baseline_ref['latency_p95_ms']:.2f}ms."
+    )
+    lines.append("")
+    lines.append("## Common-class definition")
+    lines.append("")
+    lines.append(
+        f"Primary cross-model comparison classes: {analysis['common_class_definition']['classes']}. "
+        f"Excluded (no COCO equivalent, structural gap): {analysis['common_class_definition']['excluded_no_coco_equivalent']}."
+    )
+    lines.append("")
+    lines.append("## Comparison table (common-class hazard + Person, fixed conf=0.4)")
+    lines.append("")
+    lines.append(
+        "| Candidate | Vocab | Params(M) | Size(MB) | Hazard-common P | Hazard-common R | "
+        "Person P | Person R | Person F1 | Person AP50 | Inference p50 (ms) | Inference p95 (ms) | "
+        "Peak GPU (MB) | Verdict |"
+    )
+    lines.append("|---|---|---|---|---|---|---|---|---|---|---|---|---|---|")
+    for name in analysis["candidate_order"]:
+        c = analysis["candidates"][name]
+        v = per_candidate_verdicts[name]["verdict"]
+        marker = " (representative)" if name == representative_name else ""
+        lines.append(
+            f"| {name}{marker} | {c['checkpoint']['vocabulary']} | {c['checkpoint']['n_params_millions']} | "
+            f"{c['checkpoint']['size_mb']} | {c['hazard_common_class']['precision']:.4f} | "
+            f"{c['hazard_common_class']['recall']:.4f} | {c['person']['precision']:.4f} | "
+            f"{c['person']['recall']:.4f} | {c['person']['f1']:.4f} | {c['person']['ap50']:.4f} | "
+            f"{c['latency_ms']['median_ms']:.2f} | {c['latency_ms']['p95_ms']:.2f} | "
+            f"{c['peak_gpu_memory_mb_conf0.4_pass']:.1f} | {v} |"
+        )
+    lines.append("")
+    lines.append(f"**Overall representative candidate**: `{representative_name}` "
+                  f"(final status = {per_candidate_verdicts[representative_name]['verdict']}).")
+    lines.append("")
+    lines.append("## Precision-matched / guardrail-matched Person recall (fair-comparison sweep)")
+    lines.append("")
+    lines.append("| Candidate | Precision-matched threshold | Precision-matched recall | Guardrail-matched threshold | Guardrail-matched recall |")
+    lines.append("|---|---|---|---|---|")
+    for name in analysis["candidate_order"]:
+        c = analysis["candidates"][name]
+        pm = c["precision_matched_person_recall"]
+        gm = c["guardrail_matched_person_recall"]
+        lines.append(f"| {name} | {pm['threshold']} | {pm['recall']} | {gm['threshold']} | {gm['recall']} |")
+    lines.append("")
+    lines.append(
+        "Fixed-threshold (conf=0.4) recall gains must be read alongside this table -- a candidate "
+        "with different confidence calibration can look artificially better at conf=0.4 alone while "
+        "offering no real advantage once precision is matched to the baseline's own operating point."
+    )
+    lines.append("")
+    lines.append("## TRUE_DETECTOR_MISS recovery (headline comparison; 92 baseline cases, 0/92 recovered by EXP-0004's preprocessing)")
+    lines.append("")
+    lines.append("| Candidate | gained_any_person_candidate | gained_tp | gained_other_human_class | remains_complete_miss |")
+    lines.append("|---|---|---|---|---|")
+    for name, tmd in true_miss_recovery.items():
+        lines.append(f"| {name} | {tmd['gained_any_person_candidate']} | {tmd['gained_tp']} | {tmd['gained_other_human_class']} | {tmd['remains_complete_miss']} |")
+    lines.append("")
+    lines.append("## Per-candidate failure-bucket transitions (of the 239 baseline Person FNs) and baseline-TP regressions")
+    lines.append("")
+    for name in analysis["candidate_order"]:
+        if name == "A_yolov8m_oiv7_baseline":
+            continue
+        c = analysis["candidates"][name]
+        lines.append(f"### {name}")
+        lines.append("")
+        lines.append("| Baseline bucket | n | -> TP | new-bucket breakdown |")
+        lines.append("|---|---|---|---|")
+        for bucket, t in c["transitions_by_baseline_bucket"].items():
+            lines.append(f"| {bucket} | {t['n']} | {t['to_TP']} | {t['new_bucket_counts']} |")
+        regr = c["baseline_tp_regressions"]
+        lines.append("")
+        lines.append(
+            f"Baseline Person TP regressions: {regr['regressed']}/{regr['n_baseline_tp']} regressed "
+            f"({regr['remained_tp']} remained TP)."
+        )
+        small = c["size_transitions"]["small"]
+        lines.append("")
+        lines.append(
+            "Small-Person (<2% GT area) recovery: " + ", ".join(
+                f"{b}: {v['to_TP']}/{v['n']} recovered" for b, v in small.items()
+            )
+        )
+        lines.append("")
+
+    lines.append("## Notes")
+    lines.append("")
+    lines.append(
+        "See `benchmark/results/diagnostics/model_variant_analysis.json` for the complete "
+        "per-candidate, per-record data this report summarizes, and "
+        "`experiments/completed/EXP-0005/{model_comparison.json,person_transitions.json}` for the "
+        "structured artifacts."
+    )
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    out_path.write_text("\n".join(lines), encoding="utf-8")
+
+
 RUNNERS = {
     "EXP-0001": run_exp_0001,
     "EXP-0002": run_exp_0002,
     "EXP-0003": run_exp_0003,
     "EXP-0004": run_exp_0004,
+    "EXP-0005": run_exp_0005,
 }
