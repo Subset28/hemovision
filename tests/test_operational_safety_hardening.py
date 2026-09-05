@@ -385,6 +385,32 @@ class TestRouterFallbackUnreachable:
 # ---------------------------------------------------------------------------
 
 
+class TestNoFallbackAfterRateLimit:
+    def test_429_failure_does_not_trigger_a_second_request(self):
+        """A 429 (rate limit) on the single preflighted model must fail that
+        one call -- never silently retry against a fallback model. This is
+        structurally guaranteed by _call_llm calling router.provider.complete()
+        directly (never router.complete()'s fallback loop), proven here with
+        a provider that raises on its first call and would fail the test if
+        called a second time."""
+
+        class RateLimitedProvider(LLMProvider):
+            def __init__(self):
+                self.calls = 0
+
+            def complete(self, prompt, role, model="", **kwargs):
+                self.calls += 1
+                if self.calls > 1:
+                    raise AssertionError("must never be called a second time (no fallback)")
+                raise LLMUnavailableError("HTTP 429: rate limited", diagnostics={"http_status": 429, "network_attempted": True})
+
+        provider = RateLimitedProvider()
+        router = _isolated_router(provider)
+        with pytest.raises(LLMUnavailableError):
+            _call(router)
+        assert provider.calls == 1
+
+
 class TestModelProvenanceMismatch:
     def test_mismatched_returned_model_rejected(self):
         free_catalog = {"real/preferred-model-id": {
