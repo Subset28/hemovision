@@ -417,6 +417,99 @@ def cmd_dry_run_revise(args: argparse.Namespace) -> int:
     return 0
 
 
+def _check_phase_i_preconditions() -> list[str]:
+    """Deterministic preconditions section 23 of this round's authorization
+    requires before the FIRST live Phase I cycle. Returns a list of
+    violation strings (empty = all clear). Never auto-fixes anything --
+    the caller must STOP if this is non-empty."""
+    problems: list[str] = []
+
+    from research import operational_state
+    state = operational_state.current_state()
+    if state.paused or state.stopped:
+        problems.append(f"operational state is not RUNNING (paused={state.paused}, stopped={state.stopped})")
+
+    from research.git_isolation import dirty_paths
+    dirty = dirty_paths()
+    if dirty:
+        problems.append(f"working tree is not clean: {dirty}")
+
+    from research.db import OmniLabDB
+    with OmniLabDB() as db:
+        experiments = {e.experiment_id for e in db.list_experiments()}
+    expected = {"EXP-0001", "EXP-0002", "EXP-0003", "EXP-0004", "EXP-0005"}
+    if experiments != expected:
+        problems.append(f"research/omnilab.db experiments do not match expected {sorted(expected)}: found {sorted(experiments)}")
+    if "EXP-0006" in experiments:
+        problems.append("EXP-0006 already exists")
+
+    import subprocess
+
+    from research.config import REPO_ROOT
+    branch_output = subprocess.run(
+        ["git", "branch", "--list", "experiment/*"], cwd=REPO_ROOT, capture_output=True, text=True,
+    ).stdout
+    branches = {line.strip().lstrip("* ").strip() for line in branch_output.splitlines() if line.strip()}
+    expected_branches = {f"experiment/{e}" for e in expected}
+    if branches != expected_branches:
+        problems.append(f"unexpected experiment/* branches: found {sorted(branches)}, expected {sorted(expected_branches)}")
+
+    return problems
+
+
+def cmd_phase_i_run(args: argparse.Namespace) -> int:
+    """Phase I — `omnilab phase-i run`. ONE proposal-only autonomous
+    research cycle: research memory -> researcher (autonomous problem
+    selection) -> deterministic validation/redundancy -> independent
+    reviewer -> at most ONE bounded revision -> final candidate report ->
+    STOP. NEVER queues, NEVER creates EXP-0006, NEVER creates a branch,
+    NEVER trains. See research/phase_i/loop.py's module docstring for the
+    full authority boundary. Reuses the exact canonical
+    _setup_dry_run_execution() init Phase H already uses -- no standalone
+    script, no divergent setup."""
+    from research.phase_i.loop import run_phase_i_cycle
+
+    if not args.resume:
+        problems = _check_phase_i_preconditions()
+        if problems:
+            print("omnilab phase-i run: precondition check FAILED -- refusing to start. Problems:")
+            for p in problems:
+                print(f"  - {p}")
+            return 1
+
+    # Phase I always uses native structured output -- no legacy off-by-default mode.
+    args.structured_output = True
+    setup = _setup_dry_run_execution(args, roles_to_snapshot=("researcher", "reviewer"))
+    if setup is None:
+        print(
+            "omnilab phase-i run: no --authorize REASON given — refusing to make any LLM call. "
+            f"Re-run with --authorize \"<reason>\" to permit up to --max-calls (default {args.max_calls}) "
+            "real, budget-capped calls."
+        )
+        return 1
+    authorization, router, run_budget, dry_run_budget, model_catalog = setup
+
+    result = run_phase_i_cycle(
+        router=router, authorized=authorization, run_budget=run_budget,
+        model_catalog=model_catalog, resume_candidate_id=args.resume,
+    )
+
+    print(f"Phase I cycle {result.candidate_id}: final_state={result.final_state}")
+    print(f"Calls made: {result.calls_made}/{result.calls_budget}")
+    if result.stopped_reason:
+        print(f"Reason: {result.stopped_reason}")
+    if result.proposal_path:
+        print(f"Proposal artifact: {result.proposal_path}")
+    if result.review_path:
+        print(f"Review artifact: {result.review_path}")
+    if result.revision_path:
+        print(f"Revision artifact: {result.revision_path}")
+    if result.final_report_path:
+        print(f"Final candidate report: {result.final_report_path}")
+    print("Actually queued: NO. EXP-0006 NOT created. No experiment branch created.")
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="omnilab")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -537,6 +630,24 @@ def build_parser() -> argparse.ArgumentParser:
              "UNKNOWN/UNRESOLVED) -- never a conclusion the reviser is told to reach",
     )
     p_dry_run_revise.set_defaults(func=cmd_dry_run_revise)
+
+    p_phase_i = sub.add_parser("phase-i", help="Phase I: proposal-only autonomous research cycle")
+    phase_i_sub = p_phase_i.add_subparsers(dest="phase_i_command", required=True)
+
+    p_phase_i_run = phase_i_sub.add_parser(
+        "run",
+        help="run (or resume) ONE Phase I candidate cycle: researcher -> validate -> reviewer -> "
+             "(maybe one revision) -> final candidate report. Never queues, never creates EXP-0006, "
+             "never creates a branch, never trains.",
+    )
+    p_phase_i_run.add_argument("--authorize", default=None, help="see 'dry-run --authorize'")
+    p_phase_i_run.add_argument("--max-calls", type=int, default=3, help="default 3 (Phase I's per-cycle cap)")
+    p_phase_i_run.add_argument(
+        "--resume", default=None,
+        help="CANDIDATE-NNNN id to resume from its persisted state, instead of allocating a new "
+             "candidate. An already-completed stage is never repeated.",
+    )
+    p_phase_i_run.set_defaults(func=cmd_phase_i_run)
 
     return parser
 
