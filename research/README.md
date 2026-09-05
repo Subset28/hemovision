@@ -295,3 +295,280 @@ retrieval by tag, experiment linkage, supersession mechanics (including the
 backward-compatibility check confirming Phase E did not disturb
 `research/db.py`'s pre-existing schema/behavior (no columns/tables were
 added to `research/omnilab.db`).
+
+## Phase F — canonical experiment specification & validation
+
+Phase F is **schema/validation engineering, not a new experiment.** It adds
+a canonical, machine-validated `ExperimentSpec` schema that any FUTURE
+proposal (human- or, eventually, LLM-authored) must satisfy before it may
+enter the executable queue. It does not create EXP-0006, run anything, train
+anything, touch `ios/`, or make any OpenRouter/LLM call — every check in this
+phase is a plain Python function over structured data and on-disk/DB
+artifacts.
+
+### Audit summary (`research/PHASE_F_AUDIT.md`)
+
+See that file for the full field-by-field accounting. Short version: most
+"real" experiment content already existed either as `research/db.py::Experiment`
+dataclass fields (hypothesis, motivation, independent_variable, controls,
+success_criteria, baseline_run_id, metrics, conclusion, execution_status,
+research_verdict, ...) or as free-form markdown/YAML per experiment
+(`hypothesis.md`, `methodology.md`, `config.yaml`). Nothing was rewritten —
+Phase F adds a layer that (a) makes the free-form parts machine-checkable
+where they should be (success criteria, variable declarations, evidence
+references), (b) explicitly separates "what was pre-registered" from "what
+was observed," and (c) formalizes fields that existed only in prose or not
+at all (`schema_version`, explicit human-authority approval flags, amendment
+records).
+
+### Why dataclasses + a hand-rolled validator, not Pydantic
+
+The project already standardizes on dataclasses + stdlib sqlite3 for
+`research/db.py::Experiment` and `research/memory_db.py::MemoryRecord`.
+Adding Pydantic here would introduce a second validation philosophy for a
+structurally similar problem, plus a new dependency, with none of Pydantic's
+main value-adds actually needed (there is no external/loosely-typed input in
+this phase — only JSON round-tripped within this codebase, and a future
+LLM-authored JSON path that specifically needs explicit, auditable,
+hand-written rejection rules, not a generic type coercer). `dataclasses.replace()`
+also makes the freeze/amend mechanism (below) simplest as a plain dataclass.
+This is a deliberate call — see `research/experiment_spec.py`'s module
+docstring for the same argument in code.
+
+### Canonical schema — `research/experiment_spec.py`
+
+`ExperimentProposal` (frozen dataclass, everything pre-registered) and
+`ExperimentResult` (everything only populated post-execution) are separate
+types — a proposal object structurally cannot hold a metric, verdict, or
+conclusion. Field groups: Identity (`experiment_id`, `schema_version`,
+`title`, `family`); Research basis (`hypothesis`, `motivation`,
+`research_question`, `evidence_references` — Phase-E `MEM-XXXX` ids,
+`prior_experiment_ids`); Baseline (`baseline_run_id`, `baseline_metrics`);
+Variables (`independent_variables`, `dependent_variables`,
+`controlled_variables`); Methodology (`procedure`, `dataset_version`,
+`model_config_ref`, `implementation_scope`, `expected_artifacts`,
+`reproducibility_requirements`); Controls (`control_condition`,
+`baseline_comparison`, `isolation_requirements`); Success criteria
+(`success_criteria` dict — `min_meaningful_delta`, `precision_floor`,
+`max_latency_regression_pct`, `required_tests_pass`,
+`sample_size_requirements`, reusing the guardrail/noise-margin/sample-floor
+pattern from `research/evaluation_policy.py`); Risk/safety
+(`production_impact` + description, `data_privacy_classification`,
+`external_api_required`, `mac_iphone_required`,
+`compute_resource_estimate`, `allowed_path_scope`); Expected interpretation
+(`supports_hypothesis_if`, `rejects_hypothesis_if`, `inconclusive_if` —
+pre-registered BEFORE execution); the 7 human-authority approval flags (see
+below); and `acknowledges_rejected_hypothesis_ids`/`materially_new_rationale`.
+`ExperimentResult` fields: `execution_run_id`, `metrics`,
+`benchmark_artifact_paths`, `code_diff_path`, `test_results_summary`,
+`execution_status`, `research_verdict`, `conclusion`, `limitations` — all
+`None`/empty until real execution happens.
+
+### Proposal/result separation (item #3)
+
+`check_no_result_fields_in_proposal()` raises
+`ProposalContainsResultFieldsError` if a raw dict destined to become an
+`ExperimentProposal` contains any `ExperimentResult` field name —
+`ExperimentProposal.from_dict()` calls it unconditionally. Separately,
+`experiment_validator.py::validate()` rejects an `ExperimentSpec` whose
+`result` has populated fields while `result.execution_status is None`
+(`PREMATURE_RESULT_FIELDS`). See `tests/test_experiment_spec.py::
+test_result_fields_rejected_from_proposal_dict` and
+`test_result_fields_populated_before_execution_status_rejected`.
+
+### Freeze / amendment (item #4)
+
+`ExperimentSpec.freeze(to_status)` moves a spec from `DRAFT` to `VALIDATED`
+or `APPROVED` (a spec-lifecycle axis, deliberately distinct from
+`research/db.py`'s `execution_status`, which is about the RUN once queued)
+and snapshots a SHA-256 hash of the frozen proposal payload
+(`frozen_hash`). Once frozen, the proposal is a genuinely frozen dataclass —
+direct attribute assignment raises outright. The only sanctioned path to
+change a frozen field is `ExperimentSpec.amend(field_name, new_value, reason,
+approved_by)`, which appends a fully traceable `Amendment` (old value, new
+value, reason, timestamp, `approved_by` — `"human via CLI"` today, since
+there is no live LLM role yet) and re-freezes at the new hash.
+`verify_integrity()` recomputes the hash and raises
+`FrozenProposalTamperedError` on any mismatch (silent out-of-band mutation).
+See `tests/test_experiment_spec.py::test_freeze_then_amend_produces_traceable_record`,
+`test_frozen_proposal_tampering_detected`, `test_success_criteria_frozen_after_approval`.
+
+### Deterministic validation — `research/experiment_validator.py`
+
+`validate(spec) -> ValidationResult` returns a LIST of `ValidationIssue`
+(level `ERROR`/`WARNING`/`NEEDS_HUMAN_REVIEW`, never a bare bool). It checks:
+missing hypothesis/motivation; `baseline_run_id` resolution against real
+`benchmark/results/{baseline,diagnostics}/run_metadata.json` artifacts (never
+a hand-typed number); `prior_experiment_ids` against `research/db.py`;
+`evidence_references` against `research/memory_db.py`; missing
+independent/dependent variables; missing control_condition/baseline_comparison;
+missing/contradictory `success_criteria` (negative `min_meaningful_delta`,
+`precision_floor` outside `[0,1]`, and one concrete named mutual-exclusion
+example — documented as not exhaustive); invalid metric names against
+`KNOWN_METRIC_GROUPS`/`KNOWN_METRIC_SUFFIXES` (built directly from
+`evaluation_policy.py`'s actual usage plus the documented 8-class hazard
+vocabulary, since `evaluation_policy.py` itself has no single enumerated
+list); `mac_iphone_required` vs. the family's registry requirement;
+production-impact/mac-iphone/private-data/external-API changes without the
+matching human-authority flag; malformed (`EXP-\d{4}`) and duplicate
+experiment IDs; unsupported family; the rejected-hypothesis-acknowledgment
+check (below); and the proposal/result-separation check. Anything not
+mechanically checkable (procedure/reproducibility narrative quality,
+overall scientific merit) is emitted as an explicit `NEEDS_HUMAN_REVIEW`
+issue naming what could not be checked — never silently passed.
+
+### Experiment families (8, was 7) — `research/experiment_registry.py`
+
+Families A-G are unchanged. **New: H, `application_decision_logic`**
+("Application-Level Decision Logic") — user-facing announcement/decision
+logic layered on top of detection (TTS/announcement cadence, hazard-to-speech
+priority ordering, per-class cooldown), genuinely distinct from G
+(`temporal_pipeline`, which is about tracking/temporal smoothing of
+detections, not what gets spoken). `windows_evaluatable=False`,
+`production_validation_requirement="REQUIRES_IPHONE"` — same structural
+limitation as G. This is a **registry entry only** — no runner exists for
+family H, in this phase or any prior one. **Known gap, flagged explicitly**:
+`research/db.py::EXPERIMENT_FAMILIES` (the tuple backing `Experiment`'s SQL
+CHECK constraint) was deliberately NOT extended to include
+`application_decision_logic` in this phase — no family-H experiment is
+queued or queueable as a real DB row yet, so widening that CHECK constraint
+was unnecessary surface area for Phase F to touch; a future phase that
+actually proposes a family-H experiment must add it there first.
+
+### Queue gate (item #9)
+
+`research/experiment_validator.py::is_queue_eligible(result) -> bool`
+returns True iff `validate()` produced zero `ERROR`-level issues (warnings
+and `NEEDS_HUMAN_REVIEW` do not block the mechanical gate, though they may
+still block a human reviewer). Wired into
+`research/orchestrator.py::queue_experiment_from_spec(spec)` — the function
+that actually inserts a new `Experiment` row as `QUEUED` (`db.create_experiment`)
+from a canonical spec — which raises `QueueGateError` naming every failing
+check and refuses to insert anything if validation fails.
+`research/db.py`'s `execution_status`/`research_verdict` axes are completely
+unchanged; this is a gate placed BEFORE insertion, not a new status value.
+
+### Memory linkage & rejected-hypothesis acknowledgment (item #8)
+
+`evidence_references` on a proposal holds Phase-E `MEM-XXXX` ids, checked to
+resolve by `validate()`. Additionally, `find_rejected_hypothesis_conflicts()`
+does pure deterministic metadata matching (no LLM, no semantic similarity):
+for every ACTIVE `REJECTED_HYPOTHESIS` memory record, resolve its owning
+experiment's `family` via `research/db.py`, compare to the proposal's
+`family` (exact match required), and check keyword overlap (lowercased,
+tokenized, stopword-filtered set intersection) between the proposal's
+`independent_variables` and the record's stored `independent_variable` text.
+Any match without `acknowledges_rejected_hypothesis_ids` naming the
+conflicting experiment/record AND a non-empty `materially_new_rationale`
+fails validation with `UNACKNOWLEDGED_REJECTED_HYPOTHESIS`, naming the
+specific conflicting id. See
+`tests/test_experiment_spec.py::test_naive_reproposal_of_lower_confidence_is_caught`
+— a proposal for `family="threshold_postprocessing"`,
+`independent_variables=("lower confidence threshold to 0.1",)` is caught
+against EXP-0001/`MEM-0010` without any acknowledgment.
+
+### Human authority flags (item #10)
+
+Seven boolean approval fields on `ExperimentProposal`, default `False`:
+`production_swift_modification_approved`, `coreml_model_replacement_approved`,
+`new_training_approved`, `private_user_data_use_approved`,
+`external_upload_approved`, `mac_iphone_deployment_approved`,
+`signing_distribution_change_approved`. `validate()` hard-fails any proposal
+whose declared risk profile requires one but whose flag is `False`
+(`production_impact=True` without `production_swift_modification_approved`,
+etc.). **`external_api_required` and `external_upload_approved` are
+completely decoupled** from `OPENROUTER_API_KEY`'s presence in the
+environment — nothing in `experiment_validator.py` reads `os.environ` at
+all; the key's presence/absence has zero bearing on this flag, proven by
+`tests/test_experiment_spec.py::test_external_api_required_does_not_imply_authorization`,
+which checks the same failure occurs identically whether the (mocked, never
+real) key is present or absent, and never reads/prints/logs the real key's
+value anywhere.
+
+### Backfill (item #7) — `research/backfill_experiment_specs.py`
+
+Constructs `ExperimentProposal`+`ExperimentResult` pairs for EXP-0001..0005
+from the real historical artifacts (`hypothesis.md`, `methodology.md`,
+`config.yaml`, `results.json`, `conclusion.md`) and writes them to
+`research/experiment_specs/EXP-000N.json` (`uv run python -m
+research.backfill_experiment_specs`). **Migration policy** (full rationale
+in that module's docstring): `LEGACY_UNKNOWN` marks a field that existed in
+spirit in the historical prose but was never written as its own discrete
+field (e.g. `supports_hypothesis_if`/`rejects_hypothesis_if`/`inconclusive_if`);
+`NOT_RECORDED` marks a field whose underlying CONCEPT did not exist at all
+at the time (`evidence_references` — Phase E's memory DB postdates
+EXP-0001..0005); `NOT_APPLICABLE` marks a field that is meaningful in
+general but doesn't apply to a given experiment. `schema_version` on every
+backfilled record is set to the CURRENT version (a statement about the
+backfilled record's FORMAT today, not a claim about what schema existed when
+EXP-0001 actually ran). Human-authority approval flags are left `False` for
+all five — none of them ever touched production Swift, replaced a shipped
+model, trained anything, used private data, uploaded externally, deployed to
+Mac/iPhone, or changed signing, so none was ever sought or is fabricated
+retroactively. **Verified execution_status/research_verdict, unchanged**:
+EXP-0001 COMPLETED/PASS, EXP-0002 COMPLETED/FAIL, EXP-0003 COMPLETED/FAIL,
+EXP-0004 COMPLETED/INCONCLUSIVE, EXP-0005 COMPLETED/INCONCLUSIVE — checked
+both against the backfilled JSON files AND against the live `research/db.py`
+rows (`tests/test_experiment_spec.py::test_legacy_backfill_matches_live_db_row`).
+
+### CLI — `research/cli.py`
+
+`omnilab experiment run EXP-XXXX` (renamed from the old bare `omnilab
+experiment EXP-XXXX` — same Phase-C behavior). New:
+`omnilab experiment validate EXP-XXXX` (runs `experiment_validator.validate()`
+against `research/experiment_specs/EXP-XXXX.json`, prints every issue by
+level, prints queue eligibility) and `omnilab experiment show EXP-XXXX
+[--json]` (normalized schema fields: hypothesis/motivation/research question,
+evidence references, pre-registered success criteria and interpretation
+conditions, risk/safety flags, amendment count, result if any, and a
+validation summary). No LLM call anywhere in either command path.
+
+### Schema versioning (item #12)
+
+Current version: `"1.0"` (`research.experiment_spec.SCHEMA_VERSION`).
+Compatibility policy (`research/experiment_spec_migrations.py`): a
+same-MAJOR-version proposal dict loads directly, even across minor versions
+(additive minor fields are expected to have safe defaults); a
+different-MAJOR-version dict requires an explicit, registered
+`(from_version, to_version)` migration function, raising
+`UnsupportedSchemaVersionError` if none exists — never silently guessed. A
+missing `schema_version` raises `SchemaVersionError` immediately. The
+registry currently holds exactly one migration, a documented no-op
+`("1.0", "1.0")` entry — a real extension point, deliberately not
+over-built for versions that don't exist yet.
+
+### Example — NON-EXECUTABLE
+
+```json
+{
+  "proposal": {
+    "schema_version": "1.0",
+    "experiment_id": "EXP-9999",
+    "title": "Per-hazard-class TTS cooldown instead of one global cooldown",
+    "family": "application_decision_logic",
+    "hypothesis": "A per-class TTS announcement cooldown (e.g. 4s for Person, 8s for Stairs) reduces redundant/annoying announcements without increasing missed-hazard-announcement rate, compared to today's single global cooldown.",
+    "motivation": "User feedback (hypothetical, not yet collected) suggests the current single global cooldown either over-announces frequent nearby hazards (Person) or under-announces rare-but-critical ones (Stairs) because both share one timer.",
+    "research_question": "Does per-class cooldown tuning change announcement redundancy/missed-hazard rate on real device sessions?",
+    "evidence_references": [],
+    "prior_experiment_ids": [],
+    "baseline_run_id": "RUN-20260904-002",
+    "independent_variables": ["per-class TTS cooldown duration"],
+    "dependent_variables": ["announcement latency (device-measured)", "false-alarm/redundant-announcement rate (device-measured)"],
+    "control_condition": "current single global cooldown, unchanged",
+    "baseline_comparison": "on-device A/B session log comparison (REQUIRES_IPHONE — cannot be Windows-simulated)",
+    "success_criteria": {"primary_metric": "hazard.recall", "min_meaningful_delta": 0.03},
+    "production_impact": true,
+    "production_impact_description": "would modify ios/ SpeechEngine cooldown logic if adopted",
+    "mac_iphone_required": true,
+    "production_swift_modification_approved": false,
+    "mac_iphone_deployment_approved": false
+  }
+}
+```
+
+**NON-EXECUTABLE EXAMPLE — not queued, not run, illustrative only.** It is
+not present in `research/experiment_specs/`, has no `EXP-9999` row in
+`research/db.py`, and would in fact FAIL `validate()` today
+(`production_impact=True`/`mac_iphone_required=True` with both approval
+flags `False`) — which is the point: this is what an under-approved,
+not-yet-queue-eligible family-H proposal looks like.

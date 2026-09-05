@@ -1,0 +1,181 @@
+{
+  "amendments": [],
+  "frozen_hash": "83ace94a2e577228e1b931bc5a28f42f056548d9a605a0eb72848d4bee671498",
+  "proposal": {
+    "acknowledges_rejected_hypothesis_ids": [],
+    "allowed_path_scope": [
+      "benchmark/",
+      "research/",
+      "experiments/"
+    ],
+    "baseline_comparison": "RUN-20260904-002 vs. the same model/weights/manifest evaluated at conf=0.05",
+    "baseline_metrics": {
+      "hazard": {
+        "precision": 0.8070175438596491,
+        "recall": 0.4804177545691906
+      },
+      "latency": {
+        "p95_ms": 57.12579999999434
+      },
+      "person": {
+        "num_gt": 303,
+        "precision": 0.6666666666666666,
+        "recall": 0.21122112211221122
+      }
+    },
+    "baseline_run_id": "RUN-20260904-002",
+    "compute_resource_estimate": {
+      "cpu": "low",
+      "disk_mb": 1,
+      "gpu_mem_gb": 0,
+      "llm_calls": 0,
+      "runtime_min": 1
+    },
+    "control_condition": "conf=0.4 (canonical baseline RUN-20260904-002)",
+    "controlled_variables": {
+      "imgsz": 640,
+      "iou_threshold": 0.7,
+      "manifest": "data/manifests/eval_manifest.jsonl (unchanged)",
+      "model": "yolov8m-oiv7.pt (same weights as the canonical baseline)"
+    },
+    "coreml_model_replacement_approved": false,
+    "data_privacy_classification": "NONE",
+    "dataset_version": "data/manifests/eval_manifest.jsonl (380 images, unchanged)",
+    "dependent_variables": [
+      "person.recall",
+      "hazard.precision",
+      "hazard.recall",
+      "latency.p95_ms"
+    ],
+    "evidence_references": [],
+    "expected_artifacts": [
+      "results.json",
+      "conclusion.md",
+      "analysis.md"
+    ],
+    "experiment_id": "EXP-0001",
+    "external_api_required": false,
+    "external_upload_approved": false,
+    "family": "threshold_postprocessing",
+    "hypothesis": "The existing threshold sweep (benchmark/results/diagnostics/threshold_sweep.json) accurately characterizes the precision/recall tradeoff, and threshold alone cannot resolve Person recall without unacceptable precision loss.",
+    "implementation_scope": "No new inference; no benchmark/config.py or ios/ change.",
+    "inconclusive_if": "NOT_RECORDED",
+    "independent_variables": [
+      "confidence_threshold (evaluated post-hoc from an existing conf=0.01 capture; benchmark/config.py's real conf=0.4 is unchanged)"
+    ],
+    "isolation_requirements": "git_isolation.py experiment branch; no benchmark/config.py mutation",
+    "mac_iphone_deployment_approved": false,
+    "mac_iphone_required": false,
+    "materially_new_rationale": "",
+    "model_config_ref": "benchmark/config.py (unchanged; conf=0.4 remains production)",
+    "motivation": "Phase B.5's diagnostic threshold sweep already showed Person recall roughly doubling (0.211->0.479) at conf=0.05 while precision collapses (0.667->0.312). This experiment formalizes that finding through the real omnilab pipeline as a confirmatory/control run.",
+    "new_training_approved": false,
+    "prior_experiment_ids": [],
+    "private_user_data_use_approved": false,
+    "procedure": "Read benchmark/results/diagnostics/threshold_sweep.json's conf=0.4 (baseline) and conf=0.05 (candidate) buckets; apply research.evaluation_policy's default hazard policy.",
+    "production_impact": false,
+    "production_impact_description": "None \u2014 read-only analysis of already-approved diagnostic data.",
+    "production_swift_modification_approved": false,
+    "rejects_hypothesis_if": "NOT_RECORDED",
+    "reproducibility_requirements": "Re-derivable directly from benchmark/results/diagnostics/threshold_sweep.json \u2014 no new inference is required to reproduce this result.",
+    "research_question": "Does lowering the global confidence threshold alone resolve Person recall without unacceptable hazard-precision loss?",
+    "schema_version": "1.0",
+    "signing_distribution_change_approved": false,
+    "success_criteria": {
+      "guardrail_metrics": [
+        "hazard.precision",
+        "hazard.recall",
+        "latency.p95_ms"
+      ],
+      "max_latency_regression_pct": 50.0,
+      "min_meaningful_delta": 0.03,
+      "precision_floor": 0.757,
+      "primary_metric": "person.recall",
+      "required_tests_pass": true,
+      "sample_size_requirements": {
+        "person": 100
+      }
+    },
+    "supports_hypothesis_if": "NOT_RECORDED",
+    "title": "Confirmatory control: global confidence-threshold reduction alone"
+  },
+  "result": {
+    "benchmark_artifact_paths": [
+      "experiments/completed/EXP-0001/results.json"
+    ],
+    "code_diff_path": "experiments/completed/EXP-0001/patch.diff",
+    "conclusion": "# EXP-0001 \u2014 Conclusion\n\n**Final status**: PASSED\n\n**Raw evaluation-policy verdict**: FAILED\n\n**Notes**: Confirmatory/control experiment. Evidence source: benchmark\\results\\diagnostics\\threshold_sweep.json. Compares the canonical baseline (conf=0.4) against the same model/weights/manifest evaluated at conf=0.05 (a real captured configuration, not a hypothetical). No new inference was run; no benchmark/config.py values were changed.\n\n**Reasoning**:\n- guardrail 'hazard.precision' violated: 0.3814 does not satisfy gte 0.7570 (hazard precision must not drop more than 0.05 below baseline)\n",
+    "execution_run_id": "RUN-20260904-002+threshold_sweep@conf=0.05",
+    "execution_status": "COMPLETED",
+    "limitations": [
+      "Windows/CUDA proxy latency, not iPhone ANE.",
+      "Static-image OIV7 eval, not real-world footage."
+    ],
+    "metrics": {
+      "baseline_metrics": {
+        "hazard": {
+          "precision": 0.8070175438596491,
+          "recall": 0.4804177545691906
+        },
+        "latency": {
+          "p95_ms": 57.12579999999434
+        },
+        "person": {
+          "num_gt": 303,
+          "precision": 0.6666666666666666,
+          "recall": 0.21122112211221122
+        }
+      },
+      "candidate_metrics": {
+        "hazard": {
+          "precision": 0.3814055636896047,
+          "recall": 0.6801566579634465
+        },
+        "latency": {
+          "p95_ms": 57.12579999999434
+        },
+        "person": {
+          "num_gt": 303,
+          "precision": 0.3125,
+          "recall": 0.47854785478547857
+        }
+      },
+      "final_experiment_status": "PASSED",
+      "guardrail_results": [
+        {
+          "comparator": "gte",
+          "margin": 0.3756119801700443,
+          "metric": "hazard.precision",
+          "satisfied": false,
+          "threshold": 0.757017543859649,
+          "value": 0.3814055636896047
+        },
+        {
+          "comparator": "gte",
+          "margin": 0.2197389033942559,
+          "metric": "hazard.recall",
+          "satisfied": true,
+          "threshold": 0.4604177545691906,
+          "value": 0.6801566579634465
+        },
+        {
+          "comparator": "lte",
+          "margin": 28.56289999999717,
+          "metric": "latency.p95_ms",
+          "satisfied": true,
+          "threshold": 85.68869999999151,
+          "value": 57.12579999999434
+        }
+      ],
+      "notes": "Confirmatory/control experiment. Evidence source: benchmark\\results\\diagnostics\\threshold_sweep.json. Compares the canonical baseline (conf=0.4) against the same model/weights/manifest evaluated at conf=0.05 (a real captured configuration, not a hypothetical). No new inference was run; no benchmark/config.py values were changed.",
+      "raw_evaluation_policy_verdict": "FAILED",
+      "reasons": [
+        "guardrail 'hazard.precision' violated: 0.3814 does not satisfy gte 0.7570 (hazard precision must not drop more than 0.05 below baseline)"
+      ],
+      "result_run_id": "RUN-20260904-002+threshold_sweep@conf=0.05"
+    },
+    "research_verdict": "PASS",
+    "test_results_summary": "pytest exit_ok=True (see benchmark.log)"
+  },
+  "status": "APPROVED"
+}

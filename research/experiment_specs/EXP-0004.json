@@ -1,0 +1,172 @@
+{
+  "amendments": [],
+  "frozen_hash": "b35e5a5ce5d6d0f3e1950834fce9f13ff66f7a80be16bded6a844158ae581344",
+  "proposal": {
+    "acknowledges_rejected_hypothesis_ids": [],
+    "allowed_path_scope": [
+      "benchmark/",
+      "research/",
+      "experiments/"
+    ],
+    "baseline_comparison": "RUN-20260904-002 (canonical baseline)",
+    "baseline_metrics": {
+      "hazard": {
+        "precision": 0.8070175438596491,
+        "recall": 0.4804177545691906
+      },
+      "latency": {
+        "p95_ms": 57.12579999999434
+      },
+      "person": {
+        "num_gt": 303,
+        "precision": 0.6666666666666666,
+        "recall": 0.21122112211221122
+      }
+    },
+    "baseline_run_id": "RUN-20260904-002",
+    "compute_resource_estimate": {},
+    "control_condition": "identity (no-op) candidate, verified to reproduce baseline metrics exactly",
+    "controlled_variables": {
+      "manifest": "data/manifests/eval_manifest.jsonl (unchanged)"
+    },
+    "coreml_model_replacement_approved": false,
+    "data_privacy_classification": "NONE",
+    "dataset_version": "data/manifests/eval_manifest.jsonl (380 images, unchanged)",
+    "dependent_variables": [
+      "person.recall",
+      "hazard.precision",
+      "hazard.recall",
+      "latency.p95_ms"
+    ],
+    "evidence_references": [],
+    "expected_artifacts": [
+      "results.json",
+      "conclusion.md",
+      "analysis.md"
+    ],
+    "experiment_id": "EXP-0004",
+    "external_api_required": false,
+    "external_upload_approved": false,
+    "family": "preprocessing",
+    "hypothesis": "A single, simple image preprocessing transform (contrast/sharpening/CLAHE) applied before inference improves difficult Person detection without unacceptable latency cost.",
+    "implementation_scope": "Diagnostic-only; benchmark/config.py and ios/ never touched.",
+    "inconclusive_if": "NOT_RECORDED",
+    "independent_variables": [
+      "one preprocessing transform (e.g. CLAHE) applied before inference"
+    ],
+    "isolation_requirements": "git_isolation.py experiment branch; no benchmark/config.py mutation",
+    "mac_iphone_deployment_approved": false,
+    "mac_iphone_required": false,
+    "materially_new_rationale": "",
+    "model_config_ref": "benchmark/config.py (unchanged in production; candidate configs are diagnostic-only)",
+    "motivation": "Occlusion/small-object/clutter dominate Person misses; a contrast/sharpening transform is a plausible, cheap lever worth testing in isolation.",
+    "new_training_approved": false,
+    "prior_experiment_ids": [],
+    "private_user_data_use_approved": false,
+    "procedure": "benchmark/diagnostics/preprocessing_eval.py applies exactly one pixel-level transform before inference at the production operating point, for 5 pre-registered candidates (identity/clahe/unsharp/gamma/autocontrast).",
+    "production_impact": false,
+    "production_impact_description": "None \u2014 no production code changed regardless of outcome.",
+    "production_swift_modification_approved": false,
+    "rejects_hypothesis_if": "NOT_RECORDED",
+    "reproducibility_requirements": "LEGACY_UNKNOWN: not written as a discrete field historically; see methodology.md prose for the real procedure.",
+    "research_question": "Does any single pre-registered pixel-level preprocessing transform meaningfully improve Person recall while clearing the hazard-precision guardrail?",
+    "schema_version": "1.0",
+    "signing_distribution_change_approved": false,
+    "success_criteria": {
+      "guardrail_metrics": [
+        "hazard.precision",
+        "hazard.recall",
+        "latency.p95_ms"
+      ],
+      "max_latency_regression_pct": 50.0,
+      "min_meaningful_delta": 0.03,
+      "precision_floor": 0.757,
+      "primary_metric": "person.recall",
+      "required_tests_pass": true,
+      "sample_size_requirements": {
+        "person": 100
+      }
+    },
+    "supports_hypothesis_if": "NOT_RECORDED",
+    "title": "EXP-0004 (backfilled)"
+  },
+  "result": {
+    "benchmark_artifact_paths": [
+      "experiments/completed/EXP-0004/results.json"
+    ],
+    "code_diff_path": "experiments/completed/EXP-0004/patch.diff",
+    "conclusion": "# EXP-0004 \u2014 Conclusion\n\n**Final status**: INCONCLUSIVE\n\n**Raw evaluation-policy verdict**: INCONCLUSIVE\n\n**Notes**: Real inference re-run (2 passes: conf=0.4 official + conf=0.01 diagnostic capture) for 5 pre-registered candidates over the full 380-image eval manifest, same weights/imgsz=640/iou=0.7/manifest as the canonical baseline \u2014 preprocessing was the ONLY changed variable per candidate. Identity/no-op control exactly reproduced the official baseline (correctness check passed). Representative candidate for this experiment's stored DB verdict: 'gamma' (selection rule: best person.recall delta among candidates clearing all guardrails; falls back to numerically-best-regardless if none clear \u2014 see research/_exp0004_preregister.py). Every candidate's own metrics/verdict are recorded in results.json['per_candidate_verdicts'] and reports/baseline/person_preprocessing_analysis.md regardless of which one is representative. 380 static images, no video/tracking/LiDAR/TTS/real-camera processing \u2014 this is a Windows/CUDA, static-image, offline measurement only.\n\n**Reasoning**:\n- primary metric 'person.recall' delta (+0.0198) is below the minimum meaningful delta (0.03)\n",
+    "execution_run_id": "EXP-0004-preprocessing-inline-representative=gamma",
+    "execution_status": "COMPLETED",
+    "limitations": [
+      "Windows/CUDA proxy latency, not iPhone ANE.",
+      "Static-image OIV7 eval, not real-world footage."
+    ],
+    "metrics": {
+      "baseline_metrics": {
+        "hazard": {
+          "precision": 0.8070175438596491,
+          "recall": 0.4804177545691906
+        },
+        "latency": {
+          "p95_ms": 57.12579999999434
+        },
+        "person": {
+          "num_gt": 303,
+          "precision": 0.6666666666666666,
+          "recall": 0.21122112211221122
+        }
+      },
+      "candidate_metrics": {
+        "hazard": {
+          "precision": 0.7948717948717948,
+          "recall": 0.4856396866840731
+        },
+        "latency": {
+          "p95_ms": 19.192400000974885
+        },
+        "person": {
+          "num_gt": 303,
+          "precision": 0.660377358490566,
+          "recall": 0.23102310231023102
+        }
+      },
+      "final_experiment_status": "INCONCLUSIVE",
+      "guardrail_results": [
+        {
+          "comparator": "gte",
+          "margin": 0.03785425101214579,
+          "metric": "hazard.precision",
+          "satisfied": true,
+          "threshold": 0.757017543859649,
+          "value": 0.7948717948717948
+        },
+        {
+          "comparator": "gte",
+          "margin": 0.025221932114882495,
+          "metric": "hazard.recall",
+          "satisfied": true,
+          "threshold": 0.4604177545691906,
+          "value": 0.4856396866840731
+        },
+        {
+          "comparator": "lte",
+          "margin": 66.49629999901663,
+          "metric": "latency.p95_ms",
+          "satisfied": true,
+          "threshold": 85.68869999999151,
+          "value": 19.192400000974885
+        }
+      ],
+      "notes": "Real inference re-run (2 passes: conf=0.4 official + conf=0.01 diagnostic capture) for 5 pre-registered candidates over the full 380-image eval manifest, same weights/imgsz=640/iou=0.7/manifest as the canonical baseline \u2014 preprocessing was the ONLY changed variable per candidate. Identity/no-op control exactly reproduced the official baseline (correctness check passed). Representative candidate for this experiment's stored DB verdict: 'gamma' (selection rule: best person.recall delta among candidates clearing all guardrails; falls back to numerically-best-regardless if none clear \u2014 see research/_exp0004_preregister.py). Every candidate's own metrics/verdict are recorded in results.json['per_candidate_verdicts'] and reports/baseline/person_preprocessing_analysis.md regardless of which one is representative. 380 static images, no video/tracking/LiDAR/TTS/real-camera processing \u2014 this is a Windows/CUDA, static-image, offline measurement only.",
+      "raw_evaluation_policy_verdict": "INCONCLUSIVE",
+      "reasons": [
+        "primary metric 'person.recall' delta (+0.0198) is below the minimum meaningful delta (0.03)"
+      ],
+      "result_run_id": "EXP-0004-preprocessing-inline-representative=gamma"
+    },
+    "research_verdict": "INCONCLUSIVE",
+    "test_results_summary": "pytest exit_ok=True (see benchmark.log)"
+  },
+  "status": "APPROVED"
+}

@@ -142,6 +142,37 @@ REGISTRY: dict[str, FamilySpec] = {
         production_validation_requirement="REQUIRES_IPHONE",
         allowed_path_prefixes=("ios/", "research/", "experiments/"),
     ),
+    # Phase F addition (8th family). Genuinely distinct from G
+    # (temporal_pipeline): G is about tracking/temporal smoothing of
+    # detections across frames; this family is about the application-level
+    # decision/announcement logic that sits ABOVE detection — what gets
+    # spoken, when, and in what priority order (TTS/announcement-logic,
+    # SpeechEngine-adjacent). A registry ENTRY only — no runner exists for
+    # this family in Phase F or earlier; see research/README.md's Phase F
+    # section for why implementing one is explicitly out of scope here.
+    "application_decision_logic": FamilySpec(
+        key="application_decision_logic",
+        label="H. Application-Level Decision Logic",
+        description=(
+            "Changes to user-facing decision/announcement logic layered on top "
+            "of detection output — e.g. TTS/announcement cadence, hazard-to-"
+            "speech priority ordering, per-class announcement cooldown rules. "
+            "Requires the real on-device SpeechEngine/announcement pipeline; a "
+            "static-image Windows benchmark cannot exercise it at all, same "
+            "structural limitation as temporal_pipeline."
+        ),
+        typical_independent_variables=(
+            "announcement priority order", "per-class cooldown duration",
+            "hazard-to-speech mapping rule",
+        ),
+        typical_guardrails=(
+            "announcement latency (device-measured)",
+            "false-alarm/redundant-announcement rate (device-measured)",
+        ),
+        windows_evaluatable=False,
+        production_validation_requirement="REQUIRES_IPHONE",
+        allowed_path_prefixes=("ios/", "research/", "experiments/"),
+    ),
 }
 
 

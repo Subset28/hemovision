@@ -1,0 +1,172 @@
+{
+  "amendments": [],
+  "frozen_hash": "c4269c01660dd2cc7b4e2f5d55d283cbbee2044fd7a564d5f3435d0d5410d6fa",
+  "proposal": {
+    "acknowledges_rejected_hypothesis_ids": [],
+    "allowed_path_scope": [
+      "benchmark/",
+      "research/",
+      "experiments/"
+    ],
+    "baseline_comparison": "RUN-20260904-002 (canonical baseline)",
+    "baseline_metrics": {
+      "hazard": {
+        "precision": 0.8070175438596491,
+        "recall": 0.4804177545691906
+      },
+      "latency": {
+        "p95_ms": 57.12579999999434
+      },
+      "person": {
+        "num_gt": 303,
+        "precision": 0.6666666666666666,
+        "recall": 0.21122112211221122
+      }
+    },
+    "baseline_run_id": "RUN-20260904-002",
+    "compute_resource_estimate": {},
+    "control_condition": "imgsz=640 (canonical baseline)",
+    "controlled_variables": {
+      "manifest": "data/manifests/eval_manifest.jsonl (unchanged)"
+    },
+    "coreml_model_replacement_approved": false,
+    "data_privacy_classification": "NONE",
+    "dataset_version": "data/manifests/eval_manifest.jsonl (380 images, unchanged)",
+    "dependent_variables": [
+      "person.recall",
+      "hazard.precision",
+      "hazard.recall",
+      "latency.p95_ms"
+    ],
+    "evidence_references": [],
+    "expected_artifacts": [
+      "results.json",
+      "conclusion.md",
+      "analysis.md"
+    ],
+    "experiment_id": "EXP-0002",
+    "external_api_required": false,
+    "external_upload_approved": false,
+    "family": "small_object",
+    "hypothesis": "Increased inference-time input resolution (640->960 or 640->1280) meaningfully improves Person recall, at some measurable latency cost.",
+    "implementation_scope": "Diagnostic-only; benchmark/config.py and ios/ never touched.",
+    "inconclusive_if": "NOT_RECORDED",
+    "independent_variables": [
+      "imgsz (inference-time only: 640 -> 960)"
+    ],
+    "isolation_requirements": "git_isolation.py experiment branch; no benchmark/config.py mutation",
+    "mac_iphone_deployment_approved": false,
+    "mac_iphone_required": false,
+    "materially_new_rationale": "",
+    "model_config_ref": "benchmark/config.py (unchanged in production; candidate configs are diagnostic-only)",
+    "motivation": "64.0% of missed Person boxes have area <2% of the image (small/distant) per reports/baseline/person_failure_analysis.md.",
+    "new_training_approved": false,
+    "prior_experiment_ids": [],
+    "private_user_data_use_approved": false,
+    "procedure": "Run real inference over the eval manifest at imgsz=960 (conf/iou unchanged); score with benchmark.metrics.evaluate_detections; compare via research.evaluation_policy.",
+    "production_impact": false,
+    "production_impact_description": "None \u2014 no production code changed regardless of outcome.",
+    "production_swift_modification_approved": false,
+    "rejects_hypothesis_if": "NOT_RECORDED",
+    "reproducibility_requirements": "LEGACY_UNKNOWN: not written as a discrete field historically; see methodology.md prose for the real procedure.",
+    "research_question": "Does raising inference-time input resolution alone meaningfully improve Person recall?",
+    "schema_version": "1.0",
+    "signing_distribution_change_approved": false,
+    "success_criteria": {
+      "guardrail_metrics": [
+        "hazard.precision",
+        "hazard.recall",
+        "latency.p95_ms"
+      ],
+      "max_latency_regression_pct": 50.0,
+      "min_meaningful_delta": 0.03,
+      "precision_floor": 0.757,
+      "primary_metric": "person.recall",
+      "required_tests_pass": true,
+      "sample_size_requirements": {
+        "person": 100
+      }
+    },
+    "supports_hypothesis_if": "NOT_RECORDED",
+    "title": "EXP-0002 (backfilled)"
+  },
+  "result": {
+    "benchmark_artifact_paths": [
+      "experiments/completed/EXP-0002/results.json"
+    ],
+    "code_diff_path": "experiments/completed/EXP-0002/patch.diff",
+    "conclusion": "# EXP-0002 \u2014 Conclusion\n\n**Final status**: FAILED\n\n**Raw evaluation-policy verdict**: FAILED\n\n**Notes**: Real inference re-run at imgsz=960 (candidate) vs the canonical imgsz=640 baseline, same model weights/conf/iou/manifest. This is an inference-time-only resolution change \u2014 benchmark/config.py's real IMGSZ=640 is unchanged.\n\n**Reasoning**:\n- guardrail 'hazard.recall' violated: 0.4491 does not satisfy gte 0.4604 (hazard recall must not drop more than 0.02 below baseline)\n",
+    "execution_run_id": "EXP-0002-imgsz960-inline",
+    "execution_status": "COMPLETED",
+    "limitations": [
+      "Windows/CUDA proxy latency, not iPhone ANE.",
+      "Static-image OIV7 eval, not real-world footage."
+    ],
+    "metrics": {
+      "baseline_metrics": {
+        "hazard": {
+          "precision": 0.8070175438596491,
+          "recall": 0.4804177545691906
+        },
+        "latency": {
+          "p95_ms": 57.12579999999434
+        },
+        "person": {
+          "num_gt": 303,
+          "precision": 0.6666666666666666,
+          "recall": 0.21122112211221122
+        }
+      },
+      "candidate_metrics": {
+        "hazard": {
+          "precision": 0.7627494456762749,
+          "recall": 0.4490861618798956
+        },
+        "latency": {
+          "p95_ms": 72.42410000071686
+        },
+        "person": {
+          "num_gt": 303,
+          "precision": 0.6666666666666666,
+          "recall": 0.16501650165016502
+        }
+      },
+      "final_experiment_status": "FAILED",
+      "guardrail_results": [
+        {
+          "comparator": "gte",
+          "margin": 0.005731901816625862,
+          "metric": "hazard.precision",
+          "satisfied": true,
+          "threshold": 0.757017543859649,
+          "value": 0.7627494456762749
+        },
+        {
+          "comparator": "gte",
+          "margin": 0.011331592689295011,
+          "metric": "hazard.recall",
+          "satisfied": false,
+          "threshold": 0.4604177545691906,
+          "value": 0.4490861618798956
+        },
+        {
+          "comparator": "lte",
+          "margin": 13.264599999274651,
+          "metric": "latency.p95_ms",
+          "satisfied": true,
+          "threshold": 85.68869999999151,
+          "value": 72.42410000071686
+        }
+      ],
+      "notes": "Real inference re-run at imgsz=960 (candidate) vs the canonical imgsz=640 baseline, same model weights/conf/iou/manifest. This is an inference-time-only resolution change \u2014 benchmark/config.py's real IMGSZ=640 is unchanged.",
+      "raw_evaluation_policy_verdict": "FAILED",
+      "reasons": [
+        "guardrail 'hazard.recall' violated: 0.4491 does not satisfy gte 0.4604 (hazard recall must not drop more than 0.02 below baseline)"
+      ],
+      "result_run_id": "EXP-0002-imgsz960-inline"
+    },
+    "research_verdict": "FAIL",
+    "test_results_summary": "pytest exit_ok=True (see benchmark.log)"
+  },
+  "status": "APPROVED"
+}

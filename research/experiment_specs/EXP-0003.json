@@ -1,0 +1,172 @@
+{
+  "amendments": [],
+  "frozen_hash": "397a9bbf0520ddbfc2465c46fa638b44b8df2ef5c614760758793b596bc69155",
+  "proposal": {
+    "acknowledges_rejected_hypothesis_ids": [],
+    "allowed_path_scope": [
+      "benchmark/",
+      "research/",
+      "experiments/"
+    ],
+    "baseline_comparison": "RUN-20260904-002 (canonical baseline)",
+    "baseline_metrics": {
+      "hazard": {
+        "precision": 0.8070175438596491,
+        "recall": 0.4804177545691906
+      },
+      "latency": {
+        "p95_ms": 57.12579999999434
+      },
+      "person": {
+        "num_gt": 303,
+        "precision": 0.6666666666666666,
+        "recall": 0.21122112211221122
+      }
+    },
+    "baseline_run_id": "RUN-20260904-002",
+    "compute_resource_estimate": {},
+    "control_condition": "Official conf=0.4 predictions, no class remapping (canonical baseline)",
+    "controlled_variables": {
+      "manifest": "data/manifests/eval_manifest.jsonl (unchanged)"
+    },
+    "coreml_model_replacement_approved": false,
+    "data_privacy_classification": "NONE",
+    "dataset_version": "data/manifests/eval_manifest.jsonl (380 images, unchanged)",
+    "dependent_variables": [
+      "person.recall",
+      "hazard.precision",
+      "hazard.recall",
+      "latency.p95_ms"
+    ],
+    "evidence_references": [],
+    "expected_artifacts": [
+      "results.json",
+      "conclusion.md",
+      "analysis.md"
+    ],
+    "experiment_id": "EXP-0003",
+    "external_api_required": false,
+    "external_upload_approved": false,
+    "family": "class_confusion",
+    "hypothesis": "A meaningful fraction of Person recall loss at conf=0.4 is attributable to semantically related non-Person class confusion, not the detector failing to notice a person at all.",
+    "implementation_scope": "Diagnostic-only; benchmark/config.py and ios/ never touched.",
+    "inconclusive_if": "NOT_RECORDED",
+    "independent_variables": [
+      "scoring-time class grouping map (measurement only, not a production change)"
+    ],
+    "isolation_requirements": "git_isolation.py experiment branch; no benchmark/config.py mutation",
+    "mac_iphone_deployment_approved": false,
+    "mac_iphone_required": false,
+    "materially_new_rationale": "",
+    "model_config_ref": "benchmark/config.py (unchanged in production; candidate configs are diagnostic-only)",
+    "motivation": "Phase B.5's person_failure_analysis.md found 35.1% (84/239) of missed Person boxes had a different class predicted nearby, computed without a confidence floor or per-GT-box scoping.",
+    "new_training_approved": false,
+    "prior_experiment_ids": [],
+    "private_user_data_use_approved": false,
+    "procedure": "Recompute directly from raw predictions + ground truth via benchmark/diagnostics/person_confusion_analysis.py's classify_false_negatives(); four counterfactual rescorings via benchmark/diagnostics/person_counterfactuals.py.",
+    "production_impact": false,
+    "production_impact_description": "None \u2014 no production code changed regardless of outcome.",
+    "production_swift_modification_approved": false,
+    "rejects_hypothesis_if": "NOT_RECORDED",
+    "reproducibility_requirements": "LEGACY_UNKNOWN: not written as a discrete field historically; see methodology.md prose for the real procedure.",
+    "research_question": "How much of Person recall loss is genuine semantic class confusion once rigorously re-derived with a confidence floor and per-box scoping?",
+    "schema_version": "1.0",
+    "signing_distribution_change_approved": false,
+    "success_criteria": {
+      "guardrail_metrics": [
+        "hazard.precision",
+        "hazard.recall",
+        "latency.p95_ms"
+      ],
+      "max_latency_regression_pct": 50.0,
+      "min_meaningful_delta": 0.03,
+      "precision_floor": 0.757,
+      "primary_metric": "person.recall",
+      "required_tests_pass": true,
+      "sample_size_requirements": {
+        "person": 100
+      }
+    },
+    "supports_hypothesis_if": "NOT_RECORDED",
+    "title": "EXP-0003 (backfilled)"
+  },
+  "result": {
+    "benchmark_artifact_paths": [
+      "experiments/completed/EXP-0003/results.json"
+    ],
+    "code_diff_path": "experiments/completed/EXP-0003/patch.diff",
+    "conclusion": "# EXP-0003 \u2014 Conclusion\n\n**Final status**: FAILED\n\n**Raw evaluation-policy verdict**: FAILED\n\n**Notes**: Diagnostic/measurement-only experiment \u2014 no production code or config changed. 'Candidate' metrics here are counterfactual B (whole-person alias set accepted as Person at IoU>=0.5, confidence>=0.4) \u2014 the most direct scoring-time realization of the hypothesis. Counterfactuals A (restated baseline), C (+subparts), and D (confidence-floor sweep) are computed and fully reported in analysis.md / reports/baseline/person_class_confusion_analysis.md but not themselves fed into this pass/fail check. The standard hazard guardrails (precision/recall floors, latency, sample-size floors) are applied UNMODIFIED, per the EXP-0003 spec's instruction not to loosen the evaluation policy for a diagnostic-shaped experiment \u2014 a hard guardrail violation here means a real evidence-based FAILED verdict, not an INCONCLUSIVE hand-wave and not a forced PASSED.\n\n**Reasoning**:\n- guardrail 'hazard.precision' violated: 0.6785 does not satisfy gte 0.7570 (hazard precision must not drop more than 0.05 below baseline)\n\n## Forward-looking assessment (opinion only \u2014 not a decision to act on)\n\nGenuine SEMANTIC_CLASS_CONFUSION is real but modest (5.4% of Person FNs, 13/239, dominated by\nMan/Boy/Woman) and does not survive as a viable postprocessing/class-remapping fix \u2014 every\ncounterfactual that exploits it costs more hazard-level precision than the recall it recovers, and no\nconfidence floor rescues that tradeoff. Postprocessing/class-remapping along these lines should NOT be\npursued further as-is. The dominant categories are TRUE_DETECTOR_MISS (38.5%) and LOW_CONFIDENCE_PERSON\n(34.3%) \u2014 LOW_CONFIDENCE_PERSON is already known (EXP-0001) to be unfixable by simple thresholding\nwithout a precision collapse, and TRUE_DETECTOR_MISS is consistent with EXP-0002's finding that raising\ninput resolution alone did not move Person recall. Taken together, EXP-0001/0002/0003 all point AWAY\nfrom postprocessing-only and resolution-only fixes and toward the detector's underlying representational\ncapacity being the binding constraint (small/occluded/low-confidence true misses, not a labeling\nartifact) \u2014 which is suggestive of, but does not itself justify or unblock, EXP-0005 (model_variant).\nEXP-0005 remains BLOCKED per explicit task instruction regardless of this trend. EXP-0004\n(preprocessing) is a comparatively lower-cost next step than EXP-0005 and has not been ruled out by any\nevidence gathered here.\n",
+    "execution_run_id": "EXP-0003-person-confusion-analysis-inline (no new inference; reuses RUN-20260904-002 predictions + Phase B.5 low_conf_predictions.jsonl)",
+    "execution_status": "COMPLETED",
+    "limitations": [
+      "Windows/CUDA proxy latency, not iPhone ANE.",
+      "Static-image OIV7 eval, not real-world footage."
+    ],
+    "metrics": {
+      "baseline_metrics": {
+        "hazard": {
+          "precision": 0.8070175438596491,
+          "recall": 0.4804177545691906
+        },
+        "latency": {
+          "p95_ms": 57.12579999999434
+        },
+        "person": {
+          "num_gt": 303,
+          "precision": 0.6666666666666666,
+          "recall": 0.21122112211221122
+        }
+      },
+      "candidate_metrics": {
+        "hazard": {
+          "precision": 0.6785079928952042,
+          "recall": 0.49869451697127937
+        },
+        "latency": {
+          "p95_ms": 57.12579999999434
+        },
+        "person": {
+          "num_gt": 303,
+          "precision": 0.3842364532019704,
+          "recall": 0.25742574257425743
+        }
+      },
+      "final_experiment_status": "FAILED",
+      "guardrail_results": [
+        {
+          "comparator": "gte",
+          "margin": 0.07850955096444479,
+          "metric": "hazard.precision",
+          "satisfied": false,
+          "threshold": 0.757017543859649,
+          "value": 0.6785079928952042
+        },
+        {
+          "comparator": "gte",
+          "margin": 0.03827676240208877,
+          "metric": "hazard.recall",
+          "satisfied": true,
+          "threshold": 0.4604177545691906,
+          "value": 0.49869451697127937
+        },
+        {
+          "comparator": "lte",
+          "margin": 28.56289999999717,
+          "metric": "latency.p95_ms",
+          "satisfied": true,
+          "threshold": 85.68869999999151,
+          "value": 57.12579999999434
+        }
+      ],
+      "notes": "Diagnostic/measurement-only experiment \u2014 no production code or config changed. 'Candidate' metrics here are counterfactual B (whole-person alias set accepted as Person at IoU>=0.5, confidence>=0.4) \u2014 the most direct scoring-time realization of the hypothesis. Counterfactuals A (restated baseline), C (+subparts), and D (confidence-floor sweep) are computed and fully reported in analysis.md / reports/baseline/person_class_confusion_analysis.md but not themselves fed into this pass/fail check. The standard hazard guardrails (precision/recall floors, latency, sample-size floors) are applied UNMODIFIED, per the EXP-0003 spec's instruction not to loosen the evaluation policy for a diagnostic-shaped experiment \u2014 a hard guardrail violation here means a real evidence-based FAILED verdict, not an INCONCLUSIVE hand-wave and not a forced PASSED.",
+      "raw_evaluation_policy_verdict": "FAILED",
+      "reasons": [
+        "guardrail 'hazard.precision' violated: 0.6785 does not satisfy gte 0.7570 (hazard precision must not drop more than 0.05 below baseline)"
+      ],
+      "result_run_id": "EXP-0003-person-confusion-analysis-inline (no new inference; reuses RUN-20260904-002 predictions + Phase B.5 low_conf_predictions.jsonl)"
+    },
+    "research_verdict": "FAIL",
+    "test_results_summary": "pytest exit_ok=True (see benchmark.log)"
+  },
+  "status": "APPROVED"
+}

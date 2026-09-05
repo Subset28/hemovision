@@ -149,6 +149,63 @@ def propose(dry_run: bool = True) -> list[Experiment]:
     return queued
 
 
+# ---------------------------------------------------------------------------
+# Phase F — queue gate. A canonical ExperimentSpec (research/experiment_spec.py)
+# must pass research/experiment_validator.py::validate() with zero ERRORs
+# before it may be inserted as QUEUED. This is a GATE IN FRONT OF the
+# existing QUEUED insertion path, not a new status value — research/db.py's
+# execution_status/research_verdict axes are completely untouched.
+# ---------------------------------------------------------------------------
+
+
+class QueueGateError(ValueError):
+    """Raised when a spec fails validation and therefore may not be queued."""
+
+
+def queue_experiment_from_spec(spec) -> Experiment:
+    """Validate `spec` (an ExperimentSpec) and, only if it is queue-eligible
+    (zero ERROR-level validation issues), construct and insert the
+    corresponding `Experiment` row with execution_status=QUEUED (the
+    existing research/db.py default), write its queued artifacts, and move
+    its directory to experiments/queued/. Raises QueueGateError (naming every
+    ERROR-level issue) if the spec fails validation — a spec that fails
+    validation is never inserted, not even as a placeholder."""
+    from research.experiment_registry import REGISTRY
+    from research.experiment_validator import is_queue_eligible, validate
+
+    validation = validate(spec)
+    if not is_queue_eligible(validation):
+        messages = "; ".join(f"[{i.code}] {i.message}" for i in validation.errors)
+        raise QueueGateError(f"{spec.proposal.experiment_id} failed validation, refusing to queue: {messages}")
+
+    p = spec.proposal
+    validation_requirement = "OFFLINE_SIMULATABLE"
+    if p.family in REGISTRY:
+        validation_requirement = REGISTRY[p.family].production_validation_requirement
+
+    exp = Experiment(
+        experiment_id=p.experiment_id,
+        hypothesis=p.hypothesis,
+        motivation=p.motivation,
+        rationale=p.research_question or p.procedure,
+        independent_variable="; ".join(p.independent_variables),
+        controls=dict(p.controlled_variables),
+        evaluation_method=p.procedure,
+        success_criteria=dict(p.success_criteria),
+        risks=p.production_impact_description or "(none declared)",
+        expected_outcome=p.supports_hypothesis_if or "(see ExperimentSpec pre-registration)",
+        parent_experiment_id=p.prior_experiment_ids[0] if p.prior_experiment_ids else None,
+        experiment_family=p.family,
+        baseline_run_id=p.baseline_run_id,
+        validation_requirement=validation_requirement,
+    )
+    with OmniLabDB() as db:
+        db.create_experiment(exp)
+    write_queued_artifacts(exp, EXPERIMENTS_DIR / "queued" / p.experiment_id)
+    move_to_status(p.experiment_id, "QUEUED")
+    return exp
+
+
 def status_summary() -> dict:
     with OmniLabDB() as db:
         experiments = db.list_experiments()
