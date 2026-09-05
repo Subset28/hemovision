@@ -45,6 +45,41 @@ def is_clean(repo_root: Path = REPO_ROOT) -> bool:
     return _run(["status", "--porcelain"], cwd=repo_root) == ""
 
 
+def dirty_paths(repo_root: Path = REPO_ROOT) -> list[str]:
+    """The exact list of paths `git status --porcelain` reports as dirty
+    (staged, unstaged, or untracked), one entry per line, status code
+    stripped. Gitignored files are already excluded by git itself (porcelain
+    output never lists them unless `--ignored` is passed, which this never
+    does) -- so the gitignored runtime artifacts OmniLab writes
+    (research/omnilab.db, research/memory.db, research/llm_usage.json,
+    research/catalog_snapshots/, .env) never appear here and never block a
+    clean-tree check. This is the "which files" companion to is_clean()'s
+    bare bool -- used by require_clean_tree() to actually report what's
+    dirty rather than a generic refusal."""
+    output = _run(["status", "--porcelain"], cwd=repo_root)
+    if not output:
+        return []
+    return [line[2:].strip() for line in output.splitlines() if line.strip()]
+
+
+def require_clean_tree(operation: str, repo_root: Path = REPO_ROOT) -> None:
+    """Fail-closed dirty-tree preflight (Phase-I-readiness MEDIUM finding
+    #6): raise GitIsolationError, naming every dirty path, if the working
+    tree is not clean. Never stashes, discards, or otherwise auto-resolves
+    the dirty state -- that decision belongs to a human. Intended for any
+    future operation that creates an experiment branch, modifies research
+    code, starts training, or writes benchmark results tied to an
+    experiment -- create_experiment_branch() below already calls this."""
+    paths = dirty_paths(repo_root)
+    if paths:
+        raise GitIsolationError(
+            f"refusing {operation!r}: working tree is not clean. Dirty path(s): {paths}. "
+            "Commit or stash real changes first -- this is never auto-resolved. "
+            "(Gitignored runtime artifacts, e.g. research/omnilab.db or .env, never "
+            "count as dirty -- git itself excludes them from this check.)"
+        )
+
+
 def current_commit(repo_root: Path = REPO_ROOT) -> str:
     return _run(["rev-parse", "HEAD"], cwd=repo_root)
 
@@ -65,12 +100,7 @@ def create_experiment_branch(experiment_id: str, repo_root: Path = REPO_ROOT) ->
       2. The repo must currently be on `master` or `main` — refuses to branch
          an experiment off of another experiment branch or arbitrary ref.
     """
-    if not is_clean(repo_root):
-        raise GitIsolationError(
-            f"refusing to create experiment branch for {experiment_id}: "
-            "working tree is not clean (git status --porcelain is non-empty). "
-            "Commit or stash changes first."
-        )
+    require_clean_tree(f"create_experiment_branch({experiment_id})", repo_root)
     branch = current_branch(repo_root)
     if branch not in MAIN_BRANCHES:
         raise GitIsolationError(

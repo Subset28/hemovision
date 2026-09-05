@@ -16,8 +16,10 @@ from research.git_isolation import (
     capture_diff,
     create_experiment_branch,
     current_branch,
+    dirty_paths,
     discard_non_experiment_changes,
     is_clean,
+    require_clean_tree,
     return_to_main_branch,
     touched_paths,
 )
@@ -52,6 +54,47 @@ class TestCleanlinessGuard:
         (temp_repo / "dirty.txt").write_text("x", encoding="utf-8")
         with pytest.raises(GitIsolationError, match="not clean"):
             create_experiment_branch("EXP-0001", repo_root=temp_repo)
+
+
+class TestDirtyPathsAndRequireCleanTree:
+    def test_dirty_paths_empty_on_clean_repo(self, temp_repo: Path):
+        assert dirty_paths(temp_repo) == []
+
+    def test_dirty_paths_reports_untracked_file(self, temp_repo: Path):
+        (temp_repo / "untracked.txt").write_text("x", encoding="utf-8")
+        assert "untracked.txt" in dirty_paths(temp_repo)
+
+    def test_dirty_paths_reports_modified_tracked_file(self, temp_repo: Path):
+        (temp_repo / "README.md").write_text("changed\n", encoding="utf-8")
+        assert "README.md" in dirty_paths(temp_repo)
+
+    def test_require_clean_tree_raises_and_names_the_dirty_path(self, temp_repo: Path):
+        (temp_repo / "uncommitted.py").write_text("x = 1\n", encoding="utf-8")
+        with pytest.raises(GitIsolationError, match="uncommitted.py"):
+            require_clean_tree("test_operation", temp_repo)
+
+    def test_require_clean_tree_passes_on_clean_repo(self, temp_repo: Path):
+        require_clean_tree("test_operation", temp_repo)  # must not raise
+
+    def test_require_clean_tree_never_stashes_or_discards(self, temp_repo: Path):
+        """BLOCK and report, never auto-resolve -- the file must survive
+        untouched after a refusal."""
+        (temp_repo / "uncommitted.py").write_text("x = 1\n", encoding="utf-8")
+        with pytest.raises(GitIsolationError):
+            require_clean_tree("test_operation", temp_repo)
+        assert (temp_repo / "uncommitted.py").read_text(encoding="utf-8") == "x = 1\n"
+
+    def test_gitignored_runtime_artifact_does_not_block_clean_tree(self, temp_repo: Path):
+        """Generated/gitignored runtime artifacts (research/omnilab.db-style
+        files) must never count as 'dirty' -- git itself already excludes
+        gitignored, untracked files from `git status --porcelain` output."""
+        (temp_repo / ".gitignore").write_text("ignored_runtime_artifact.db\n", encoding="utf-8")
+        _git(["add", ".gitignore"], temp_repo)
+        _git(["commit", "-m", "add gitignore"], temp_repo)
+        (temp_repo / "ignored_runtime_artifact.db").write_text("binary-ish content", encoding="utf-8")
+        assert dirty_paths(temp_repo) == []
+        require_clean_tree("test_operation", temp_repo)  # must not raise
+        create_experiment_branch("EXP-0001", repo_root=temp_repo)  # must also succeed
 
 
 class TestStartingBranchGuard:
