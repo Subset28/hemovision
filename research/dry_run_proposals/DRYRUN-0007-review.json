@@ -1,57 +1,82 @@
 {
-  "dryrun_id": "DRYRUN-0007",
+  "actually_queued": false,
+  "artifact_type": "DRY_RUN_REVIEW_ONLY",
   "call_records": [
     {
-      "step": "reviewer_critique",
-      "role": "reviewer",
-      "model_used": null,
-      "succeeded": false,
-      "error": "no OPENROUTER_API_KEY configured \u2014 LLM role unavailable. Set it in your environment or .env (see .env.example) to enable live OpenRouter calls. The pipeline continues without it.",
-      "timestamp": "2026-09-05T18:31:15.139119+00:00",
+      "actual_model_returned": "nvidia/nemotron-3-super-120b-a12b:free",
+      "choices_present": true,
+      "content_length": 3861,
+      "content_present": true,
       "dryrun_id": "DRYRUN-0007",
-      "requested_model": "nvidia/nemotron-3-super-120b-a12b:free",
-      "selected_model": "nvidia/nemotron-3-super-120b-a12b:free",
-      "actual_model_returned": null,
-      "http_status": null,
+      "envelope_parsed": true,
+      "error": null,
+      "failure_category": null,
+      "finish_reason": "stop",
+      "http_status": 200,
+      "latency_ms": 7561.999999999898,
+      "local_schema_validation_result": null,
+      "message_present": true,
+      "model_used": "nvidia/nemotron-3-super-120b-a12b:free",
+      "network_attempted": true,
       "provider_error_code": null,
       "provider_error_message": null,
-      "request_id": null,
-      "latency_ms": null,
-      "finish_reason": null,
-      "envelope_parsed": null,
-      "choices_present": null,
-      "message_present": null,
-      "content_present": null,
-      "content_length": null,
-      "structured_parse_result": "TRANSPORT_FAILURE",
-      "local_schema_validation_result": null,
-      "token_usage": null,
-      "failure_category": "TRANSPORT_FAILURE",
       "reasoning_configuration": "DISABLED",
-      "structured_output_capability_state": true
+      "request_id": "gen-1788634011-urcVJU0rOW9VFxe4uPmL",
+      "requested_model": "nvidia/nemotron-3-super-120b-a12b:free",
+      "role": "reviewer",
+      "selected_model": "nvidia/nemotron-3-super-120b-a12b:free",
+      "step": "reviewer_critique",
+      "structured_output_capability_state": true,
+      "structured_parse_result": null,
+      "succeeded": true,
+      "timestamp": "2026-09-05T18:46:50.173793+00:00",
+      "token_usage": {
+        "cached_tokens": 0,
+        "completion_tokens": 786,
+        "prompt_tokens": 6111,
+        "reasoning_tokens": 0,
+        "total_tokens": 6897
+      }
     }
   ],
-  "review_result": {
-    "success": false,
-    "error": "no OPENROUTER_API_KEY configured \u2014 LLM role unavailable. Set it in your environment or .env (see .env.example) to enable live OpenRouter calls. The pipeline continues without it."
-  },
+  "calls_budget": 1,
+  "calls_made": 1,
+  "dryrun_id": "DRYRUN-0007",
   "final_validation": {
-    "is_valid": true,
     "errors": [],
+    "is_valid": true,
     "needs_human_review": [
       {
-        "level": "NEEDS_HUMAN_REVIEW",
         "code": "REPRODUCIBILITY_QUALITY",
+        "level": "NEEDS_HUMAN_REVIEW",
         "message": "reproducibility_requirements is empty \u2014 cannot mechanically judge reproducibility; human review required."
       },
       {
-        "level": "NEEDS_HUMAN_REVIEW",
         "code": "SCIENTIFIC_MERIT",
+        "level": "NEEDS_HUMAN_REVIEW",
         "message": "Whether this hypothesis is scientifically interesting/worth the resource spend is not mechanically checkable by this validator \u2014 always requires human review regardless of whether every other check passes."
       }
-    ]
+    ],
+    "warnings": []
   },
-  "redundancy_conflicts": [],
+  "generated_at": "2026-09-05T18:46:57.758989+00:00",
   "queue_eligible_in_principle": true,
-  "actually_queued": false
+  "redundancy_conflicts": [],
+  "reviewer_critique": {
+    "confounding_notes": "The primary confound is whether Ultralytics' yolov8m-oiv7.pt baseline was already initialized from COCO weights (undocumented per verified context). If so, the experimental condition may not differ meaningfully from the baseline, weakening interpretability. However, since this is unknown, the test remains valid for determining whether COCO initialization improves outcomes relative to whatever initialization the baseline used. Other confounds (e.g., random seed) are mitigated by matched training duration and identical fine-tuning procedure.",
+    "dataset_can_answer_question": true,
+    "feasibility_notes": "The proposal is feasible within the family's scope: it requires only changing the model checkpoint, using standard YOLOv8 training commands, and running inference on the existing benchmark set. No new data collection, code changes, or hardware (Mac/iPhone) is needed. Compute requirements are modest and align with prior experiments.",
+    "leakage_risk_notes": "There is a potential leakage risk: the OmniSight evaluation benchmark is drawn from OIV7's validation split. If Ultralytics' original training of yolov8m-oiv7.pt included this split (unknown per verified context), then fine-tuning on OIV7 (including the validation split) could lead to overfitting and inflated recall, compromising validity. The proposal does not specify whether the OIV7 fine-tuning dataset excludes the validation split used for evaluation. This must be clarified to ensure isolation.",
+    "novelty_assessment": "The proposal is novel relative to EXP-0001 through EXP-0005. Those experiments tested confidence thresholding, inference-time resolution, semantic aliasing, preprocessing transforms, and model-size scaling within the same OIV7-only training paradigm. This proposal changes the pretraining data source (COCO) before fine-tuning on OIV7, isolating representation quality as a variable while holding architecture, fine-tuning dataset, and inference settings constant. It does not repeat any previously tested independent variable.",
+    "privacy_safety_ok": true,
+    "recommends_revision": true,
+    "revision_notes": "Clarify whether the Open Images V7 fine-tuning dataset excludes the validation split used for OmniSight's evaluation benchmark (data/manifests/eval_manifest.jsonl). If not, the evaluation risks contamination and inflated performance. Specify that the fine-tuning dataset must be strictly disjoint from the evaluation set to ensure valid generalization measurement.",
+    "sample_size_adequate": true,
+    "scientific_validity_assessment": "The hypothesis is scientifically valid: it posits that COCO pretraining provides richer person-feature representations that may transfer to improved person recall on OIV7 without degrading hazard precision, contingent on fine-tuning preserving OIV7 calibration. The mechanism addresses a plausible limitation \u2014 suboptimal initialization for person-like structures \u2014 and is grounded in transfer learning principles. The proposal avoids confounds by fixing architecture, optimizer, epochs, augmentations, and evaluation protocol, making it a clean test of the pretraining source.",
+    "success_criteria_deterministic": true,
+    "summary": "The proposal introduces a novel and scientifically sound approach to improving person recall by investigating COCO pretraining's effect on representation learning, isolated from architecture and inference-time changes. It targets a verified failure mode (low person recall) and uses deterministic success criteria. However, the evaluation's validity hinges on dataset isolation, which must be confirmed to avoid leakage. With this clarification, the experiment is worth running to resolve an open question about transfer learning's role in accessibility-relevant hazard detection.",
+    "targets_verified_failure_mode": true,
+    "worth_running": true
+  },
+  "stopped_reason": ""
 }
