@@ -1139,3 +1139,200 @@ def write_review_artifact(result: ReviewOnlyResult) -> Path:
     }
     path.write_text(json.dumps(data, indent=2, sort_keys=True, default=str), encoding="utf-8")
     return path
+
+
+# ---------------------------------------------------------------------------
+# Revision-only resume mode (Phase H final round): produce a revised
+# proposal from an ALREADY-PRESERVED researcher proposal + an ALREADY-
+# PRESERVED reviewer critique, without re-running problem selection from
+# scratch (no "researcher restart") and without a second reviewer call.
+# Reuses the exact same canonical `_call_llm` choke point, schema builders,
+# and authorization/budget/catalog machinery as `run_dry_run_cycle` and
+# `run_reviewer_only` -- no third, divergent code path. Neither the original
+# proposal file nor the reviewer artifact file is ever mutated; this writes
+# a THIRD, distinct artifact (`<dryrun_id>-revision.json`).
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class RevisionOnlyResult:
+    dryrun_id: str
+    call_records: list = field(default_factory=list)
+    original_proposal: Optional[ExperimentProposal] = None
+    reviewer_critique: Optional[dict] = None  # loaded from the preserved review artifact, as a dict
+    raw_revision_response: Optional[ProposalResponse] = None
+    revised_proposal: Optional[ExperimentProposal] = None
+    final_validation: Optional[ValidationResult] = None
+    redundancy_conflicts: list = field(default_factory=list)
+    queue_eligible_in_principle: bool = False
+    stopped_reason: str = ""
+    calls_made: int = 0
+    calls_budget: int = 0
+
+
+def load_preserved_review(dryrun_id: str) -> dict:
+    """Load a previously-generated `<dryrun_id>-review.json` reviewer
+    artifact, read-only. Raises FileNotFoundError if it doesn't exist.
+    Returns the raw dict (caller reads `["reviewer_critique"]`)."""
+    path = DRY_RUN_PROPOSALS_DIR / f"{dryrun_id}-review.json"
+    with open(path, encoding="utf-8") as f:
+        record = json.load(f)
+    if not record.get("reviewer_critique"):
+        raise ValueError(f"{dryrun_id}-review.json has no reviewer_critique to revise against")
+    return record
+
+
+REVISION_ONLY_INSTRUCTIONS = (
+    "\n\n## Revision request -- respond to an independent reviewer's critique\n\n"
+    "Your prior proposal ({dryrun_id}) was independently reviewed. The reviewer "
+    "recommended REVISE. You must produce a revised proposal in the exact same "
+    "required JSON schema as before, addressing the critique below. Do not merely "
+    "reword the proposal while leaving the underlying confound intact -- either "
+    "resolve it with a genuinely different design, or make the unresolved issue an "
+    "explicit blocking prerequisite in your procedure/controlled_variables. Do not "
+    "fabricate an answer to any fact stated below as UNKNOWN/UNRESOLVED.\n\n"
+    "### Your original proposal (for reference only -- this is not editable in place, "
+    "you are producing a new, complete replacement JSON object)\n\n"
+    "```json\n{proposal_json}\n```\n\n"
+    "### Independent reviewer critique\n\n"
+    "```json\n{critique_json}\n```\n\n"
+    "### Additional verified factual context -- state these as UNKNOWN/UNRESOLVED "
+    "constraints in your revised design; do not assert an answer to them\n\n"
+    "{additional_facts}\n"
+)
+
+
+def run_revision_only(
+    *,
+    dryrun_id: str,
+    router: LLMRouter,
+    authorized: AuthorizationLike,
+    run_budget: Optional[RunBudget] = None,
+    dry_run_budget: Optional[DryRunCallBudget] = None,
+    baseline_run_id: str = CANONICAL_BASELINE_RUN_ID,
+    model_catalog: Optional[dict] = None,
+    require_structured_output: bool = False,
+    additional_facts: str = "",
+) -> RevisionOnlyResult:
+    """Run exactly one revision call (researcher role) against an
+    ALREADY-PRESERVED proposal + an ALREADY-PRESERVED reviewer critique.
+    Never re-runs problem selection, never makes a second reviewer call,
+    never writes to research/db.py, never creates a git branch, never
+    queues anything, never mutates either source file. `additional_facts`
+    (optional) is appended verbatim as neutral factual context -- never a
+    conclusion the reviser is told to reach."""
+    dry_run_budget = dry_run_budget or DryRunCallBudget(max_calls=1)
+    call_records: list = []
+    result = RevisionOnlyResult(dryrun_id=dryrun_id, call_records=call_records, calls_budget=dry_run_budget.max_calls)
+
+    original_proposal = load_preserved_proposal(dryrun_id)
+    result.original_proposal = original_proposal
+    review_record = load_preserved_review(dryrun_id)
+    reviewer_critique_dict = review_record["reviewer_critique"]
+    result.reviewer_critique = reviewer_critique_dict
+
+    memory_db = MemoryDB()
+    try:
+        context_packet = generate_context_packet(memory_db)
+    finally:
+        memory_db.close()
+
+    system_policy = _system_policy_text()
+    researcher_template = _load_prompt_template("researcher_proposal.md")
+    context_json = json.dumps(context_packet, indent=2, default=str)
+    base_prompt = researcher_template.format(system_policy=system_policy, context_packet_json=context_json)
+
+    revision_prompt = base_prompt + REVISION_ONLY_INSTRUCTIONS.format(
+        dryrun_id=dryrun_id,
+        proposal_json=json.dumps(original_proposal.to_dict(), indent=2, default=str),
+        critique_json=json.dumps(reviewer_critique_dict, indent=2, default=str),
+        additional_facts=additional_facts or "(none provided)",
+    )
+
+    from research.llm.structured_output import build_response_format, proposal_response_json_schema
+
+    proposal_response_format = (
+        build_response_format(proposal_response_json_schema(), "proposal_response")
+        if require_structured_output else None
+    )
+
+    try:
+        response = _call_llm(
+            router, _ROLE_RESEARCHER, revision_prompt,
+            authorized=authorized, run_budget=run_budget, dry_run_budget=dry_run_budget,
+            step="revision_only", call_records=call_records, dryrun_id=dryrun_id, max_retries=0,
+            model_catalog=model_catalog, require_structured_output=require_structured_output,
+            response_format=proposal_response_format,
+        )
+        revised_response = parse_and_validate_proposal(response.text)
+    except ValidationError as e:
+        _annotate_last_call_record(
+            call_records, "revision_only",
+            structured_parse_result=_classify_parse_failure(e),
+            failure_category=_classify_parse_failure(e),
+        )
+        result.stopped_reason = f"revision-only call failed structured-output validation: {e}"
+        result.calls_made = dry_run_budget.calls_made
+        return result
+    except _CALL_UNAVAILABLE as e:
+        result.stopped_reason = f"revision-only call failed: {e}"
+        result.calls_made = dry_run_budget.calls_made
+        return result
+
+    result.raw_revision_response = revised_response
+    # Revised proposal is a NEW ephemeral object -- reuses the original
+    # dryrun's placeholder experiment id, never a real EXP-0006, and every
+    # one of Phase F's 7 human-authority approval flags is hard-coded False
+    # in _build_proposal regardless of what the LLM returned.
+    revised_proposal = _build_proposal(revised_response, original_proposal.experiment_id, baseline_run_id)
+    result.revised_proposal = revised_proposal
+
+    spec = ExperimentSpec(proposal=revised_proposal)
+    result.final_validation = validate(spec)
+    _annotate_last_call_record(
+        call_records, "revision_only",
+        local_schema_validation_result={
+            "is_valid": result.final_validation.is_valid,
+            "error_count": len(result.final_validation.errors),
+        },
+        **(
+            {"failure_category": FAILURE_LOCAL_VALIDATOR_REJECTION}
+            if not result.final_validation.is_valid
+            else {}
+        ),
+    )
+
+    memory_db = MemoryDB()
+    try:
+        result.redundancy_conflicts = find_rejected_hypothesis_conflicts(revised_proposal, memory_db)
+    finally:
+        memory_db.close()
+    result.queue_eligible_in_principle = is_queue_eligible(result.final_validation)
+    result.calls_made = dry_run_budget.calls_made
+    return result
+
+
+def write_revision_artifact(result: RevisionOnlyResult) -> Path:
+    """Write the revision-only result as a THIRD, distinct artifact --
+    `research/dry_run_proposals/<dryrun_id>-revision.json` -- separate from
+    both the original proposal file and the `-review.json` file, neither of
+    which this ever touches."""
+    DRY_RUN_PROPOSALS_DIR.mkdir(parents=True, exist_ok=True)
+    path = DRY_RUN_PROPOSALS_DIR / f"{result.dryrun_id}-revision.json"
+    data = {
+        "dryrun_id": result.dryrun_id,
+        "generated_at": _now_utc_str(),
+        "artifact_type": "DRY_RUN_REVISION_ONLY",
+        "actually_queued": False,
+        "call_records": [vars(c) for c in result.call_records],
+        "calls_made": result.calls_made,
+        "calls_budget": result.calls_budget,
+        "reviewer_critique_reconciled_against": result.reviewer_critique,
+        "revised_proposal": result.revised_proposal.to_dict() if result.revised_proposal else None,
+        "final_validation": _validation_to_dict(result.final_validation),
+        "redundancy_conflicts": result.redundancy_conflicts,
+        "queue_eligible_in_principle": result.queue_eligible_in_principle,
+        "stopped_reason": result.stopped_reason,
+    }
+    path.write_text(json.dumps(data, indent=2, sort_keys=True, default=str), encoding="utf-8")
+    return path

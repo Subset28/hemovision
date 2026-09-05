@@ -360,6 +360,49 @@ def cmd_dry_run_review(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_dry_run_revise(args: argparse.Namespace) -> int:
+    """Phase H — `omnilab dry-run-revise`. Revision-only resume: produce a
+    revised proposal (researcher role) from an ALREADY-GENERATED proposal
+    (`<id>.json`) and an ALREADY-GENERATED reviewer critique (`<id>-review.json`),
+    without re-running problem selection and without a second reviewer call.
+    Same canonical initialization as `dry-run`/`dry-run-review` -- never a
+    standalone/divergent setup. Never mutates either source file; writes a
+    third, separate `<id>-revision.json` artifact. Never queues, never
+    creates EXP-0006, never runs an experiment."""
+    from research.dry_run.pipeline import run_revision_only, write_revision_artifact
+
+    setup = _setup_dry_run_execution(args, roles_to_snapshot=("researcher",))
+    if setup is None:
+        print(
+            "omnilab dry-run-revise: no --authorize REASON given — refusing to make any LLM call. "
+            f"Re-run with --authorize \"<reason>\" to permit up to --max-calls (default {args.max_calls}) "
+            "real, budget-capped calls."
+        )
+        return 1
+    authorization, router, run_budget, dry_run_budget, model_catalog = setup
+
+    additional_facts = ""
+    if args.facts_file:
+        from pathlib import Path
+
+        additional_facts = Path(args.facts_file).read_text(encoding="utf-8")
+
+    result = run_revision_only(
+        dryrun_id=args.dryrun_id, router=router, authorized=authorization,
+        run_budget=run_budget, dry_run_budget=dry_run_budget,
+        model_catalog=model_catalog, require_structured_output=args.structured_output,
+        additional_facts=additional_facts,
+    )
+    path = write_revision_artifact(result)
+
+    print(f"Revision of {result.dryrun_id} complete. Calls made: {result.calls_made}/{result.calls_budget}")
+    print(f"Artifact: {path}")
+    if result.stopped_reason:
+        print(f"Stopped early: {result.stopped_reason}")
+    print("Actually queued: NO (never calls research/orchestrator.py::queue_experiment_from_spec)")
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="omnilab")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -456,6 +499,25 @@ def build_parser() -> argparse.ArgumentParser:
              "conclusion the reviewer is told to reach",
     )
     p_dry_run_review.set_defaults(func=cmd_dry_run_review)
+
+    p_dry_run_revise = sub.add_parser(
+        "dry-run-revise",
+        help="Phase H revision-only resume: produce a revised proposal (researcher role) from an "
+             "already-generated proposal + already-generated reviewer critique, without re-running "
+             "problem selection or making a second reviewer call. Same canonical initialization as "
+             "'dry-run'/'dry-run-review' -- never a standalone/divergent setup.",
+    )
+    p_dry_run_revise.add_argument("dryrun_id", help="e.g. DRYRUN-0007 -- must have both <id>.json and <id>-review.json")
+    p_dry_run_revise.add_argument("--authorize", default=None, help="see 'dry-run --authorize'")
+    p_dry_run_revise.add_argument("--max-calls", type=int, default=1, help="default 1 -- revision-only")
+    p_dry_run_revise.add_argument("--structured-output", action="store_true", default=False, help="see 'dry-run --structured-output'")
+    p_dry_run_revise.add_argument(
+        "--facts-file", default=None,
+        help="optional path to a text file of additional neutral factual context appended to the "
+             "revision prompt verbatim (e.g. verified provenance/isolation gaps stated as "
+             "UNKNOWN/UNRESOLVED) -- never a conclusion the reviser is told to reach",
+    )
+    p_dry_run_revise.set_defaults(func=cmd_dry_run_revise)
 
     return parser
 
