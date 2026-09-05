@@ -185,6 +185,75 @@ def cmd_experiment_show(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_dry_run(args: argparse.Namespace) -> int:
+    """Phase H — `omnilab dry-run`. Structurally incapable of executing
+    anything (see research/dry_run/pipeline.py's module docstring): read-only
+    against research/db.py and research/memory_db.py, pure-function schema
+    validation, and up to `--max-calls` (default 3) LLM calls routed through
+    research/llm/router.py. Never creates a git branch, never queues an
+    experiment, never touches ios/ or benchmark/config.py.
+
+    Real network calls require explicit --authorize REASON, mirroring
+    research/llm/authorization.py's "a configured API key never authorizes a
+    call by itself" discipline (same pattern as research/llm/smoke_test.py's
+    one deliberate LLMCallAuthorization.grant()). Without --authorize, this
+    command still loads real memory context and reports it, but refuses to
+    make any LLM call — this is not a partial/fake run, it is the correct,
+    safe behavior for "dry-run command invoked with no explicit go-ahead."
+    """
+    from pathlib import Path
+
+    from research.dry_run.budget import DryRunCallBudget
+    from research.dry_run.pipeline import write_artifacts
+    from research.dry_run.pipeline import run_dry_run_cycle
+    from research.llm.authorization import LLMCallAuthorization
+    from research.llm.base import RunBudget, UsageTracker
+    from research.llm.openrouter import OpenRouterProvider
+    from research.llm.router import LLMRouter
+
+    if not args.authorize:
+        print(
+            "omnilab dry-run: no --authorize REASON given — refusing to make any LLM call "
+            "(a configured OPENROUTER_API_KEY never authorizes a call by itself; see "
+            "research/llm/authorization.py). Re-run with --authorize \"<reason>\" to permit "
+            f"up to --max-calls (default {args.max_calls}) real, budget-capped calls."
+        )
+        return 1
+
+    # Minimal, dependency-free .env loading, same as research/llm/smoke_test.py.
+    import os
+
+    env_path = Path(__file__).resolve().parent.parent / ".env"
+    if env_path.exists():
+        for line in env_path.read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            key, _, value = line.partition("=")
+            key, value = key.strip(), value.strip()
+            if key and key not in os.environ:
+                os.environ[key] = value
+
+    authorization = LLMCallAuthorization.grant(reason=args.authorize)
+    provider = OpenRouterProvider()
+    router = LLMRouter(provider=provider, usage_tracker=UsageTracker())
+    run_budget = RunBudget(max_calls=args.max_calls)
+    dry_run_budget = DryRunCallBudget(max_calls=args.max_calls)
+
+    result = run_dry_run_cycle(
+        router=router, authorized=authorization, run_budget=run_budget, dry_run_budget=dry_run_budget,
+    )
+    json_path, report_path = write_artifacts(result)
+
+    print(f"Dry-run {result.dryrun_id} complete. Calls made: {result.calls_made}/{result.calls_budget}")
+    print(f"Artifact: {json_path}")
+    print(f"Report:   {report_path}")
+    if result.stopped_reason:
+        print(f"Stopped early: {result.stopped_reason}")
+    print("Actually queued: NO (never calls research/orchestrator.py::queue_experiment_from_spec)")
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="omnilab")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -234,6 +303,25 @@ def build_parser() -> argparse.ArgumentParser:
     p_mem_context = memory_sub.add_parser("context", help="regenerate research/memory/CONTEXT_PACKET.md")
     p_mem_context.add_argument("--json", action="store_true", default=False)
     p_mem_context.set_defaults(func=cmd_memory_context)
+
+    p_dry_run = sub.add_parser(
+        "dry-run",
+        help="Phase H: memory -> problem selection -> hypothesis -> proposal -> review -> "
+             "(maybe one revision) -> local schema validation -> report. Structurally incapable "
+             "of executing anything — there is no 'wet' mode of this command.",
+    )
+    p_dry_run.add_argument(
+        "--authorize", default=None,
+        help="explicit reason string authorizing real LLM calls this run (required for any "
+             "network activity — omitting this makes zero LLM calls, per "
+             "research/llm/authorization.py's no-silent-default policy)",
+    )
+    p_dry_run.add_argument(
+        "--max-calls", type=int, default=3,
+        help="hard cap on external LLM calls for this run (default 3, per Phase H's live-"
+             "demonstration budget)",
+    )
+    p_dry_run.set_defaults(func=cmd_dry_run)
 
     return parser
 

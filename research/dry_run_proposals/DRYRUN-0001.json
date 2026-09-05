@@ -1,0 +1,29 @@
+{
+  "actually_queued": false,
+  "artifact_type": "DRY_RUN_PROPOSAL",
+  "call_records": [
+    {
+      "error": "role 'researcher' unavailable \u2014 all configured models failed: poolside/laguna-s-2.1:free: OpenRouter rate limit hit, HTTP 429; meta-llama/llama-3.1-8b-instruct:free: OpenRouter model not found/unavailable, HTTP 404 (model='meta-llama/llama-3.1-8b-instruct:free'); anthropic/claude-3.5-sonnet: OpenRouter model not found/unavailable, HTTP 404 (model='anthropic/claude-3.5-sonnet')",
+      "model_used": null,
+      "role": "researcher",
+      "step": "initial_proposal",
+      "succeeded": false
+    }
+  ],
+  "calls_budget": 3,
+  "calls_made": 1,
+  "post_hoc_correctness_note": "calls_made=1 counts LOGICAL pipeline steps, not real HTTP requests. LLMRouter.complete() tried 3 separate real OpenRouter models within this one step (1 rate-limited, 2 confirmed-stale) -- the TRUE real-HTTP-request count for this run is 3, i.e. this single failed step consumed the entire 3-call live-demonstration budget. Confirmed against research/llm_usage.json's delta across this invocation. Fixed immediately after this run, before any further live call: research/dry_run/pipeline.py::_call_llm now makes exactly one real HTTP attempt per logical step.",
+  "dryrun_id": "DRYRUN-0001",
+  "final_validation": null,
+  "generated_at": "2026-09-05T15:50:34.336713+00:00",
+  "placeholder_experiment_id": "EXP-9001",
+  "proposal": null,
+  "proposal_validation": null,
+  "queue_eligible_in_principle": false,
+  "redundancy_conflicts": [],
+  "redundancy_rejected_initial": false,
+  "reviewer_critique": null,
+  "revised": false,
+  "revision_reason": "",
+  "stopped_reason": "researcher role unavailable: role 'researcher' unavailable \u2014 all configured models failed: poolside/laguna-s-2.1:free: OpenRouter rate limit hit, HTTP 429; meta-llama/llama-3.1-8b-instruct:free: OpenRouter model not found/unavailable, HTTP 404 (model='meta-llama/llama-3.1-8b-instruct:free'); anthropic/claude-3.5-sonnet: OpenRouter model not found/unavailable, HTTP 404 (model='anthropic/claude-3.5-sonnet')"
+}

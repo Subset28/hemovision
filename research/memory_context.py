@@ -71,6 +71,23 @@ def generate_context_packet(db: MemoryDB) -> dict[str, Any]:
         "experiments_closed": sorted(experiments.values(), key=lambda d: d["experiment_id"]),
         "note": "Phase D is CLOSED. Do not create EXP-0006 or any new experiment based on this "
                 "packet alone without explicit human approval of a new phase.",
+        # Phase H addition — explicit, short production-safety constraint
+        # list so any future agent consuming this packet (LLM-driven or
+        # human) sees the boundary in the same object as the scientific
+        # content, not only in research/README.md prose.
+        "production_safety_constraints": [
+            "ios/ is read-only from this packet's consumer — no production Swift change may "
+            "follow from anything proposed against this context alone.",
+            "benchmark/config.py's real operating point (conf=0.4, iou=0.7, imgsz=640, "
+            "yolov8m-oiv7.pt) and benchmark/results/baseline/ are frozen production truth.",
+            "No autonomous merge, deploy, signing, or App Store submission may ever follow from "
+            "this packet or anything derived from it.",
+            "A proposal is pre-registration only — no observed metric, verdict, or conclusion may "
+            "be reported as if measured; see research/experiment_spec.py's proposal/result split.",
+            "Queuing a new experiment (research/orchestrator.py::queue_experiment_from_spec) "
+            "requires a human-reviewed, schema-valid ExperimentSpec — never automatic from an "
+            "LLM response alone.",
+        ],
     }
     return packet
 
@@ -110,6 +127,11 @@ def render_markdown(packet: dict[str, Any]) -> str:
     lines.append("## Limitations")
     for item in packet["limitations"]:
         lines.append(f"- **[{item['record_id']}]** {item['claim']}")
+    lines.append("")
+
+    lines.append("## Production-safety constraints")
+    for item in packet.get("production_safety_constraints", []):
+        lines.append(f"- {item}")
     lines.append("")
 
     lines.append("## Experiments closed (Phase D)")

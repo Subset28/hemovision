@@ -33,8 +33,24 @@
 # (`poolside/laguna-s-2.1:free`, confirmed via OpenRouter's public /models
 # catalog) for its own one-off second authorized call, which succeeded.
 
+# Phase H completion-round finding (2026-09-05, before the live dry-run
+# demonstration): a fresh, unauthenticated GET against OpenRouter's public
+# /api/v1/models catalog (no API key, not routed through
+# research/llm/openrouter.py, does not touch UsageTracker — not "a call"
+# against Phase H's 3-live-call budget, same as Phase G's completion round)
+# showed `nvidia/nemotron-nano-9b-v2:free` (researcher's prior
+# preferred_model, guessed in Phase G, never verified live) is NOT in the
+# current free-tier list — stale, same story as
+# `meta-llama/llama-3.1-8b-instruct:free` (reviewer's prior preferred_model,
+# already confirmed 404/MODEL_UNAVAILABLE in Phase G's completion round).
+# Both are updated below to `poolside/laguna-s-2.1:free` — the exact slug
+# Phase G's own smoke test already proved live end-to-end (see
+# research/llm/smoke_test.py) — so the live demo does not spend part of its
+# 3-call budget rediscovering a dead model. `meta-llama/llama-3.1-8b-
+# instruct:free` is deliberately left in each fallback_models list, not
+# deleted, as the documented record of what was already confirmed stale.
 researcher:
-  preferred_model: nvidia/nemotron-nano-9b-v2:free
+  preferred_model: poolside/laguna-s-2.1:free
   fallback_models:
     - meta-llama/llama-3.1-8b-instruct:free
     - anthropic/claude-3.5-sonnet
@@ -52,8 +68,10 @@ experiment_designer:
   call_budget_category: design
 
 reviewer:
-  preferred_model: meta-llama/llama-3.1-8b-instruct:free
+  # Updated for the same reason as `researcher` above — see that comment.
+  preferred_model: poolside/laguna-s-2.1:free
   fallback_models:
+    - meta-llama/llama-3.1-8b-instruct:free
     - openai/gpt-4o-mini
   max_tokens: 768
   timeout: 45

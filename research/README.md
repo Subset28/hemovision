@@ -766,3 +766,81 @@ redacted marker was printed). A future phase should pick a re-verified
 model id (or spend a dedicated, separately-authorized call on the
 `/models` discovery endpoint) before relying on a live OpenRouter call
 again.
+
+## Phase H — dry-run research agent
+
+Phase H builds a DRY-RUN research agent on top of Phase E's context packet,
+Phase F's schema/validator, and Phase G's LLM abstraction: memory ->
+problem selection -> hypothesis -> proposal -> deterministic redundancy
+check -> reviewer -> (maybe one bounded revision) -> local schema
+validation -> report. It is **structurally incapable of executing
+anything** — no EXP-0006, no benchmark run, no `ios/`/`benchmark/config.py`
+change, no experiment git branch, no queue insertion.
+
+### Package layout
+
+- `research/dry_run/pipeline.py` — the whole cycle (`run_dry_run_cycle()`),
+  plus report rendering (`render_report()`) and artifact writing
+  (`write_artifacts()`).
+- `research/dry_run/budget.py` — `DryRunCallBudget`, a dry-run-scoped
+  counter (default `max_calls=3`) separate from Phase G's `UsageTracker`
+  (daily) and `RunBudget` (per-run) — all three are enforced simultaneously.
+- `research/dry_run/prompts/researcher_proposal.md` /
+  `reviewer_critique.md` — prompt templates, prepending Phase G's
+  `research/llm/prompts/system_policy.md` and adding dry-run-specific
+  instructions ("this will NOT be executed, do not report empirical
+  results").
+- `research/dry_run_agent.py` — thin top-level entry point re-exporting the
+  package's public functions.
+- `research/llm/structured_output.py` gained two new shapes:
+  `ProposalResponse` (researcher) and `ReviewerCritique` (reviewer) — both
+  structurally exclude Phase F's 7 human-authority approval flags and every
+  `ExperimentResult` field; malformed/adversarial JSON is rejected before
+  any dataclass is constructed (`ValidationError`).
+
+### Artifacts — a new, structurally distinct type
+
+- `research/dry_run_proposals/DRYRUN-NNNN.json` — the full machine-readable
+  record of one dry-run cycle (never under `experiments/`, never a
+  `research/omnilab.db` row).
+- `reports/dry_run/YYYY-MM-DD-HHMM.md` — the human-readable report, always
+  containing the literal line `DRY RUN ONLY — NOT EXECUTED` and an
+  `Actually queued: NO` line that is hard-coded, never computed from
+  anything that could turn out otherwise.
+
+The dry-run pipeline builds an ephemeral `ExperimentProposal` using a
+placeholder id from the `EXP-9xxx` range (e.g. `EXP-9001` for
+`DRYRUN-0001`) — disjoint from `research/db.py`'s real sequential
+`EXP-0001..EXP-0005` allocation, and never passed to
+`OmniLabDB.create_experiment()` or
+`research/orchestrator.py::queue_experiment_from_spec()`.
+
+### Redundancy prevention
+
+Before a proposal is sent to the reviewer, `research/experiment_validator
+.py::find_rejected_hypothesis_conflicts()` (deterministic, no LLM judgment)
+checks its family + independent variables against every REJECTED_HYPOTHESIS
+memory record. An unacknowledged match (lower global confidence threshold,
+higher input resolution, broad person-class remapping, generic pixel
+preprocessing, or a bigger checkpoint of the same architecture — the 5
+mandatory redundant directions from EXP-0001..EXP-0005) is rejected locally
+before ever reaching the reviewer; the pipeline allows at most one bounded
+retry within the same 3-call budget, and otherwise reports the rejection
+plainly rather than silently letting it through.
+
+### Call budget
+
+Three independent guardrails apply to every dry-run call: Phase G's
+persisted daily `UsageTracker`, Phase G's in-memory per-run `RunBudget`, and
+the new `DryRunCallBudget(max_calls=3)`. A failed call attempt still counts
+(same policy as Phase G, section 5). The pipeline never spends a 3rd call
+just because budget allows — a revision call only happens if the reviewer's
+`recommends_revision` is true.
+
+### `omnilab dry-run`
+
+`uv run python -m research.cli dry-run --authorize "<reason>" [--max-calls 3]`.
+Omitting `--authorize` makes zero LLM calls (a configured
+`OPENROUTER_API_KEY` never authorizes a call by itself — same discipline as
+`research/llm/authorization.py` and `research/llm/smoke_test.py`). There is
+no "wet" mode of this command.
