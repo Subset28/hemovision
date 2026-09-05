@@ -162,18 +162,36 @@ def find_rejected_hypothesis_conflicts(proposal: ExperimentProposal, memory_db) 
     """Return a list of (experiment_id, memory_record_id) pairs for
     REJECTED_HYPOTHESIS memory records whose owning experiment shares
     `proposal.family` AND whose stored `independent_variable` text overlaps
-    (by keyword) with `proposal.independent_variables`. Pure deterministic
+    (by keyword) with the proposal's own independent variables, dependent
+    variables, and control/baseline condition text. Pure deterministic
     metadata matching — family match is exact, keyword overlap is a plain
-    set intersection over lowercased, tokenized text. Documented as not
-    exhaustive (a genuinely novel proposal phrased with zero shared keywords
-    could still slip through — that residual risk is accepted and named
-    here, not hidden)."""
+    set intersection over lowercased, tokenized text.
+
+    THIS IS A GUARDRAIL, NOT PROOF OF NOVELTY (Phase-I-readiness MEDIUM
+    finding #8): it catches a proposal that reuses recognizable vocabulary
+    from an already-rejected direction, nothing more. It cannot, and is not
+    intended to, detect a genuinely-rejected idea reworded with zero shared
+    keywords -- that residual risk is accepted and named here, not hidden.
+    Deeper novelty assessment remains the reviewer role's responsibility
+    (see research/dry_run/prompts/reviewer_critique.md's novelty_assessment
+    field) -- this function is deliberately NOT an LLM call and never will
+    be, per the absolute rule that deterministic checks, not LLM judgment,
+    gate the mechanical redundancy check."""
     from research.db import ExperimentNotFoundError, OmniLabDB
 
     conflicts = []
     proposal_keywords = set()
     for iv in proposal.independent_variables:
         proposal_keywords |= _keywords(iv)
+    # Broadened signal (Phase-I-readiness MEDIUM finding #8): dependent
+    # variables (a proxy for the targeted failure bucket/metric) and the
+    # control/baseline condition text also contribute keywords -- purely
+    # additive (can only catch MORE recognizable overlap, never less; the
+    # family match above still has to hold too).
+    for dv in proposal.dependent_variables:
+        proposal_keywords |= _keywords(dv)
+    proposal_keywords |= _keywords(proposal.control_condition)
+    proposal_keywords |= _keywords(proposal.baseline_comparison)
     if not proposal_keywords:
         return conflicts
 
