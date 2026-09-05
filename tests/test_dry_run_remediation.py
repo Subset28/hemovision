@@ -178,13 +178,20 @@ class TestNativeStructuredOutputRequestShape:
         assert body["response_format"]["type"] == "json_schema"
         assert body["response_format"]["json_schema"]["name"] == "proposal_response"
         assert body["response_format"]["json_schema"]["schema"] == schema
-        # Phase H token/reasoning audit fix (DRYRUN-0005): every structured-
-        # output call must explicitly disable reasoning, per OpenRouter's
-        # documented reasoning-tokens mechanism -- a JSON-schema answer has
-        # no use for a separate reasoning trace, and leaving it unset let a
-        # reasoning-capable model consume the entire completion budget
-        # before emitting any content.
-        assert body["reasoning"] == {"enabled": False}
+        # provider.require_parameters (Phase H follow-up, section 6): every
+        # structured-output request constrains routing to providers that
+        # actually support every parameter sent -- still exactly one HTTP
+        # request, a routing CONSTRAINT not a fallback chain.
+        assert body["provider"] == {"require_parameters": True}
+        # No model_catalog was passed to this call -- per the Phase H
+        # reasoning-capability-negotiation fix (DRYRUN-0006 follow-up), with
+        # no catalog to negotiate against, NO reasoning field is sent at all
+        # (never a guessed value) -- this replaced the earlier, incorrect
+        # behavior of unconditionally sending reasoning:{"enabled": False}
+        # regardless of whether the model's catalog metadata said that was
+        # a valid control (it caused DRYRUN-0006's HTTP 400 against a model
+        # with reasoning.mandatory=true).
+        assert "reasoning" not in body
         assert response.text == json.dumps(VALID_PROPOSAL)
 
 

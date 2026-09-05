@@ -78,20 +78,34 @@
 # a plausible reasoning-token-exhaustion case per the OpenRouter audit
 # report's section 1 findings -- this is a narrow, safe budget increase,
 # not a change to any validation/safety/authorization logic.
+# Phase H reasoning-capability-negotiation follow-up (post-DRYRUN-0006,
+# NOT yet live-tested -- prepared and recommended, awaiting approval):
+# liquid/lfm-2.5-2.6b:free's real catalog entry is
+# `"reasoning": {"mandatory": true}` with no supported_efforts/
+# supports_max_tokens to bound it -- per Phase H's stated preference order
+# ("if reasoning is mandatory but cannot be bounded, consider selecting a
+# DIFFERENT current free model"), switched to `inclusionai/ling-3.0-flash-
+# sante:free`. Re-verified live via the public, unauthenticated
+# /api/v1/models catalog GET (not counted against any call budget): free
+# (pricing 0/0), advertises response_format + structured_outputs, and its
+# reasoning object is `{"mandatory": false, "default_enabled": true}` --
+# disabling reasoning is an OFFICIALLY documented control for this model
+# (research/llm/model_catalog.py::build_reasoning_decision() will select
+# REASONING_DISABLED, sending reasoning:{"enabled": false}, never a
+# guessed field). Also has far more headroom than LFM: 262,144-token
+# context, 32,768-token completion cap (vs. LFM's 65,536/8,192).
 researcher:
-  preferred_model: liquid/lfm-2.5-2.6b:free
+  preferred_model: inclusionai/ling-3.0-flash-sante:free
   fallback_models:
+    - liquid/lfm-2.5-2.6b:free
     - poolside/laguna-s-2.1:free
     - meta-llama/llama-3.1-8b-instruct:free
     - anthropic/claude-3.5-sonnet
-  # max_tokens raised 2048->4096 after the Phase H token/reasoning audit:
-  # a locally-measured representative valid ExperimentProposal is only
-  # ~400-450 tokens (tests/test_dry_run_pipeline.py::VALID_PROPOSAL), so
-  # the actual answer was never the bottleneck -- this is pure headroom
-  # against reasoning-token consumption, combined with the code-level fix
-  # (reasoning.enabled=false) in research/dry_run/pipeline.py::_call_llm.
-  # liquid/lfm-2.5-2.6b:free's own catalog entry advertises an 8192-token
-  # completion cap, so 4096 stays comfortably under it.
+  # max_tokens 4096: a locally-measured representative valid
+  # ExperimentProposal is only ~400-450 tokens
+  # (tests/test_dry_run_pipeline.py::VALID_PROPOSAL) -- 4096 is ~9x that,
+  # comfortable headroom, and stays well under this model's 32,768-token
+  # completion cap even before accounting for reasoning being disabled.
   max_tokens: 4096
   timeout: 60
   call_budget_category: research
@@ -106,9 +120,10 @@ experiment_designer:
   call_budget_category: design
 
 reviewer:
-  # Same reasoning as `researcher` above (Phase H FINAL controlled retry).
-  preferred_model: liquid/lfm-2.5-2.6b:free
+  # Same reasoning as `researcher` above (Phase H reasoning-negotiation follow-up).
+  preferred_model: inclusionai/ling-3.0-flash-sante:free
   fallback_models:
+    - liquid/lfm-2.5-2.6b:free
     - poolside/laguna-s-2.1:free
     - meta-llama/llama-3.1-8b-instruct:free
     - openai/gpt-4o-mini

@@ -185,6 +185,111 @@ def structured_output_capability_evidence(model_id: str, catalog_entry: Optional
     return CapabilityEvidence(params, supported, reason)
 
 
+# The A-F reasoning-capability-negotiation categories (Phase H follow-up,
+# DRYRUN-0006's HTTP 400 root cause: liquid/lfm-2.5-2.6b:free's catalog
+# entry is `"reasoning": {"mandatory": true}` -- no supported_efforts, no
+# supports_max_tokens, nothing to negotiate -- and OmniLab previously sent
+# `reasoning: {"enabled": false}` unconditionally, which OpenRouter/the
+# provider rejected outright for a model where disabling isn't a valid
+# option at all). Never guess a control the catalog doesn't advertise.
+REASONING_NONE = "NONE"                        # A: no reasoning object at all -- send nothing
+REASONING_DISABLED = "DISABLED"                # B: mandatory is explicitly False -- disable it
+REASONING_EFFORT = "EFFORT"                    # D: supported_efforts includes a low-cost option
+REASONING_MAX_TOKENS = "MAX_TOKENS"            # E: supports_max_tokens is True -- bound the budget
+REASONING_MANDATORY_UNBOUNDED = "MANDATORY_UNBOUNDED"  # C: mandatory, nothing to bound it with
+REASONING_UNKNOWN = "UNKNOWN"                  # F: reasoning object present but ambiguous shape
+
+
+@dataclass(frozen=True)
+class ReasoningDecision:
+    """What (if anything) to put in the request body's `reasoning` field
+    for this model, and why. `request_field` is `None` whenever sending
+    nothing is the safe choice (categories A, C, F) -- never a guessed
+    value. `category` is one of the REASONING_* constants above."""
+
+    category: str
+    request_field: Optional[dict]
+    reason: str
+
+
+_LOW_EFFORT_PREFERENCE = ("minimal", "low")  # cheapest-first; see docstring below
+
+
+def build_reasoning_decision(
+    model_id: str, catalog_entry: Optional[dict], *, max_reasoning_tokens_headroom: int = 512,
+) -> ReasoningDecision:
+    """Decide what `reasoning` field (if any) is safe to send for
+    `model_id`, using ONLY the catalog's own `reasoning` sub-object --
+    never inferred from the model's name/description containing the word
+    "reasoning" (liquid/lfm-2.5-2.6b:free's own description calls it "a
+    compact reasoning model", which tells you nothing about whether/how
+    its reasoning can be configured; only the structured `reasoning` field
+    does). Preference order, per Phase H's stated policy:
+      1. mandatory is explicitly False -> officially disable it (category B).
+      2. `supported_efforts` includes "minimal" or "low" -> use the cheapest
+         of those (category D) -- even if reasoning is mandatory, a low
+         effort level still leaves more room for the actual answer.
+      3. `supports_max_tokens` is True -> bound the reasoning budget to
+         `max_reasoning_tokens_headroom` tokens (category E), same
+         rationale.
+      4. reasoning is mandatory and none of the above controls exist ->
+         nothing safe to send; category C, `request_field=None` (sending a
+         guessed field caused DRYRUN-0006's HTTP 400) -- the caller should
+         treat this as a signal to prefer a different model for a live
+         attempt, not silently proceed hoping for the best.
+      5. no `reasoning` key in the catalog entry at all -> category A,
+         nothing to send (matches every non-reasoning model already in use).
+      6. `reasoning` present but not a dict, or `mandatory` present but not
+         a bool -> category F, fail closed (send nothing) rather than guess."""
+    if not isinstance(catalog_entry, dict):
+        return ReasoningDecision(REASONING_UNKNOWN, None, "no catalog entry available for model")
+
+    reasoning_meta = catalog_entry.get("reasoning")
+    if reasoning_meta is None:
+        return ReasoningDecision(REASONING_NONE, None, "model has no 'reasoning' catalog metadata")
+    if not isinstance(reasoning_meta, dict):
+        return ReasoningDecision(
+            REASONING_UNKNOWN, None,
+            f"'reasoning' catalog field has unexpected shape ({type(reasoning_meta).__name__}); failing closed",
+        )
+
+    mandatory = reasoning_meta.get("mandatory")
+    supported_efforts = reasoning_meta.get("supported_efforts")
+    supports_max_tokens = reasoning_meta.get("supports_max_tokens")
+
+    if mandatory is False:
+        return ReasoningDecision(
+            REASONING_DISABLED, {"enabled": False},
+            "catalog reasoning.mandatory=false -- disabling is an officially supported control",
+        )
+
+    if isinstance(supported_efforts, list):
+        for effort in _LOW_EFFORT_PREFERENCE:
+            if effort in supported_efforts:
+                return ReasoningDecision(
+                    REASONING_EFFORT, {"effort": effort},
+                    f"catalog reasoning.supported_efforts includes {effort!r} -- using the lowest available effort",
+                )
+
+    if supports_max_tokens is True:
+        return ReasoningDecision(
+            REASONING_MAX_TOKENS, {"max_tokens": max_reasoning_tokens_headroom},
+            f"catalog reasoning.supports_max_tokens=true -- bounding reasoning to {max_reasoning_tokens_headroom} tokens",
+        )
+
+    if mandatory is True:
+        return ReasoningDecision(
+            REASONING_MANDATORY_UNBOUNDED, None,
+            "catalog reasoning.mandatory=true with no supported_efforts/supports_max_tokens to bound it -- "
+            "nothing safe to configure; consider a different model for a live attempt",
+        )
+
+    return ReasoningDecision(
+        REASONING_UNKNOWN, None,
+        f"'reasoning' catalog metadata present but ambiguous (mandatory={mandatory!r}); failing closed",
+    )
+
+
 @dataclass(frozen=True)
 class ModelSelectionRecord:
     """Full provenance for one model-selection decision. Preserved even on

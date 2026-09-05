@@ -62,7 +62,9 @@ from research.llm.injection_guard import flag_suspicious_response
 from research.llm.model_catalog import (
     ModelCapabilityError,
     ModelNotFreeError,
+    build_reasoning_decision,
     evaluate_model_for_role,
+    supports_structured_output,
 )
 from research.llm.privacy_guard import check_payload_safe
 from research.llm.router import LLMRouter
@@ -217,6 +219,8 @@ class CallRecord:
     local_schema_validation_result: Optional[dict] = None  # {"is_valid": bool, "error_count": int}
     token_usage: Optional[dict] = None
     failure_category: Optional[str] = None  # one of the FAILURE_* constants, or None on success
+    reasoning_configuration: Optional[str] = None  # one of model_catalog.REASONING_* constants, or None if not negotiated
+    structured_output_capability_state: Optional[bool] = None  # supports_structured_output() at call time, if known
 
 
 @dataclass
@@ -339,6 +343,12 @@ def _call_llm(
         run_budget.check()
 
     call_kwargs: dict = {}
+    reasoning_decision_category: Optional[str] = None
+    structured_output_capability_state: Optional[bool] = None
+    if model_catalog is not None:
+        structured_output_capability_state = supports_structured_output(
+            role_cfg.preferred_model, model_catalog.get(role_cfg.preferred_model),
+        )
     if role_cfg.max_tokens is not None:
         call_kwargs["max_tokens"] = role_cfg.max_tokens
     if role_cfg.timeout is not None:
@@ -349,20 +359,40 @@ def _call_llm(
         # attempt. Flows straight through OpenRouterProvider.complete()'s
         # existing `body.update(kwargs)`.
         call_kwargs["response_format"] = response_format
-        # Phase H token/reasoning audit finding (DRYRUN-0005): OmniLab
-        # previously sent NO reasoning-control parameter at all, and
-        # OpenRouter's documented reasoning-tokens mechanism
-        # (https://openrouter.ai/docs/use-cases/reasoning-tokens) confirms
-        # reasoning tokens count against the same completion-token budget
-        # and CAN consume it entirely, producing exactly DRYRUN-0005's
-        # observed shape (finish_reason="length", empty content) if a model
-        # reasons by default. A JSON-schema structured-output answer has no
-        # use for a separate reasoning trace anyway, so disabling it via
-        # OpenRouter's documented `reasoning.enabled` field is safe and
-        # targeted for every structured-output call, not just this one
-        # model -- named parameter taken directly from OpenRouter's own
-        # docs, not guessed.
-        call_kwargs["reasoning"] = {"enabled": False}
+        # OpenRouter's documented provider.require_parameters
+        # (https://openrouter.ai/docs/features/provider-routing): restricts
+        # routing to providers that support every parameter in the request
+        # (default false -- an unsupporting provider would otherwise just
+        # silently ignore response_format/reasoning rather than erroring).
+        # Still exactly one HTTP request either way -- this is a routing
+        # CONSTRAINT within that single request, not a fallback chain; it
+        # cannot cause a second attempt.
+        call_kwargs["provider"] = {"require_parameters": True}
+        # Phase H reasoning-capability-negotiation fix (post-DRYRUN-0006):
+        # unconditionally sending `reasoning: {"enabled": False}` (the
+        # DRYRUN-0005 fix) caused DRYRUN-0006's HTTP 400 -- liquid/lfm-2.5-
+        # 2.6b:free's catalog entry is `"reasoning": {"mandatory": true}`,
+        # so disabling isn't a valid control for that model at all.
+        # research/llm/model_catalog.py::build_reasoning_decision() now
+        # inspects the model's ACTUAL catalog metadata (never inferred from
+        # a model's name/description) and only sends a reasoning field the
+        # catalog explicitly says is valid -- disable when mandatory=false,
+        # a low effort level or bounded max_tokens when the catalog
+        # advertises those controls, or nothing at all when reasoning is
+        # mandatory with no way to bound it (never a guessed field).
+        if model_catalog is not None:
+            reasoning_decision = build_reasoning_decision(
+                role_cfg.preferred_model, model_catalog.get(role_cfg.preferred_model),
+            )
+            reasoning_decision_category = reasoning_decision.category
+            if reasoning_decision.request_field is not None:
+                call_kwargs["reasoning"] = reasoning_decision.request_field
+        else:
+            # No catalog supplied -- nothing to negotiate against, so send
+            # no reasoning field at all rather than guess (matches
+            # `require_structured_output=False` behavior generally: the
+            # pre-remediation caller sees unchanged behavior).
+            reasoning_decision_category = None
 
     try:
         response = router.provider.complete(
@@ -405,6 +435,8 @@ def _call_llm(
             token_usage=diag.get("usage"),
             structured_parse_result=_classify_transport_failure(e),
             failure_category=_classify_transport_failure(e),
+            reasoning_configuration=reasoning_decision_category,
+            structured_output_capability_state=structured_output_capability_state,
         ))
         raise
     else:
@@ -428,6 +460,8 @@ def _call_llm(
             content_present=diag.get("content_present"),
             content_length=diag.get("content_length"),
             token_usage=diag.get("usage"),
+            reasoning_configuration=reasoning_decision_category,
+            structured_output_capability_state=structured_output_capability_state,
         ))
         return response
 
