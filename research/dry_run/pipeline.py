@@ -767,11 +767,34 @@ def run_dry_run_cycle(
     return result
 
 
+def _family_allowed_path_scope(family: str) -> tuple:
+    """Deterministically derive allowed_path_scope from
+    research/experiment_registry.py's per-family allowed_path_prefixes --
+    documented on ExperimentProposal.allowed_path_scope as something that
+    "extends" the registry value, never something an LLM should invent from
+    scratch. An unknown family returns () -- validate()'s own UNKNOWN_FAMILY
+    check is the authoritative place that flags an invalid family; this
+    function never raises for one."""
+    from research.experiment_registry import REGISTRY
+
+    family_spec = REGISTRY.get(family)
+    return tuple(family_spec.allowed_path_prefixes) if family_spec is not None else ()
+
+
 def _build_proposal(pr: ProposalResponse, experiment_id: str, baseline_run_id: str) -> ExperimentProposal:
     """Construct an ExperimentProposal from LLM-authored content. Every one
     of Phase F's 7 human-authority approval flags is hard-coded False here —
     ProposalResponse has no field for any of them, so this is not merely a
-    default, it's the only value that can ever reach this call site."""
+    default, it's the only value that can ever reach this call site.
+
+    Phase H schema-mapping fix (post-DRYRUN-0007-revision audit): two more
+    canonical fields are populated here from DETERMINISTIC sources, never
+    from LLM output or a guess -- `baseline_metrics` (research/baseline_lookup.py,
+    reads the real benchmark/results/baseline/metrics.json artifact) and
+    `allowed_path_scope` (research/experiment_registry.py's per-family
+    allowed_path_prefixes). Both were silently always-empty before this fix."""
+    from research.baseline_lookup import load_baseline_metrics
+
     return ExperimentProposal(
         schema_version="1.0",
         experiment_id=experiment_id,
@@ -783,18 +806,27 @@ def _build_proposal(pr: ProposalResponse, experiment_id: str, baseline_run_id: s
         evidence_references=tuple(pr.evidence_references),
         prior_experiment_ids=tuple(pr.prior_experiment_ids),
         baseline_run_id=baseline_run_id,
+        baseline_metrics=load_baseline_metrics(baseline_run_id),
         independent_variables=tuple(pr.independent_variables),
         dependent_variables=tuple(pr.dependent_variables),
         controlled_variables=dict(pr.controlled_variables),
         procedure=pr.procedure,
+        dataset_version=pr.dataset_version,
+        model_config_ref=pr.model_config_ref,
+        implementation_scope=pr.implementation_scope,
+        expected_artifacts=tuple(pr.expected_artifacts),
+        reproducibility_requirements=pr.reproducibility_requirements,
         control_condition=pr.control_condition,
         baseline_comparison=pr.baseline_comparison,
+        isolation_requirements=pr.isolation_requirements,
         success_criteria=dict(pr.success_criteria),
         production_impact=pr.production_impact,
         production_impact_description=pr.production_impact_description,
         data_privacy_classification=pr.data_privacy_classification,
         external_api_required=pr.external_api_required,
         mac_iphone_required=pr.mac_iphone_required,
+        compute_resource_estimate=dict(pr.compute_resource_estimate),
+        allowed_path_scope=_family_allowed_path_scope(pr.family),
         supports_hypothesis_if=pr.supports_hypothesis_if,
         rejects_hypothesis_if=pr.rejects_hypothesis_if,
         inconclusive_if=pr.inconclusive_if,

@@ -135,6 +135,13 @@ def proposal_response_json_schema() -> dict:
             "mac_iphone_required",
             "acknowledges_rejected_hypothesis_ids",
             "materially_new_rationale",
+            "dataset_version",
+            "model_config_ref",
+            "implementation_scope",
+            "expected_artifacts",
+            "reproducibility_requirements",
+            "isolation_requirements",
+            "compute_resource_estimate",
         ],
         "properties": {
             "selected_problem": {"type": "string"},
@@ -163,6 +170,25 @@ def proposal_response_json_schema() -> dict:
             "mac_iphone_required": {"type": "boolean"},
             "acknowledges_rejected_hypothesis_ids": {"type": "array", "items": {"type": "string"}},
             "materially_new_rationale": {"type": "string"},
+            # -- Phase H schema-mapping fix (post-DRYRUN-0007 revision):
+            # these 5 previously had NO field anywhere the LLM could populate
+            # them from -- ExperimentProposal carried them, but _build_proposal
+            # never set them, so a substantively good proposal could still
+            # ship with these structurally empty. Required (not optional) so
+            # a researcher call must always address each one explicitly --
+            # either a real value or an explicit blocking-prerequisite
+            # sentence, never silently omitted. Unknown facts must be STATED
+            # as unknown/prerequisite text, never fabricated as a plausible-
+            # looking value -- research/experiment_validator.py's
+            # PLACEHOLDER_VALUE check rejects bare "TBD"/"unknown"/"N/A" but
+            # accepts a real prerequisite sentence. --
+            "dataset_version": {"type": "string"},
+            "model_config_ref": {"type": "string"},
+            "implementation_scope": {"type": "string"},
+            "expected_artifacts": {"type": "array", "items": {"type": "string"}},
+            "reproducibility_requirements": {"type": "string"},
+            "isolation_requirements": {"type": "string"},
+            "compute_resource_estimate": {"type": "object"},
         },
     }
 
@@ -331,6 +357,19 @@ class ProposalResponse:
     mac_iphone_required: bool = False
     acknowledges_rejected_hypothesis_ids: list = field(default_factory=list)
     materially_new_rationale: str = ""
+    # -- Phase H schema-mapping fix -- see proposal_response_json_schema()'s
+    # comment on the same 7 fields. Defaulted here (not `required=True` at
+    # the Python level) so existing callers/tests that predate this fix keep
+    # constructing ProposalResponse directly without every one of them; the
+    # native OpenRouter response_format schema is what actually forces a
+    # live LLM call to supply real content (see the "required" list above).
+    dataset_version: str = ""
+    model_config_ref: str = ""
+    implementation_scope: str = ""
+    expected_artifacts: list = field(default_factory=list)
+    reproducibility_requirements: str = ""
+    isolation_requirements: str = ""
+    compute_resource_estimate: dict = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -576,6 +615,13 @@ def parse_and_validate_proposal(raw_text: str) -> ProposalResponse:
         mac_iphone_required=bool(data.get("mac_iphone_required") or False),
         acknowledges_rejected_hypothesis_ids=list(data.get("acknowledges_rejected_hypothesis_ids") or []),
         materially_new_rationale=str(data.get("materially_new_rationale") or ""),
+        dataset_version=str(data.get("dataset_version") or ""),
+        model_config_ref=str(data.get("model_config_ref") or ""),
+        implementation_scope=str(data.get("implementation_scope") or ""),
+        expected_artifacts=list(data.get("expected_artifacts") or []),
+        reproducibility_requirements=str(data.get("reproducibility_requirements") or ""),
+        isolation_requirements=str(data.get("isolation_requirements") or ""),
+        compute_resource_estimate=dict(data.get("compute_resource_estimate") or {}),
     )
 
 

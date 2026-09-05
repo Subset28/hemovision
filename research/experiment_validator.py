@@ -55,6 +55,29 @@ def is_known_metric(dotted: str) -> bool:
 
 
 # ---------------------------------------------------------------------------
+# Semantic-completeness: placeholder-garbage rejection (Phase H schema-
+# mapping fix, post-DRYRUN-0007-revision audit). A proposal must not become
+# queue-eligible merely because every field contains SOME string — a bare
+# "TBD"/"unknown"/"N/A" carries zero information a human or future
+# automation could act on, and is structurally different from a real,
+# explicit prerequisite/limitation sentence (e.g. "provenance is UNKNOWN —
+# blocking prerequisite: ..."), which IS legitimate and must never be
+# rejected. This is an EXACT-MATCH check on the stripped/lowercased whole
+# field value, deliberately not a substring scan — a real sentence that
+# happens to contain the word "unknown" mid-sentence is not a placeholder.
+# ---------------------------------------------------------------------------
+
+_PLACEHOLDER_VALUES = frozenset({
+    "tbd", "to be determined", "n/a", "na", "unknown", "none", "...", "todo",
+    "placeholder", "tba", "pending",
+})
+
+
+def _is_placeholder(text: str) -> bool:
+    return text.strip().lower() in _PLACEHOLDER_VALUES
+
+
+# ---------------------------------------------------------------------------
 # ValidationResult
 # ---------------------------------------------------------------------------
 
@@ -361,11 +384,37 @@ def _validate_proposal(p: ExperimentProposal, result: ValidationResult, db, memo
                 f"proposal acknowledges rejected hypothesis {mem_id} ({exp_id}) but materially_new_rationale is empty.",
             )
 
+    # -- placeholder-garbage rejection (Phase H schema-mapping fix): a bare
+    #    "TBD"/"unknown"/"N/A" is an ERROR, never merely a review flag — it
+    #    is indistinguishable from "nobody thought about this field", which
+    #    must not pass silently just because the field is non-empty. A real
+    #    explicit-prerequisite sentence is unaffected (see _is_placeholder's
+    #    docstring above: exact-match only, not a substring scan).
+    for field_name in (
+        "dataset_version", "model_config_ref", "isolation_requirements",
+        "reproducibility_requirements", "implementation_scope",
+    ):
+        value = getattr(p, field_name)
+        if value and _is_placeholder(value):
+            result.add(
+                "ERROR", "PLACEHOLDER_VALUE",
+                f"{field_name} is a bare placeholder ({value!r}) — state a real value or an "
+                "explicit prerequisite/limitation sentence, never an empty stand-in.",
+            )
+
     # -- items not mechanically checkable: explicit NEEDS_HUMAN_REVIEW --
     if not p.procedure.strip():
         result.add("NEEDS_HUMAN_REVIEW", "PROCEDURE_QUALITY", "procedure narrative is empty — cannot mechanically judge methodology soundness; human review required.")
     if not p.reproducibility_requirements.strip():
         result.add("NEEDS_HUMAN_REVIEW", "REPRODUCIBILITY_QUALITY", "reproducibility_requirements is empty — cannot mechanically judge reproducibility; human review required.")
+    if not p.isolation_requirements.strip():
+        result.add("NEEDS_HUMAN_REVIEW", "ISOLATION_REQUIREMENTS_QUALITY", "isolation_requirements is empty — cannot mechanically judge train/eval isolation adequacy; human review required.")
+    if not p.dataset_version.strip():
+        result.add("NEEDS_HUMAN_REVIEW", "DATASET_VERSION_QUALITY", "dataset_version is empty — cannot mechanically judge dataset provenance/version adequacy; human review required.")
+    if not p.model_config_ref.strip():
+        result.add("NEEDS_HUMAN_REVIEW", "MODEL_CONFIG_REF_QUALITY", "model_config_ref is empty — cannot mechanically judge model/config provenance; human review required.")
+    if not p.compute_resource_estimate:
+        result.add("NEEDS_HUMAN_REVIEW", "COMPUTE_ESTIMATE_QUALITY", "compute_resource_estimate is empty — cannot mechanically judge resource feasibility; human review required.")
     result.add(
         "NEEDS_HUMAN_REVIEW", "SCIENTIFIC_MERIT",
         "Whether this hypothesis is scientifically interesting/worth the resource spend is not "

@@ -32,6 +32,28 @@
   to the relevant EXP-XXXX/MEM-XXXX id(s) and give a `materially_new_rationale`
   explaining what is different this time. A deterministic local checker will
   independently verify this — it is not optional and cannot be talked around.
+- `dataset_version`, `model_config_ref`, `isolation_requirements`,
+  `reproducibility_requirements`, `implementation_scope`,
+  `expected_artifacts`, `compute_resource_estimate` are REQUIRED. For each:
+  give a real, concrete value if you actually know one, or state an
+  explicit blocking prerequisite/limitation sentence if you do not (e.g.
+  "PREREQUISITE: training manifest does not yet exist and must be
+  constructed before this dataset_version can be assigned"). A bare
+  placeholder ("TBD", "unknown", "N/A", "none", "...") is REJECTED by a
+  deterministic local checker — it is indistinguishable from not having
+  thought about the field at all. Do not fabricate a checkpoint hash,
+  dataset version string, or resource-usage number that doesn't actually
+  exist yet — an honest, explicit "not yet known, here's why and what would
+  resolve it" is always acceptable; a plausible-looking invented value is
+  never acceptable.
+  - `isolation_requirements`: your deterministic train/eval isolation
+    requirement — what exact check (e.g. image-ID hash exclusion against
+    which manifest) would guarantee zero train/eval overlap.
+  - `compute_resource_estimate`: a proposal-stage JSON object estimate
+    (e.g. `{{"gpu": "RTX 3070 Ti", "estimated_gpu_hours": 6}}`), never a
+    fabricated measured value.
+  - `expected_artifacts`: list of expected output file names/paths this
+    experiment would produce if executed.
 
 ## Candidate unresolved problems (pick exactly one)
 
@@ -87,6 +109,13 @@ outside the JSON). Required fields:
   "external_api_required": false,
   "mac_iphone_required": false,
   "acknowledges_rejected_hypothesis_ids": [],
-  "materially_new_rationale": ""
+  "materially_new_rationale": "",
+  "dataset_version": "... (real value, or an explicit blocking-prerequisite sentence)",
+  "model_config_ref": "... (real value, or an explicit blocking-prerequisite sentence)",
+  "implementation_scope": "...",
+  "expected_artifacts": ["..."],
+  "reproducibility_requirements": "...",
+  "isolation_requirements": "...",
+  "compute_resource_estimate": {{"gpu": "...", "estimated_gpu_hours": 0}}
 }}
 ```
