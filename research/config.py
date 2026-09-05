@@ -15,6 +15,12 @@ RESEARCH_DIR = REPO_ROOT / "research"
 EXPERIMENTS_DIR = REPO_ROOT / "experiments"
 DB_PATH = RESEARCH_DIR / "omnilab.db"
 
+# Phase E — structured research memory. Sibling database, not new tables in
+# DB_PATH's schema — see research/memory_db.py's module docstring ("Design
+# choice") for why.
+MEMORY_DB_PATH = RESEARCH_DIR / "memory.db"
+CONTEXT_PACKET_PATH = RESEARCH_DIR / "memory" / "CONTEXT_PACKET.md"
+
 # Keyed by EXECUTION_STATUS only (research/db.py) — directory placement
 # reflects "did the pipeline run", never the research verdict. An experiment
 # that ran successfully but got a FAIL/INCONCLUSIVE/REJECTED verdict still

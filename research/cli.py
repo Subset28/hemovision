@@ -22,6 +22,9 @@ import sys
 
 from research import orchestrator
 from research.db import OmniLabDB
+from research.memory_context import write_context_packet
+from research.memory_db import MemoryDB
+from research.memory_query import QUESTION_TYPES, records_for_experiment, render_query_result
 
 
 def cmd_propose(args: argparse.Namespace) -> int:
@@ -70,6 +73,40 @@ def cmd_stop(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_memory_query(args: argparse.Namespace) -> int:
+    db = MemoryDB()
+    try:
+        if args.question_type == "for-experiment":
+            if not args.experiment_id:
+                print("ERROR: --experiment-id is required for 'for-experiment'", file=sys.stderr)
+                return 1
+            result = records_for_experiment(db, args.experiment_id)
+        else:
+            result = QUESTION_TYPES[args.question_type](db)
+    finally:
+        db.close()
+    if args.json:
+        print(json.dumps(result, indent=2, default=str))
+    else:
+        print(render_query_result(result))
+    return 0
+
+
+def cmd_memory_context(args: argparse.Namespace) -> int:
+    db = MemoryDB()
+    try:
+        packet = write_context_packet(db)
+    finally:
+        db.close()
+    if args.json:
+        print(json.dumps(packet, indent=2, default=str))
+    else:
+        print(f"Context packet written to research/memory/CONTEXT_PACKET.md "
+              f"({len(packet['rejected_directions'])} rejected direction(s), "
+              f"{len(packet['unresolved_questions'])} open question(s)).")
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="omnilab")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -91,6 +128,22 @@ def build_parser() -> argparse.ArgumentParser:
     p_resume.set_defaults(func=cmd_resume)
     p_stop = sub.add_parser("stop")
     p_stop.set_defaults(func=cmd_stop)
+
+    p_memory = sub.add_parser("memory", help="Phase E structured research memory")
+    memory_sub = p_memory.add_subparsers(dest="memory_command", required=True)
+
+    p_mem_query = memory_sub.add_parser("query", help="deterministic query over research/memory.db")
+    p_mem_query.add_argument(
+        "question_type",
+        choices=list(QUESTION_TYPES.keys()) + ["for-experiment"],
+    )
+    p_mem_query.add_argument("--experiment-id", default=None, help="required for 'for-experiment'")
+    p_mem_query.add_argument("--json", action="store_true", default=False)
+    p_mem_query.set_defaults(func=cmd_memory_query)
+
+    p_mem_context = memory_sub.add_parser("context", help="regenerate research/memory/CONTEXT_PACKET.md")
+    p_mem_context.add_argument("--json", action="store_true", default=False)
+    p_mem_context.set_defaults(func=cmd_memory_context)
 
     return parser
 

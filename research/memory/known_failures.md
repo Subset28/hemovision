@@ -16,6 +16,15 @@ Seeded from Phase B/B.5 findings (`reports/baseline/`, `docs/FAILURE_TAXONOMY.md
     at a real precision cost — see threshold sweep below).
   - 35.1% classification confusion — model predicted `Man`/`Woman`/`Human
     body`/`Clothing` at the same location instead of `Person`.
+    **SUPERSEDED (Phase E)** — this informal figure counted any same-location
+    alternate-class detection at any confidence, including near-zero noise.
+    EXP-0003's rigorous IoU-based re-matching (confidence>=0.4, IoU>=0.5)
+    found genuine SEMANTIC_CLASS_CONFUSION is only 13/239 = 5.4% of Person
+    misses — see `reports/baseline/person_class_confusion_analysis.md` and
+    the structured, queryable version of this correction in
+    `research/memory.db` (`uv run python -m research.cli memory query
+    person-failure-modes`), which marks the old 35.1% record
+    `status=SUPERSEDED` and the new 5.4% record `status=ACTIVE`.
   - Only 6.3% had zero candidate at any confidence — most misses ARE
     "detected as something," just not a confident correct Person box.
 

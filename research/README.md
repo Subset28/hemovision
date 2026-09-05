@@ -1,4 +1,12 @@
-# OmniSight Research Lab — Phase C (experiment infrastructure)
+# OmniSight Research Lab — Phase C (experiment infrastructure) + Phase E (research memory)
+
+**Phase D is CLOSED.** EXP-0001 through EXP-0005 all ran to completion
+(execution_status=COMPLETED) with FAILED/INCONCLUSIVE research verdicts (one
+PASS, EXP-0001, on its confirmatory negative hypothesis — see "EXP-0001's
+PASS verdict, explicitly" below). No further experiments will be created
+under Phase D; do not create EXP-0006 or unblock/modify any existing
+experiment's verdict. See the "Phase E — structured research memory"
+section below for what comes after Phase D's closure.
 
 This is orchestration/tooling around the existing, approved `benchmark/`
 harness. It is **additive only**. It is a manually-triggered pipeline you
@@ -188,3 +196,102 @@ moved EXP-0005, still `BLOCKED`, into `experiments/blocked/`).
   pipeline (branch creation -> runner -> tests -> rejection checks ->
   evaluation policy -> DB update -> memory update -> return to master) — see
   the Phase C report-back for the actual verdict and artifact inspection.
+
+## Phase E — structured research memory
+
+Phase D closed with 5 completed, evidence-producing experiments
+(EXP-0001..0005) and five loosely-structured markdown memory files
+(`research/memory/*.md`). Phase E turns that into a queryable, evidence-
+tagged layer ON TOP of the existing record — it adds, never deletes: every
+historical file/finding from Phases A-D stays on disk exactly as written.
+Phase E is pure synthesis/tooling — **no new experiment, no model training,
+no `ios/` change, no live LLM call, no `omnilab run`, no autonomous loop.**
+
+### Schema — `research/memory_db.py` (`research/memory.db`, a sibling DB)
+
+A new, separate SQLite database (NOT new tables in `research/omnilab.db` —
+see `research/memory_db.py`'s "Design choice" docstring for why: memory
+records have a supersession lifecycle, not an execution state machine, and
+keeping them apart avoids entangling `OmniLabDB`'s migration-sensitive
+schema with an unrelated concern). One table, `memory_records`, one
+dataclass, `MemoryRecord` — same "dataclasses + stdlib sqlite3, no ORM"
+pattern as `OmniLabDB`.
+
+**Evidence-level ontology** (`MEMORY_TAGS`):
+
+- `VERIFIED` — a fact directly measured/confirmed against a real artifact.
+- `SUPPORTED_HYPOTHESIS` — evidence points this way but is not proven; must
+  never be worded as a settled fact (see the model-representation record:
+  explicitly NOT "model capacity is the bottleneck").
+- `OPEN_QUESTION` — an explicit unresolved question this lab cannot
+  currently answer.
+- `REJECTED_HYPOTHESIS` — an idea a real experiment's evidence argues
+  against. Five mandatory records, one per EXP-0001..0005.
+- `LIMITATION` — a methodological constraint on what ANY finding here can
+  claim (proxy latency, static-image eval, thin samples, etc), independent
+  of any one experiment. Seven mandatory records.
+
+**Mandatory evidence provenance**: every record must carry at least one of
+`experiment_id`, `run_id`, or `artifact_path` (plus optional
+`metric_field`/`dataset_version`/`git_commit`). `MemoryDB.insert()` calls
+`validate_provenance()` and raises `ProvenanceError` on a record with none —
+there is no code path that inserts an unsupported claim.
+
+**Supersession**: every record has `status` (`ACTIVE`/`SUPERSEDED`) plus
+`supersedes`/`superseded_by` links. `MemoryDB.supersede(old_id, new_id)` is
+the one function that changes these — it marks the old record SUPERSEDED
+and links both directions. `MemoryDB.list_records()` defaults to
+`include_superseded=False` (ACTIVE only — a future agent asking "what's the
+class-confusion rate" gets 5.4%, not both numbers with equal weight);
+`include_superseded=True` retrieves full history. The flagship case: Phase
+B.5's informal "~35% of Person misses are semantic class confusion"
+(`reports/baseline/person_failure_analysis.md`) is `status=SUPERSEDED`,
+linked to the `status=ACTIVE` record for EXP-0003's rigorous 5.4%
+(13/239) figure. See `research/memory_seed.py`'s
+`SUPERSESSION` block and `research/memory/known_failures.md` /
+`reports/baseline/BASELINE_SCORECARD.md` for pointers added at the old
+figure's original locations (the experiment artifacts themselves,
+`experiments/completed/EXP-000N/`, are left untouched — historical record).
+
+### Import — `research/memory_seed.py`
+
+One-time import script (`uv run python -m research.memory_seed`),
+idempotent-guarded (refuses to reseed a non-empty DB). Populates: baseline
+`VERIFIED` facts, one finding record per experiment, the SUPERSESSION pair,
+5 `REJECTED_HYPOTHESIS` records, 7 `LIMITATION` records, `OPEN_QUESTION`
+records, and the `SUPPORTED_HYPOTHESIS` about architecture/representation.
+Every claim cites a concrete git-log-resolved commit hash and on-disk
+artifact — see the module for the exact provenance on each record.
+
+### Query — `research/memory_query.py` + `omnilab memory query`
+
+Deterministic, structured retrieval — no LLM call anywhere in this path.
+`QUESTION_TYPES` dispatch table backs `uv run python -m research.cli memory
+query <question-type>` (`--json` for machine-readable output):
+`person-interventions`, `rejected`, `person-failure-modes`,
+`true-detector-miss`, `open-questions`, `model-representation`,
+`limitations`, `for-experiment --experiment-id EXP-000N`.
+
+### Context packet — `research/memory_context.py`
+
+`generate_context_packet()` assembles a compact JSON/dict summary (verified
+baseline, strongest findings, ALL rejected directions, unresolved
+questions, limitations, one-liner per closed experiment) for a future
+hypothesis-generating agent, and `write_context_packet()` renders it to
+`research/memory/CONTEXT_PACKET.md` (`uv run python -m research.cli memory
+context`). **Any future agent — LLM-driven or human — MUST read this packet
+before proposing a new experiment**, per the master spec's "research memory
+before hypothesis generation" principle. Reading it is enough to recognize
+"lower confidence" / "higher resolution" / "remap Man to Person" / "apply
+CLAHE" / "just use a larger YOLO" as already-rejected (EXP-0001..0005
+respectively) without re-deriving or re-reading the full experiment
+artifacts.
+
+### Tests
+
+`tests/test_research_memory.py` — insertion, provenance enforcement,
+retrieval by tag, experiment linkage, supersession mechanics (including the
+35%->5.4% case end-to-end), context-packet structure/determinism, and a
+backward-compatibility check confirming Phase E did not disturb
+`research/db.py`'s pre-existing schema/behavior (no columns/tables were
+added to `research/omnilab.db`).

@@ -51,6 +51,13 @@ candidate (partially threshold-recoverable, at a precision cost — see Section 
 (`Man`/`Woman`/`Human body`/`Clothing`). Only 6.3% have literally no model candidate at
 any confidence.
 
+**SUPERSEDED (Phase E)**: the 35.1% classification-confusion figure above was an
+informal count (any same-location alternate-class detection at any confidence).
+EXP-0003's rigorous IoU-based re-matching found genuine semantic class confusion is
+only 13/239 = 5.4% — see `reports/baseline/person_class_confusion_analysis.md` and the
+structured, queryable correction in `research/memory.db` (`uv run python -m research.cli
+memory query person-failure-modes`).
+
 **Stairs** (45 GT boxes): recall 0.333 looks better than Person's but rests on a sample
 9x smaller. A swing of 4-5 boxes would move this recall figure by roughly 10 percentage
 points — do not compare it to Person's number with equal confidence, and do not treat

@@ -2,6 +2,34 @@
 
 Covers what exists, what's missing, what to build, where each piece runs, and recommended order. Windows PC = compute node; M4 Mac mini = build/device-validation node. Lab lives in a **separate directory** (`OmniSight-Lab`), never mixed into this production repo.
 
+## Status update (post-hoc, actual execution — phase lettering diverged from the plan below)
+
+The phase lettering that actually ran diverged from Section 4's original plan (this is
+noted here rather than rewriting Section 4, which remains the as-written Phase A
+deliverable): **A** = this architecture/planning audit, **B** = baseline benchmark +
+harness (`BENCHMARK_PLAN.md`, `reports/baseline/`), **B.5** = baseline validation pass,
+**C** = experiment database/orchestrator/CLI (`research/db.py`, `research/cli.py`),
+**D** = 5 controlled experiments, **E** = structured research memory (this section).
+
+- **Phase D — 5 controlled experiments, now CLOSED.** EXP-0001 (threshold reduction,
+  research_verdict=PASS on its confirmatory negative hypothesis — see
+  `research/README.md`), EXP-0002 (resolution increase, FAIL), EXP-0003 (semantic class
+  remapping, FAIL — also produced the rigorous 5.4% class-confusion figure that
+  supersedes the earlier informal 35.1% estimate), EXP-0004 (generic preprocessing,
+  INCONCLUSIVE), EXP-0005 (model-variant scaling, INCONCLUSIVE, but surfaced a
+  SUPPORTED_HYPOTHESIS that architecture/representation differences — not simple model
+  capacity — may matter for TRUE_DETECTOR_MISS recovery). No EXP-0006 was created; Phase
+  D is closed and no existing verdict was modified.
+- **Phase E — research memory, IMPLEMENTED.** `research/memory_db.py` (a sibling SQLite
+  DB, `research/memory.db`) with an explicit VERIFIED/SUPPORTED_HYPOTHESIS/
+  OPEN_QUESTION/REJECTED_HYPOTHESIS/LIMITATION ontology, mandatory evidence provenance,
+  and supersession tracking; `research/memory_seed.py` imports the real Phase A-D
+  findings; `research/memory_query.py` + `omnilab memory query` give deterministic,
+  no-LLM structured retrieval; `research/memory_context.py` generates
+  `research/memory/CONTEXT_PACKET.md` for any future hypothesis-generating agent to read
+  before proposing anything new. See `research/README.md`'s "Phase E" section for full
+  detail.
+
 ## 1. What Already Exists (reusable)
 
 | Asset | Location | Reusable for |

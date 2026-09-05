@@ -21,6 +21,10 @@ research/llm_usage.json
 research/orchestrator_state.json
 .env
 
+# Phase E research memory — local runtime state, not source (regenerable via
+# research/memory_seed.py)
+research/memory.db
+
 # macOS
 .DS_Store
 
