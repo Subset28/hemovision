@@ -343,14 +343,17 @@ class OpenRouterProvider(LLMProvider):
         diag["content_present"] = text is not None
         diag["content_length"] = len(str(text)) if text is not None else 0
 
-        if not text or not str(text).strip():
-            raise OpenRouterProviderError(
-                "OpenRouter returned an empty completion",
-                category=ErrorCategory.EMPTY_RESPONSE,
-                diagnostics=diag,
-            )
-
+        # Extract usage/request_id/model_used BEFORE the empty-content check
+        # below, not after: a bug found during the Phase H token/reasoning
+        # audit (DRYRUN-0005) discarded this data entirely on the empty-
+        # completion path, since the raise happened first — meaning the
+        # question "did OpenRouter report reasoning-token usage that
+        # exhausted the budget?" could never even be ANSWERED for a failed
+        # call, only guessed at. `usage` (including provider-specific
+        # fields like `reasoning_tokens` inside `completion_tokens_details`,
+        # when a model returns them) is now captured unconditionally.
         usage = data.get("usage") or {}
+        completion_tokens_details = usage.get("completion_tokens_details") or {}
         tokens_used = usage.get("total_tokens")
         model_used = data.get("model", body.get("model"))
         request_id = data.get("id")
@@ -361,7 +364,16 @@ class OpenRouterProvider(LLMProvider):
             "prompt_tokens": usage.get("prompt_tokens"),
             "completion_tokens": usage.get("completion_tokens"),
             "total_tokens": usage.get("total_tokens"),
+            "reasoning_tokens": completion_tokens_details.get("reasoning_tokens"),
+            "cached_tokens": (usage.get("prompt_tokens_details") or {}).get("cached_tokens"),
         }
+
+        if not text or not str(text).strip():
+            raise OpenRouterProviderError(
+                "OpenRouter returned an empty completion",
+                category=ErrorCategory.EMPTY_RESPONSE,
+                diagnostics=diag,
+            )
 
         return LLMResponse(
             text=text,

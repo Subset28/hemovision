@@ -73,6 +73,45 @@ class TestFailureDiagnostics:
         assert e.diagnostics["message_present"] is True
         assert e.diagnostics["content_present"] is False or e.diagnostics.get("content_length") == 0
 
+    def test_empty_content_still_captures_usage_and_reasoning_tokens(self, monkeypatch: pytest.MonkeyPatch):
+        """Regression test for a real bug found during the Phase H token/
+        reasoning audit (DRYRUN-0005): usage/request_id/model_used
+        extraction happened AFTER the empty-content raise, so this data was
+        silently discarded on exactly the failure path where it's most
+        needed (distinguishing reasoning-token exhaustion from other empty-
+        completion causes). Reproduces DRYRUN-0005's exact observed shape:
+        HTTP 200, finish_reason="length", empty content, usage present."""
+        import requests
+
+        class FakeResp:
+            status_code = 200
+            headers = {}
+
+            def json(self):
+                return {
+                    "id": "gen-dryrun0005-repro",
+                    "model": "liquid/lfm-2.5-2.6b:free",
+                    "choices": [{"message": {"content": ""}, "finish_reason": "length"}],
+                    "usage": {
+                        "prompt_tokens": 1200,
+                        "completion_tokens": 2048,
+                        "total_tokens": 3248,
+                        "completion_tokens_details": {"reasoning_tokens": 2048},
+                    },
+                }
+
+        monkeypatch.setattr(requests, "post", lambda *a, **k: FakeResp())
+        provider = _provider_with_key(monkeypatch)
+        with pytest.raises(LLMUnavailableError) as exc_info:
+            provider.complete("hi", role="researcher", authorized=True, max_retries=0)
+        diag = exc_info.value.diagnostics
+        assert diag["finish_reason"] == "length"
+        assert diag["request_id"] == "gen-dryrun0005-repro"
+        assert diag["model_used"] == "liquid/lfm-2.5-2.6b:free"
+        assert diag["usage"]["completion_tokens"] == 2048
+        assert diag["usage"]["reasoning_tokens"] == 2048
+        assert diag["usage"]["total_tokens"] == 3248
+
     def test_null_content_diagnostics(self, monkeypatch: pytest.MonkeyPatch):
         import requests
 

@@ -366,9 +366,17 @@ def _call_llm(
         dry_run_budget.record()
         diag = getattr(e, "diagnostics", None) or {}
         call_records.append(CallRecord(
-            step=step, role=role, model_used=None, succeeded=False, error=str(e),
+            # Bug found during the Phase H token/reasoning audit (DRYRUN-0005):
+            # `diag.get("usage")`/`diag.get("model_used")` were never read
+            # here even after research/llm/openrouter.py started capturing
+            # them before the empty-content raise -- meaning a failed call's
+            # CallRecord always showed token_usage=None and
+            # actual_model_returned=None regardless of what OpenRouter
+            # actually reported. Both are now threaded through.
+            step=step, role=role, model_used=diag.get("model_used"), succeeded=False, error=str(e),
             timestamp=timestamp, dryrun_id=dryrun_id,
             requested_model=role_cfg.preferred_model, selected_model=role_cfg.preferred_model,
+            actual_model_returned=diag.get("model_used"),
             http_status=diag.get("http_status"),
             provider_error_code=diag.get("provider_error_code"),
             request_id=diag.get("request_id"),
@@ -378,6 +386,7 @@ def _call_llm(
             message_present=diag.get("message_present"),
             content_present=diag.get("content_present"),
             content_length=diag.get("content_length"),
+            token_usage=diag.get("usage"),
             structured_parse_result=_classify_transport_failure(e),
             failure_category=_classify_transport_failure(e),
         ))

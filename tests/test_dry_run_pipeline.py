@@ -12,7 +12,7 @@ import pytest
 from research.db import OmniLabDB
 from research.dry_run.budget import DryRunBudgetExceededError, DryRunCallBudget
 from research.dry_run.pipeline import render_report, run_dry_run_cycle, write_artifacts
-from research.llm.base import LLMProvider, LLMResponse, LLMUnavailableError, RunBudget
+from research.llm.base import ErrorCategory, LLMProvider, LLMResponse, LLMUnavailableError, RunBudget
 from research.llm.router import LLMRouter
 from research.llm.structured_output import ValidationError
 
@@ -585,3 +585,47 @@ class TestStructuredOutputWiring:
         assert provider.call_count == 0
         assert result.calls_made == 0
         assert "capabilit" in result.stopped_reason.lower() or "unavailable" in result.stopped_reason.lower()
+
+    def test_failed_call_still_records_token_usage_and_actual_model(self):
+        """Regression test for a second bug found alongside the openrouter.py
+        ordering fix (Phase H token/reasoning audit, DRYRUN-0005):
+        _call_llm's LLMUnavailableError handler built a CallRecord without
+        ever reading diag.get("usage")/diag.get("model_used"), so even
+        after openrouter.py started capturing usage on an empty-completion
+        failure, the pipeline layer discarded it a second time. A failed
+        call's CallRecord must carry whatever usage/model data the provider
+        diagnostics actually contained."""
+
+        class EmptyCompletionProvider(LLMProvider):
+            def complete(self, prompt, role, model="", **kwargs):
+                raise LLMUnavailableError(
+                    "OpenRouter returned an empty completion",
+                    category=ErrorCategory.EMPTY_RESPONSE,
+                    diagnostics={
+                        "http_status": 200,
+                        "envelope_parsed": True,
+                        "choices_present": True,
+                        "message_present": True,
+                        "content_present": False,
+                        "content_length": 0,
+                        "finish_reason": "length",
+                        "model_used": "liquid/lfm-2.5-2.6b:free",
+                        "request_id": "gen-test123",
+                        "usage": {
+                            "prompt_tokens": 1200, "completion_tokens": 2048,
+                            "total_tokens": 3248, "reasoning_tokens": 2048,
+                        },
+                    },
+                )
+
+        router = _isolated_router(EmptyCompletionProvider())
+        result = run_dry_run_cycle(router=router, authorized=True, dry_run_budget=DryRunCallBudget(3))
+
+        assert len(result.call_records) == 1
+        cr = result.call_records[0]
+        assert cr.token_usage == {
+            "prompt_tokens": 1200, "completion_tokens": 2048,
+            "total_tokens": 3248, "reasoning_tokens": 2048,
+        }
+        assert cr.actual_model_returned == "liquid/lfm-2.5-2.6b:free"
+        assert cr.finish_reason == "length"
