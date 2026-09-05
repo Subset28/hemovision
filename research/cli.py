@@ -41,7 +41,7 @@ def cmd_experiment(args: argparse.Namespace) -> int:
     except Exception as e:
         print(f"ERROR running {args.experiment_id}: {e}", file=sys.stderr)
         return 1
-    print(f"{exp.experiment_id}: final status = {exp.status}")
+    print(f"{exp.experiment_id}: execution_status={exp.execution_status} research_verdict={exp.research_verdict}")
     print(f"conclusion: {exp.conclusion[:300] if exp.conclusion else '(none)'}")
     return 0
 

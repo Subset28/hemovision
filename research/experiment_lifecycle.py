@@ -1,9 +1,15 @@
-"""Moves an experiment's directory between experiments/{queued,active,
-completed,rejected,failed}/ as its DB status changes.
+"""Moves an experiment's directory between
+experiments/{queued,running,completed,blocked,aborted}/ as its DB
+EXECUTION_STATUS changes (research/db.py). This axis is execution-only —
+directory placement never reflects the research_verdict. An experiment that
+ran successfully but got a FAIL/INCONCLUSIVE/REJECTED verdict still lives in
+completed/, next to PASS-verdict experiments; the verdict lives in that
+experiment's results.json/conclusion.md and the DB's research_verdict
+column, never in which directory it's in. See research/README.md
+"Execution status vs. research verdict".
 
 Deletion is structurally discouraged: this module only ever MOVES a
-directory, never deletes one. `experiments/failed/` and
-`experiments/rejected/` are never auto-emptied — see research/README.md.
+directory, never deletes one. No status directory is ever auto-emptied.
 """
 
 from __future__ import annotations

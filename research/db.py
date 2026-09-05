@@ -4,20 +4,77 @@ No ORM — dataclasses + stdlib sqlite3, per the Phase C spec ("this is
 infrastructure not a product"). Two tables:
 
   - experiments        one row per EXP-XXXX record (full experiment spec + result)
-  - experiment_events   append-only audit log of status transitions
+  - experiment_events   append-only audit log of status/verdict transitions
+
+Two orthogonal axes (Phase C.5 fix — see research/README.md "Execution status
+vs. research verdict" for the full rationale)
+----------------------------------------------------------------------------
+The original schema had a single `status` column conflating "did the
+pipeline run" with "was the scientific result good" (QUEUED/RUNNING/PASSED/
+FAILED/REJECTED/INCONCLUSIVE/BLOCKED all mixed together). That made
+`research/experiment_lifecycle.py`'s directory-per-status scheme misleading:
+an INCONCLUSIVE experiment (EXP-0004) landed in `completed/` (execution
+succeeded — correct) right next to nothing, while FAILED experiments
+(EXP-0002, EXP-0003, both of which also executed successfully — they just
+produced a negative research result) landed in a separate `failed/` bucket
+that read as if something had gone wrong operationally. It hadn't; the
+pipeline worked exactly as intended and produced real, negative evidence.
+
+This is fixed by splitting the single column into two:
+
+  - `execution_status` (EXECUTION_STATUSES below): did the pipeline run to
+    completion? QUEUED -> RUNNING -> {COMPLETED, ABORTED, BLOCKED}. This is
+    the axis `ALLOWED_TRANSITIONS` governs, and the axis
+    `research/experiment_lifecycle.py` uses to choose an experiment's
+    directory (experiments/{queued,running,completed,blocked,aborted}/).
+    ABORTED is new: it means the runner crashed / hit a resource limit /
+    never produced a fair, complete result to judge — distinct from a
+    REJECTED *verdict* (below), which means the pipeline ran fine but the
+    result was thrown out post-hoc as structurally invalid.
+
+  - `research_verdict` (RESEARCH_VERDICTS below): what does the scientific
+    result MEAN? Only meaningful once execution_status=COMPLETED (enforced
+    by `set_research_verdict`, not `transition_status`). Values: PENDING
+    (no verdict yet — the only value legal before execution_status=
+    COMPLETED), PASS, FAIL, INCONCLUSIVE, REJECTED.
+
+    REJECTED lives on the verdict axis, not the execution axis, even though
+    `research/rejection.py`'s checks (dataset tampering, unrelated files
+    touched, pytest failure on the experiment branch, etc.) are structural
+    rather than about the numbers. The reason: those checks run AFTER the
+    pipeline has already executed to completion — a rejected experiment
+    still has an execution_status of COMPLETED (the world did stay sane
+    long enough to produce a result; the result is just discarded as unfair
+    evidence for the declared hypothesis). Modeling REJECTED as an execution
+    status would make execution_status lie about whether the run finished.
+
+Choice made explicitly: `status` is RENAMED to `execution_status` (not kept
+alongside a new column) with a narrowed, execution-only value set, and
+`research_verdict` is added as a genuinely new column. Renaming rather than
+leaving `status` as a vestigial duplicate avoids two columns that can
+silently drift out of sync, and the audit log (`experiment_events`) already
+preserves full history of the old conflated value for EXP-0001..0004 from
+before this migration (see research/migrations/001_split_status_verdict.py).
 
 Status-transition policy (deliberate, not accidental — see
-`ALLOWED_TRANSITIONS` below): QUEUED -> RUNNING -> {PASSED, FAILED, REJECTED,
-INCONCLUSIVE}. A QUEUED experiment can never jump straight to a terminal
-verdict state without passing through RUNNING — this mirrors the real-world
-requirement that a verdict must be backed by an actual benchmark execution,
-not just declared. BLOCKED is reachable from QUEUED (an experiment can be
-provisionally queued but marked blocked pending a dependency) and BLOCKED can
-return to QUEUED once unblocked. Terminal states (PASSED, FAILED, REJECTED,
-INCONCLUSIVE) do not transition further in this phase — retrying an
-experiment means creating a new EXP-XXXX record with `parent_experiment_id`
-set, not mutating the old one's status. This keeps the audit log honest: once
-an experiment has a verdict, that verdict is immutable history.
+`ALLOWED_TRANSITIONS` below, which now governs ONLY execution_status):
+QUEUED -> RUNNING -> {COMPLETED, ABORTED, BLOCKED}. A QUEUED experiment can
+never jump straight to COMPLETED without passing through RUNNING — this
+mirrors the real-world requirement that an execution result must be backed
+by an actual run, not just declared. BLOCKED is reachable from QUEUED (an
+experiment can be provisionally queued but marked blocked pending a
+dependency) and BLOCKED can return to QUEUED once unblocked. Terminal
+execution states (COMPLETED, ABORTED) do not transition further in this
+phase — retrying an experiment means creating a new EXP-XXXX record with
+`parent_experiment_id` set, not mutating the old one's execution_status.
+
+Setting `research_verdict` is a SEPARATE, less-constrained operation
+(`set_research_verdict`), available only when execution_status=COMPLETED,
+and — once set to anything other than PENDING — immutable, same spirit as
+the old terminal-status immutability: a verdict is scientific history, not
+a mutable field. `update_fields` refuses to touch either
+`execution_status` or `research_verdict` directly, for the same audit-log
+reason it already refused `status`.
 """
 
 from __future__ import annotations
@@ -46,14 +103,24 @@ EXPERIMENT_FAMILIES = (
     "temporal_pipeline",
 )
 
-STATUSES = (
+# Execution axis: did the pipeline run to completion?
+EXECUTION_STATUSES = (
     "QUEUED",
     "RUNNING",
-    "PASSED",
-    "FAILED",
-    "REJECTED",
-    "INCONCLUSIVE",
+    "COMPLETED",
     "BLOCKED",
+    "ABORTED",
+)
+
+# Research axis: what does the result mean? Only meaningful once
+# execution_status == "COMPLETED". PENDING is the only legal value before
+# that (while QUEUED/RUNNING/BLOCKED/ABORTED).
+RESEARCH_VERDICTS = (
+    "PENDING",
+    "PASS",
+    "FAIL",
+    "INCONCLUSIVE",
+    "REJECTED",
 )
 
 VALIDATION_REQUIREMENTS = (
@@ -62,22 +129,30 @@ VALIDATION_REQUIREMENTS = (
     "REQUIRES_IPHONE",
 )
 
-TERMINAL_STATUSES = ("PASSED", "FAILED", "REJECTED", "INCONCLUSIVE")
+TERMINAL_EXECUTION_STATUSES = ("COMPLETED", "ABORTED")
 
-# status -> set of statuses it may transition to.
+# execution_status -> set of execution_statuses it may transition to.
+# Governs ONLY execution_status; research_verdict has its own, separate rule
+# (see set_research_verdict): legal only from execution_status=COMPLETED,
+# and immutable once set to anything other than PENDING.
 ALLOWED_TRANSITIONS: dict[str, tuple[str, ...]] = {
-    "QUEUED": ("RUNNING", "BLOCKED", "REJECTED"),
-    "BLOCKED": ("QUEUED", "REJECTED"),
-    "RUNNING": ("PASSED", "FAILED", "REJECTED", "INCONCLUSIVE", "BLOCKED"),
-    "PASSED": (),
-    "FAILED": (),
-    "REJECTED": (),
-    "INCONCLUSIVE": (),
+    "QUEUED": ("RUNNING", "BLOCKED"),
+    "BLOCKED": ("QUEUED",),
+    "RUNNING": ("COMPLETED", "ABORTED", "BLOCKED"),
+    "COMPLETED": (),
+    "ABORTED": (),
 }
 
 
 class TransitionError(ValueError):
-    """Raised when a status transition is not allowed by ALLOWED_TRANSITIONS."""
+    """Raised when an execution_status transition is not allowed by
+    ALLOWED_TRANSITIONS."""
+
+
+class VerdictError(ValueError):
+    """Raised when set_research_verdict is called out of order (before
+    execution_status=COMPLETED) or on an experiment that already has a
+    recorded (non-PENDING) verdict — verdicts are immutable once set."""
 
 
 class ExperimentNotFoundError(KeyError):
@@ -115,7 +190,8 @@ class Experiment:
     configuration: dict = field(default_factory=dict)
     baseline_run_id: str = ""
     result_run_id: Optional[str] = None
-    status: str = "QUEUED"
+    execution_status: str = "QUEUED"
+    research_verdict: str = "PENDING"
     metrics: Optional[dict] = None
     conclusion: Optional[str] = None
     validation_requirement: str = "OFFLINE_SIMULATABLE"
@@ -130,8 +206,15 @@ class Experiment:
     def __post_init__(self):
         if self.experiment_family not in EXPERIMENT_FAMILIES:
             raise ValueError(f"invalid experiment_family: {self.experiment_family!r}")
-        if self.status not in STATUSES:
-            raise ValueError(f"invalid status: {self.status!r}")
+        if self.execution_status not in EXECUTION_STATUSES:
+            raise ValueError(f"invalid execution_status: {self.execution_status!r}")
+        if self.research_verdict not in RESEARCH_VERDICTS:
+            raise ValueError(f"invalid research_verdict: {self.research_verdict!r}")
+        if self.research_verdict != "PENDING" and self.execution_status != "COMPLETED":
+            raise ValueError(
+                f"invalid combination: research_verdict={self.research_verdict!r} requires "
+                f"execution_status='COMPLETED', got {self.execution_status!r}"
+            )
         if self.validation_requirement not in VALIDATION_REQUIREMENTS:
             raise ValueError(f"invalid validation_requirement: {self.validation_requirement!r}")
 
@@ -173,9 +256,10 @@ CREATE TABLE IF NOT EXISTS experiments (
     configuration                TEXT NOT NULL DEFAULT '{}',
     baseline_run_id               TEXT NOT NULL,
     result_run_id                  TEXT,
-    status                          TEXT NOT NULL CHECK (status IN (
-                                 'QUEUED','RUNNING','PASSED','FAILED',
-                                 'REJECTED','INCONCLUSIVE','BLOCKED')),
+    execution_status                TEXT NOT NULL CHECK (execution_status IN (
+                                 'QUEUED','RUNNING','COMPLETED','BLOCKED','ABORTED')),
+    research_verdict                 TEXT NOT NULL DEFAULT 'PENDING' CHECK (research_verdict IN (
+                                 'PENDING','PASS','FAIL','INCONCLUSIVE','REJECTED')),
     metrics                          TEXT,
     conclusion                        TEXT,
     validation_requirement              TEXT NOT NULL CHECK (validation_requirement IN (
@@ -252,7 +336,7 @@ class OmniLabDB:
         self._conn.execute(
             "INSERT INTO experiment_events (experiment_id, from_status, to_status, note, timestamp) "
             "VALUES (?, NULL, ?, ?, ?)",
-            (exp.experiment_id, exp.status, "created", _utcnow()),
+            (exp.experiment_id, exp.execution_status, "created", _utcnow()),
         )
         self._conn.commit()
         return exp
@@ -268,13 +352,22 @@ class OmniLabDB:
             raise ExperimentNotFoundError(experiment_id)
         return self._row_to_experiment(row)
 
-    def list_experiments(self, status: Optional[str] = None) -> list[Experiment]:
-        if status is None:
-            cur = self._conn.execute("SELECT * FROM experiments ORDER BY experiment_id")
-        else:
-            cur = self._conn.execute(
-                "SELECT * FROM experiments WHERE status = ? ORDER BY experiment_id", (status,)
-            )
+    def list_experiments(
+        self, execution_status: Optional[str] = None, research_verdict: Optional[str] = None
+    ) -> list[Experiment]:
+        clauses = []
+        params: list[str] = []
+        if execution_status is not None:
+            clauses.append("execution_status = ?")
+            params.append(execution_status)
+        if research_verdict is not None:
+            clauses.append("research_verdict = ?")
+            params.append(research_verdict)
+        sql = "SELECT * FROM experiments"
+        if clauses:
+            sql += " WHERE " + " AND ".join(clauses)
+        sql += " ORDER BY experiment_id"
+        cur = self._conn.execute(sql, params)
         return [self._row_to_experiment(r) for r in cur.fetchall()]
 
     def get_events(self, experiment_id: str) -> list[ExperimentEvent]:
@@ -304,39 +397,84 @@ class OmniLabDB:
     def transition_status(
         self, experiment_id: str, to_status: str, note: Optional[str] = None
     ) -> Experiment:
-        """Move an experiment to a new status, enforcing ALLOWED_TRANSITIONS.
-        Logs the transition to experiment_events. Raises TransitionError if
-        the transition is not permitted (e.g. QUEUED -> PASSED directly)."""
-        if to_status not in STATUSES:
-            raise ValueError(f"invalid status: {to_status!r}")
+        """Move an experiment's execution_status to a new value, enforcing
+        ALLOWED_TRANSITIONS. Logs the transition to experiment_events. Raises
+        TransitionError if the transition is not permitted (e.g.
+        QUEUED -> COMPLETED directly). This governs execution_status ONLY —
+        use set_research_verdict() to record a scientific verdict."""
+        if to_status not in EXECUTION_STATUSES:
+            raise ValueError(f"invalid execution_status: {to_status!r}")
         exp = self.get_experiment(experiment_id)
-        allowed = ALLOWED_TRANSITIONS.get(exp.status, ())
+        allowed = ALLOWED_TRANSITIONS.get(exp.execution_status, ())
         if to_status not in allowed:
             raise TransitionError(
-                f"{experiment_id}: cannot transition {exp.status!r} -> {to_status!r}. "
-                f"Allowed from {exp.status!r}: {allowed!r}"
+                f"{experiment_id}: cannot transition execution_status {exp.execution_status!r} -> "
+                f"{to_status!r}. Allowed from {exp.execution_status!r}: {allowed!r}"
             )
         now = _utcnow()
-        completed_at = now if to_status in TERMINAL_STATUSES else exp.completed_at
+        completed_at = now if to_status in TERMINAL_EXECUTION_STATUSES else exp.completed_at
         self._conn.execute(
-            "UPDATE experiments SET status = ?, updated_at = ?, completed_at = ? WHERE experiment_id = ?",
+            "UPDATE experiments SET execution_status = ?, updated_at = ?, completed_at = ? "
+            "WHERE experiment_id = ?",
             (to_status, now, completed_at, experiment_id),
         )
         self._conn.execute(
             "INSERT INTO experiment_events (experiment_id, from_status, to_status, note, timestamp) "
             "VALUES (?, ?, ?, ?, ?)",
-            (experiment_id, exp.status, to_status, note, now),
+            (experiment_id, exp.execution_status, to_status, note, now),
+        )
+        self._conn.commit()
+        return self.get_experiment(experiment_id)
+
+    def set_research_verdict(
+        self, experiment_id: str, verdict: str, note: Optional[str] = None
+    ) -> Experiment:
+        """Record the scientific verdict for an experiment. Distinct from
+        transition_status() — this is a separate, less-constrained operation
+        available ONLY once execution_status='COMPLETED' (a verdict must be
+        backed by a finished run), and immutable once set to anything other
+        than PENDING (a verdict is scientific history, not a mutable field;
+        retrying means a new EXP-XXXX record with parent_experiment_id set).
+        Logs to experiment_events with from_status/to_status prefixed
+        'verdict:' so the audit log distinguishes verdict changes from
+        execution_status transitions."""
+        if verdict not in RESEARCH_VERDICTS:
+            raise ValueError(f"invalid research_verdict: {verdict!r}")
+        exp = self.get_experiment(experiment_id)
+        if exp.execution_status != "COMPLETED":
+            raise VerdictError(
+                f"{experiment_id}: cannot set research_verdict while execution_status="
+                f"{exp.execution_status!r} — a verdict requires execution_status='COMPLETED'."
+            )
+        if exp.research_verdict != "PENDING":
+            raise VerdictError(
+                f"{experiment_id}: research_verdict is already {exp.research_verdict!r} — "
+                "verdicts are immutable once set. Create a new EXP-XXXX record with "
+                "parent_experiment_id set to retry."
+            )
+        now = _utcnow()
+        self._conn.execute(
+            "UPDATE experiments SET research_verdict = ?, updated_at = ? WHERE experiment_id = ?",
+            (verdict, now, experiment_id),
+        )
+        self._conn.execute(
+            "INSERT INTO experiment_events (experiment_id, from_status, to_status, note, timestamp) "
+            "VALUES (?, ?, ?, ?, ?)",
+            (experiment_id, f"verdict:{exp.research_verdict}", f"verdict:{verdict}", note, now),
         )
         self._conn.commit()
         return self.get_experiment(experiment_id)
 
     def update_fields(self, experiment_id: str, **fields: Any) -> Experiment:
-        """Update arbitrary non-status fields (e.g. metrics, conclusion,
-        result_run_id, git_branch, end_commit). Use transition_status() for
-        status changes — this method refuses to touch `status` directly to
-        keep the audit log authoritative."""
-        if "status" in fields:
-            raise ValueError("use transition_status() to change status, not update_fields()")
+        """Update arbitrary non-status/non-verdict fields (e.g. metrics,
+        conclusion, result_run_id, git_branch, end_commit). Use
+        transition_status() for execution_status changes and
+        set_research_verdict() for verdict changes — this method refuses to
+        touch either directly, to keep the audit log authoritative."""
+        if "execution_status" in fields or "status" in fields:
+            raise ValueError("use transition_status() to change execution_status, not update_fields()")
+        if "research_verdict" in fields:
+            raise ValueError("use set_research_verdict() to change research_verdict, not update_fields()")
         self.get_experiment(experiment_id)  # existence check
         set_clauses = []
         params: dict[str, Any] = {"experiment_id": experiment_id}

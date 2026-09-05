@@ -144,7 +144,7 @@ def propose(dry_run: bool = True) -> list[Experiment]:
         memory[f.name] = f.read_text(encoding="utf-8")
 
     with OmniLabDB() as db:
-        queued = db.list_experiments(status="QUEUED")
+        queued = db.list_experiments(execution_status="QUEUED")
 
     return queued
 
@@ -152,9 +152,11 @@ def propose(dry_run: bool = True) -> list[Experiment]:
 def status_summary() -> dict:
     with OmniLabDB() as db:
         experiments = db.list_experiments()
-    counts: dict[str, int] = {}
+    execution_status_counts: dict[str, int] = {}
+    research_verdict_counts: dict[str, int] = {}
     for e in experiments:
-        counts[e.status] = counts.get(e.status, 0) + 1
+        execution_status_counts[e.execution_status] = execution_status_counts.get(e.execution_status, 0) + 1
+        research_verdict_counts[e.research_verdict] = research_verdict_counts.get(e.research_verdict, 0) + 1
     from research.resources import snapshot
 
     try:
@@ -165,10 +167,16 @@ def status_summary() -> dict:
 
     state = _load_state()
     return {
-        "counts": counts,
+        "execution_status_counts": execution_status_counts,
+        "research_verdict_counts": research_verdict_counts,
         "total": len(experiments),
         "experiments": [
-            {"experiment_id": e.experiment_id, "status": e.status, "family": e.experiment_family}
+            {
+                "experiment_id": e.experiment_id,
+                "execution_status": e.execution_status,
+                "research_verdict": e.research_verdict,
+                "family": e.experiment_family,
+            }
             for e in experiments
         ],
         "resource_snapshot": resource_info,
@@ -201,10 +209,11 @@ def run_experiment(experiment_id: str) -> Experiment:
     with OmniLabDB() as db:
         exp = db.get_experiment(experiment_id)
 
-    if exp.status != "QUEUED":
+    if exp.execution_status != "QUEUED":
         raise ValueError(
-            f"{experiment_id} is {exp.status!r}, not QUEUED — only QUEUED experiments can be run "
-            "(per research/db.py's transition policy, a verdict must come from an actual RUNNING execution)"
+            f"{experiment_id} is execution_status={exp.execution_status!r}, not QUEUED — only "
+            "QUEUED experiments can be run (per research/db.py's transition policy, a verdict "
+            "must come from an actual RUNNING execution)"
         )
 
     if experiment_id not in RUNNERS:
@@ -221,7 +230,7 @@ def run_experiment(experiment_id: str) -> Experiment:
     # 2. git isolation — create the experiment branch from a clean master
     eb = create_experiment_branch(experiment_id)
 
-    exp_dir = EXPERIMENTS_DIR / "active" / experiment_id
+    exp_dir = EXPERIMENTS_DIR / "running" / experiment_id
     log_lines: list[str] = []
 
     try:
@@ -236,20 +245,31 @@ def run_experiment(experiment_id: str) -> Experiment:
         try:
             run_result = RUNNERS[experiment_id](exp, exp_dir)
         except Exception as e:
+            # The runner crashed before producing a fair, complete result to
+            # judge — this is an execution-axis outcome (ABORTED), not a
+            # research_verdict, since there is no verdict to record: nothing
+            # ran to completion. Distinct from REJECTED (see research/db.py's
+            # module docstring).
             log_lines.append(f"[{_now()}] RUNNER FAILED: {e}")
-            return _finalize(experiment_id, exp_dir, "REJECTED", reasons=[f"benchmark_execution_failure: {e}"],
+            return _finalize(experiment_id, exp_dir, "ABORTED", verdict=None,
+                              reasons=[f"benchmark_execution_failure: {e}"],
                               log_lines=log_lines, results={}, conclusion=f"Runner raised: {e}")
 
         log_lines.extend(run_result.log_lines)
 
-        # 4. run tests — safety gate
+        # 4. run tests — safety gate. The pipeline DID run to completion here
+        #    (execution_status=COMPLETED) — pytest failing on the experiment
+        #    branch is a structural rejection of the RESULT, not a crash.
         tests_ok, test_output = _run_tests()
         log_lines.append(f"[{_now()}] pytest exit_ok={tests_ok}")
         if not tests_ok:
-            return _finalize(experiment_id, exp_dir, "REJECTED", reasons=["test_failure: pytest failed on the experiment branch"],
+            return _finalize(experiment_id, exp_dir, "COMPLETED", verdict="REJECTED",
+                              reasons=["test_failure: pytest failed on the experiment branch"],
                               log_lines=log_lines + [test_output], results={}, conclusion="Test suite failed on experiment branch.")
 
-        # 5. automatic rejection checks
+        # 5. automatic rejection checks — also execution_status=COMPLETED,
+        #    research_verdict=REJECTED (ran fine, but structurally invalid
+        #    per research/rejection.py's checks — see research/db.py).
         hash_after = manifest_hash()
         touched = touched_paths(eb.start_commit)
         rejection = combine(
@@ -258,20 +278,25 @@ def run_experiment(experiment_id: str) -> Experiment:
             check_declared_variables_cover_diff(exp, touched),
         )
         if rejection.rejected:
-            return _finalize(experiment_id, exp_dir, "REJECTED", reasons=rejection.reasons,
+            return _finalize(experiment_id, exp_dir, "COMPLETED", verdict="REJECTED", reasons=rejection.reasons,
                               log_lines=log_lines, results={}, conclusion="; ".join(rejection.reasons))
 
-        # 6. evaluation policy verdict
+        # 6. evaluation policy verdict. run_result.verdict_interpretation maps
+        #    evaluation_policy.Verdict.result (PASSED/FAILED/INCONCLUSIVE) to
+        #    this experiment's research_verdict (PASS/FAIL/INCONCLUSIVE) —
+        #    see e.g. run_exp_0001's inversion for a confirmatory/control
+        #    hypothesis.
         verdict: Verdict = run_result.policy.evaluate(run_result.baseline_metrics, run_result.candidate_metrics)
-        final_status = run_result.verdict_interpretation.get(verdict.result, verdict.result)
-        log_lines.append(f"[{_now()}] evaluation_policy verdict={verdict.result} -> final_status={final_status}")
+        final_verdict = run_result.verdict_interpretation.get(verdict.result, verdict.result)
+        log_lines.append(f"[{_now()}] evaluation_policy verdict={verdict.result} -> research_verdict={final_verdict}")
         log_lines.append(f"[{_now()}] verdict explanation: {verdict.explanation}")
 
         results = {
             "baseline_metrics": run_result.baseline_metrics,
             "candidate_metrics": run_result.candidate_metrics,
             "raw_evaluation_policy_verdict": verdict.result,
-            "final_experiment_status": final_status,
+            "execution_status": "COMPLETED",
+            "research_verdict": final_verdict,
             "guardrail_results": verdict.guardrail_results,
             "reasons": verdict.reasons,
             "notes": run_result.notes,
@@ -280,7 +305,8 @@ def run_experiment(experiment_id: str) -> Experiment:
 
         conclusion = (
             f"# {experiment_id} — Conclusion\n\n"
-            f"**Final status**: {final_status}\n\n"
+            f"**Execution status**: COMPLETED\n\n"
+            f"**Research verdict**: {final_verdict}\n\n"
             f"**Raw evaluation-policy verdict**: {verdict.result}\n\n"
             f"**Notes**: {run_result.notes}\n\n"
             f"**Reasoning**:\n" + "\n".join(f"- {r}" for r in verdict.reasons) + "\n"
@@ -292,7 +318,7 @@ def run_experiment(experiment_id: str) -> Experiment:
         capture_diff(experiment_id, eb.start_commit, exp_dir / "patch.diff")
 
         exp_after = _finalize(
-            experiment_id, exp_dir, final_status, reasons=verdict.reasons,
+            experiment_id, exp_dir, "COMPLETED", verdict=final_verdict, reasons=verdict.reasons,
             log_lines=log_lines, results=results, conclusion=conclusion,
             result_run_id=run_result.result_run_id,
         )
@@ -321,16 +347,19 @@ def _now() -> str:
 def _finalize(
     experiment_id: str,
     exp_dir: Path,
-    final_status: str,
+    execution_status: str,
+    verdict: str | None,
     reasons: list[str],
     log_lines: list[str],
     results: dict,
     conclusion: str,
     result_run_id: str | None = None,
 ) -> Experiment:
-    """Write artifacts, transition DB status, move the directory, and update
-    research memory. Shared tail for every exit path (PASSED/FAILED/
-    REJECTED/INCONCLUSIVE)."""
+    """Write artifacts, transition DB execution_status, record the
+    research_verdict (only when execution_status='COMPLETED' and verdict is
+    given — e.g. an ABORTED runner crash passes verdict=None since no
+    verdict exists to record), move the directory, and update research
+    memory. Shared tail for every exit path."""
     write_results_json(exp_dir, results)
     write_conclusion_md(exp_dir, conclusion)
     experiment_schema.write_analysis_md(
@@ -354,9 +383,11 @@ def _finalize(
             result_run_id=result_run_id,
             end_commit=end_commit,
         )
-        exp = db.transition_status(experiment_id, final_status, note="; ".join(reasons)[:500] if reasons else None)
+        exp = db.transition_status(experiment_id, execution_status, note="; ".join(reasons)[:500] if reasons else None)
+        if execution_status == "COMPLETED" and verdict is not None:
+            exp = db.set_research_verdict(experiment_id, verdict, note="; ".join(reasons)[:500] if reasons else None)
 
-    new_dir = move_to_status(experiment_id, final_status)
+    new_dir = move_to_status(experiment_id, execution_status)
     _update_memory(exp, results, reasons)
     return exp
 
@@ -364,19 +395,21 @@ def _finalize(
 def _update_memory(exp: Experiment, results: dict, reasons: list[str]) -> None:
     """Append a dated entry to the relevant research/memory/*.md file(s).
     Explicit orchestrator step per research/memory/README.md's mandatory
-    protocol — not left as an unenforced convention."""
+    protocol — not left as an unenforced convention. Filed by
+    research_verdict (the scientific outcome), not execution_status."""
     from research.config import MEMORY_DIR
 
     entry = (
         f"\n## {exp.experiment_id} ({_now()})\n\n"
         f"- Family: {exp.experiment_family}\n"
-        f"- Status: {exp.status}\n"
+        f"- Execution status: {exp.execution_status}\n"
+        f"- Research verdict: {exp.research_verdict}\n"
         f"- Hypothesis: {exp.hypothesis}\n"
         f"- Reasons: {'; '.join(reasons) if reasons else '(none recorded)'}\n"
     )
-    if exp.status == "PASSED":
+    if exp.research_verdict == "PASS":
         target = MEMORY_DIR / "successful_methods.md"
-    elif exp.status in ("FAILED", "REJECTED"):
+    elif exp.research_verdict in ("FAIL", "REJECTED"):
         target = MEMORY_DIR / "failed_methods.md"
     else:
         target = MEMORY_DIR / "open_questions.md"

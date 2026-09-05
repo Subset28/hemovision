@@ -13,6 +13,7 @@ from research.db import (
     ExperimentNotFoundError,
     OmniLabDB,
     TransitionError,
+    VerdictError,
 )
 
 
@@ -51,7 +52,8 @@ class TestExperimentCreation:
         assert fetched.experiment_id == "EXP-0001"
         assert fetched.hypothesis == "test hypothesis"
         assert fetched.controls == {"model": "yolov8m-oiv7"}
-        assert fetched.status == "QUEUED"
+        assert fetched.execution_status == "QUEUED"
+        assert fetched.research_verdict == "PENDING"
 
     def test_get_missing_raises(self, db: OmniLabDB):
         with pytest.raises(ExperimentNotFoundError):
@@ -73,35 +75,53 @@ class TestExperimentCreation:
         with pytest.raises(ValueError):
             _make_experiment(experiment_family="not_a_real_family")
 
-    def test_invalid_status_rejected(self):
+    def test_invalid_execution_status_rejected(self):
         with pytest.raises(ValueError):
-            _make_experiment(status="NOT_A_STATUS")
+            _make_experiment(execution_status="NOT_A_STATUS")
+
+    def test_invalid_research_verdict_rejected(self):
+        with pytest.raises(ValueError):
+            _make_experiment(execution_status="COMPLETED", research_verdict="NOT_A_VERDICT")
+
+    def test_non_pending_verdict_requires_completed_execution_status(self):
+        """A research_verdict other than PENDING can never coexist with an
+        execution_status other than COMPLETED — this is checked at
+        construction time, not just by set_research_verdict()."""
+        with pytest.raises(ValueError):
+            _make_experiment(execution_status="RUNNING", research_verdict="PASS")
 
 
-class TestStatusTransitions:
-    def test_queued_to_running_to_passed(self, db: OmniLabDB):
+class TestExecutionStatusTransitions:
+    def test_queued_to_running_to_completed(self, db: OmniLabDB):
         db.create_experiment(_make_experiment())
         db.transition_status("EXP-0001", "RUNNING")
-        exp = db.transition_status("EXP-0001", "PASSED")
-        assert exp.status == "PASSED"
+        exp = db.transition_status("EXP-0001", "COMPLETED")
+        assert exp.execution_status == "COMPLETED"
         assert exp.completed_at is not None
 
-    def test_queued_cannot_jump_to_passed(self, db: OmniLabDB):
+    def test_queued_cannot_jump_to_completed(self, db: OmniLabDB):
         """Core invariant: a verdict must be backed by an actual RUNNING
-        execution — QUEUED -> PASSED directly is structurally disallowed."""
+        execution — QUEUED -> COMPLETED directly is structurally disallowed."""
         db.create_experiment(_make_experiment())
         with pytest.raises(TransitionError):
-            db.transition_status("EXP-0001", "PASSED")
+            db.transition_status("EXP-0001", "COMPLETED")
 
-    def test_queued_cannot_jump_to_failed(self, db: OmniLabDB):
+    def test_queued_cannot_jump_to_aborted(self, db: OmniLabDB):
         db.create_experiment(_make_experiment())
         with pytest.raises(TransitionError):
-            db.transition_status("EXP-0001", "FAILED")
+            db.transition_status("EXP-0001", "ABORTED")
 
-    def test_terminal_status_cannot_transition_further(self, db: OmniLabDB):
+    def test_terminal_execution_status_cannot_transition_further(self, db: OmniLabDB):
         db.create_experiment(_make_experiment())
         db.transition_status("EXP-0001", "RUNNING")
-        db.transition_status("EXP-0001", "REJECTED")
+        db.transition_status("EXP-0001", "ABORTED")
+        with pytest.raises(TransitionError):
+            db.transition_status("EXP-0001", "RUNNING")
+
+    def test_completed_cannot_transition_further(self, db: OmniLabDB):
+        db.create_experiment(_make_experiment())
+        db.transition_status("EXP-0001", "RUNNING")
+        db.transition_status("EXP-0001", "COMPLETED")
         with pytest.raises(TransitionError):
             db.transition_status("EXP-0001", "RUNNING")
 
@@ -109,7 +129,7 @@ class TestStatusTransitions:
         db.create_experiment(_make_experiment())
         db.transition_status("EXP-0001", "BLOCKED")
         exp = db.transition_status("EXP-0001", "QUEUED")
-        assert exp.status == "QUEUED"
+        assert exp.execution_status == "QUEUED"
 
     def test_transition_logs_event(self, db: OmniLabDB):
         db.create_experiment(_make_experiment())
@@ -121,11 +141,82 @@ class TestStatusTransitions:
         assert events[1].to_status == "RUNNING"
         assert events[1].note == "starting benchmark"
 
-    def test_inconclusive_is_valid_terminal_state(self, db: OmniLabDB):
+    def test_running_can_go_to_aborted(self, db: OmniLabDB):
+        """A runner crash / resource limit / incomplete result maps to
+        ABORTED — distinct from a REJECTED research_verdict, which requires
+        execution_status=COMPLETED (see TestResearchVerdicts)."""
         db.create_experiment(_make_experiment())
         db.transition_status("EXP-0001", "RUNNING")
-        exp = db.transition_status("EXP-0001", "INCONCLUSIVE")
-        assert exp.status == "INCONCLUSIVE"
+        exp = db.transition_status("EXP-0001", "ABORTED")
+        assert exp.execution_status == "ABORTED"
+        assert exp.research_verdict == "PENDING"
+
+
+class TestResearchVerdicts:
+    def _completed(self, db: OmniLabDB, experiment_id: str = "EXP-0001") -> Experiment:
+        db.create_experiment(_make_experiment(experiment_id))
+        db.transition_status(experiment_id, "RUNNING")
+        return db.transition_status(experiment_id, "COMPLETED")
+
+    def test_completed_plus_pass_is_valid(self, db: OmniLabDB):
+        self._completed(db)
+        exp = db.set_research_verdict("EXP-0001", "PASS")
+        assert exp.execution_status == "COMPLETED"
+        assert exp.research_verdict == "PASS"
+
+    def test_completed_plus_fail_is_valid(self, db: OmniLabDB):
+        self._completed(db)
+        exp = db.set_research_verdict("EXP-0001", "FAIL")
+        assert exp.execution_status == "COMPLETED"
+        assert exp.research_verdict == "FAIL"
+
+    def test_completed_plus_inconclusive_is_valid(self, db: OmniLabDB):
+        self._completed(db)
+        exp = db.set_research_verdict("EXP-0001", "INCONCLUSIVE")
+        assert exp.execution_status == "COMPLETED"
+        assert exp.research_verdict == "INCONCLUSIVE"
+
+    def test_completed_plus_rejected_is_valid(self, db: OmniLabDB):
+        self._completed(db)
+        exp = db.set_research_verdict("EXP-0001", "REJECTED")
+        assert exp.execution_status == "COMPLETED"
+        assert exp.research_verdict == "REJECTED"
+
+    def test_inconclusive_is_not_conflated_with_aborted_or_rejected(self, db: OmniLabDB):
+        """execution_status and research_verdict are genuinely different
+        axes: an INCONCLUSIVE research_verdict is a normal, successful
+        execution outcome, not an execution failure. ABORTED and REJECTED
+        (structural) live on different axes/values entirely."""
+        self._completed(db)
+        exp = db.set_research_verdict("EXP-0001", "INCONCLUSIVE")
+        assert exp.execution_status == "COMPLETED"  # not ABORTED
+        assert exp.research_verdict == "INCONCLUSIVE"
+        assert exp.research_verdict != "ABORTED"  # not even a legal verdict value
+        assert exp.execution_status != "REJECTED"  # not even a legal execution_status value
+
+    def test_cannot_set_verdict_before_completed(self, db: OmniLabDB):
+        db.create_experiment(_make_experiment())
+        db.transition_status("EXP-0001", "RUNNING")
+        with pytest.raises(VerdictError):
+            db.set_research_verdict("EXP-0001", "PASS")
+
+    def test_cannot_set_verdict_while_queued(self, db: OmniLabDB):
+        db.create_experiment(_make_experiment())
+        with pytest.raises(VerdictError):
+            db.set_research_verdict("EXP-0001", "PASS")
+
+    def test_verdict_is_immutable_once_set(self, db: OmniLabDB):
+        self._completed(db)
+        db.set_research_verdict("EXP-0001", "FAIL")
+        with pytest.raises(VerdictError):
+            db.set_research_verdict("EXP-0001", "PASS")
+        # the original verdict must survive the rejected overwrite attempt
+        assert db.get_experiment("EXP-0001").research_verdict == "FAIL"
+
+    def test_invalid_verdict_value_rejected(self, db: OmniLabDB):
+        self._completed(db)
+        with pytest.raises(ValueError):
+            db.set_research_verdict("EXP-0001", "NOT_A_VERDICT")
 
 
 class TestUpdateFields:
@@ -135,10 +226,20 @@ class TestUpdateFields:
         assert exp.metrics == {"person.recall": 0.25}
         assert exp.conclusion == "confirmed"
 
-    def test_update_fields_refuses_status(self, db: OmniLabDB):
+    def test_update_fields_refuses_execution_status(self, db: OmniLabDB):
         db.create_experiment(_make_experiment())
         with pytest.raises(ValueError):
-            db.update_fields("EXP-0001", status="PASSED")
+            db.update_fields("EXP-0001", execution_status="COMPLETED")
+
+    def test_update_fields_refuses_legacy_status_kwarg(self, db: OmniLabDB):
+        db.create_experiment(_make_experiment())
+        with pytest.raises(ValueError):
+            db.update_fields("EXP-0001", status="COMPLETED")
+
+    def test_update_fields_refuses_research_verdict(self, db: OmniLabDB):
+        db.create_experiment(_make_experiment())
+        with pytest.raises(ValueError):
+            db.update_fields("EXP-0001", research_verdict="PASS")
 
 
 class TestBaselineRunResolution:
@@ -155,10 +256,19 @@ class TestBaselineRunResolution:
 
 
 class TestListExperiments:
-    def test_list_all_and_by_status(self, db: OmniLabDB):
+    def test_list_all_and_by_execution_status(self, db: OmniLabDB):
         db.create_experiment(_make_experiment("EXP-0001"))
         db.create_experiment(_make_experiment("EXP-0002"))
         db.transition_status("EXP-0002", "RUNNING")
         assert len(db.list_experiments()) == 2
-        assert len(db.list_experiments(status="QUEUED")) == 1
-        assert len(db.list_experiments(status="RUNNING")) == 1
+        assert len(db.list_experiments(execution_status="QUEUED")) == 1
+        assert len(db.list_experiments(execution_status="RUNNING")) == 1
+
+    def test_list_by_research_verdict(self, db: OmniLabDB):
+        db.create_experiment(_make_experiment("EXP-0001"))
+        db.create_experiment(_make_experiment("EXP-0002"))
+        db.transition_status("EXP-0001", "RUNNING")
+        db.transition_status("EXP-0001", "COMPLETED")
+        db.set_research_verdict("EXP-0001", "PASS")
+        assert len(db.list_experiments(research_verdict="PENDING")) == 1
+        assert len(db.list_experiments(research_verdict="PASS")) == 1

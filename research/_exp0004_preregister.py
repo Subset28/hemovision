@@ -222,7 +222,7 @@ def main() -> None:
     exp_dir = find_current_dir("EXP-0004")
     if exp_dir is not None:
         write_queued_artifacts(exp, exp_dir)
-    print(f"EXP-0004 pre-registration written. status={exp.status}, dir={exp_dir}")
+    print(f"EXP-0004 pre-registration written. execution_status={exp.execution_status}, dir={exp_dir}")
 
 
 if __name__ == "__main__":

@@ -15,14 +15,19 @@ RESEARCH_DIR = REPO_ROOT / "research"
 EXPERIMENTS_DIR = REPO_ROOT / "experiments"
 DB_PATH = RESEARCH_DIR / "omnilab.db"
 
+# Keyed by EXECUTION_STATUS only (research/db.py) — directory placement
+# reflects "did the pipeline run", never the research verdict. An experiment
+# that ran successfully but got a FAIL/INCONCLUSIVE/REJECTED verdict still
+# lives in completed/; the verdict is recorded explicitly in that
+# experiment's results.json/conclusion.md and the DB, never implied by which
+# folder it's in. See research/README.md "Execution status vs. research
+# verdict".
 EXPERIMENT_STATUS_DIRS = {
     "QUEUED": EXPERIMENTS_DIR / "queued",
-    "RUNNING": EXPERIMENTS_DIR / "active",
-    "PASSED": EXPERIMENTS_DIR / "completed",
-    "FAILED": EXPERIMENTS_DIR / "failed",
-    "REJECTED": EXPERIMENTS_DIR / "rejected",
-    "INCONCLUSIVE": EXPERIMENTS_DIR / "completed",
-    "BLOCKED": EXPERIMENTS_DIR / "queued",
+    "RUNNING": EXPERIMENTS_DIR / "running",
+    "COMPLETED": EXPERIMENTS_DIR / "completed",
+    "BLOCKED": EXPERIMENTS_DIR / "blocked",
+    "ABORTED": EXPERIMENTS_DIR / "aborted",
 }
 
 MEMORY_DIR = RESEARCH_DIR / "memory"

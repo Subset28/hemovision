@@ -35,7 +35,7 @@ class ExperimentRunResult:
     baseline_metrics: dict
     candidate_metrics: dict
     policy: EvaluationPolicy
-    verdict_interpretation: dict  # evaluation_policy.Verdict.result -> final DB status
+    verdict_interpretation: dict  # evaluation_policy.Verdict.result -> research_verdict (PASS/FAIL/INCONCLUSIVE)
     notes: str
     result_run_id: str
     log_lines: list = field(default_factory=list)
@@ -62,9 +62,13 @@ def run_exp_0001(exp: Experiment, exp_dir: Path) -> ExperimentRunResult:
     Because the hypothesis is a NEGATIVE claim ("this does not work without
     an unacceptable cost"), a hard evaluation_policy FAILED verdict (the
     precision guardrail badly violated) is what CONFIRMS the hypothesis, and
-    maps to a final PASSED status for this experiment. A clean PASSED
-    evaluation-policy verdict (precision held, recall genuinely improved)
-    would REFUTE the hypothesis and maps to FAILED.
+    maps to a research_verdict of PASS for this experiment — meaning "the
+    hypothesis that threshold-only cannot resolve Person recall without
+    unacceptable precision loss was confirmed," NOT "this is a viable
+    production setting" (conf=0.05 is exactly the configuration this PASS
+    verdict says NOT to ship). A clean PASSED evaluation-policy verdict
+    (precision held, recall genuinely improved) would REFUTE the hypothesis
+    and maps to a research_verdict of FAIL.
     """
     sweep_path = _threshold_sweep_path()
     if not sweep_path.exists():
@@ -125,7 +129,7 @@ def run_exp_0001(exp: Experiment, exp_dir: Path) -> ExperimentRunResult:
         baseline_metrics=baseline_metrics,
         candidate_metrics=candidate_metrics,
         policy=policy,
-        verdict_interpretation={"PASSED": "FAILED", "FAILED": "PASSED", "INCONCLUSIVE": "INCONCLUSIVE"},
+        verdict_interpretation={"PASSED": "FAIL", "FAILED": "PASS", "INCONCLUSIVE": "INCONCLUSIVE"},
         notes=notes,
         result_run_id="RUN-20260904-002+threshold_sweep@conf=0.05",
         log_lines=[
@@ -249,7 +253,7 @@ def run_exp_0002(exp: Experiment, exp_dir: Path) -> ExperimentRunResult:
         baseline_metrics=baseline_metrics,
         candidate_metrics=candidate_metrics,
         policy=policy,
-        verdict_interpretation={"PASSED": "PASSED", "FAILED": "FAILED", "INCONCLUSIVE": "INCONCLUSIVE"},
+        verdict_interpretation={"PASSED": "PASS", "FAILED": "FAIL", "INCONCLUSIVE": "INCONCLUSIVE"},
         notes=(
             f"Real inference re-run at imgsz={CANDIDATE_IMGSZ} (candidate) vs the canonical "
             "imgsz=640 baseline, same model weights/conf/iou/manifest. This is an inference-time-only "
@@ -396,7 +400,7 @@ def run_exp_0003(exp: Experiment, exp_dir: Path) -> ExperimentRunResult:
         baseline_metrics=baseline_metrics,
         candidate_metrics=candidate_metrics,
         policy=policy,
-        verdict_interpretation={"PASSED": "PASSED", "FAILED": "FAILED", "INCONCLUSIVE": "INCONCLUSIVE"},
+        verdict_interpretation={"PASSED": "PASS", "FAILED": "FAIL", "INCONCLUSIVE": "INCONCLUSIVE"},
         notes=notes,
         result_run_id=(
             "EXP-0003-person-confusion-analysis-inline (no new inference; reuses "
@@ -677,7 +681,7 @@ def run_exp_0004(exp: Experiment, exp_dir: Path) -> ExperimentRunResult:
         baseline_metrics=baseline_metrics_common,
         candidate_metrics=candidate_metrics,
         policy=policy,
-        verdict_interpretation={"PASSED": "PASSED", "FAILED": "FAILED", "INCONCLUSIVE": "INCONCLUSIVE"},
+        verdict_interpretation={"PASSED": "PASS", "FAILED": "FAIL", "INCONCLUSIVE": "INCONCLUSIVE"},
         notes=notes,
         result_run_id=f"EXP-0004-preprocessing-inline-representative={representative_name}",
         log_lines=log_lines,
