@@ -1,0 +1,151 @@
+{
+  "actually_queued": false,
+  "artifact_type": "PHASE_I_PROPOSAL",
+  "call_records": [
+    {
+      "actual_model_returned": "nvidia/nemotron-3-super-120b-a12b:free",
+      "choices_present": true,
+      "content_length": 6903,
+      "content_present": true,
+      "dryrun_id": "CANDIDATE-0002",
+      "envelope_parsed": true,
+      "error": null,
+      "failure_category": null,
+      "finish_reason": "stop",
+      "http_status": 200,
+      "latency_ms": 13890.999999999622,
+      "local_schema_validation_result": null,
+      "message_present": true,
+      "model_used": "nvidia/nemotron-3-super-120b-a12b:free",
+      "network_attempted": true,
+      "provider_error_code": null,
+      "provider_error_message": null,
+      "reasoning_configuration": "DISABLED",
+      "request_id": "gen-1788648617-3qpJLeynesCVFCoYAcze",
+      "requested_model": "nvidia/nemotron-3-super-120b-a12b:free",
+      "role": "researcher",
+      "selected_model": "nvidia/nemotron-3-super-120b-a12b:free",
+      "step": "phase_i_researcher",
+      "structured_output_capability_state": true,
+      "structured_parse_result": null,
+      "succeeded": true,
+      "timestamp": "2026-09-05T22:50:16.629147+00:00",
+      "token_usage": {
+        "cached_tokens": 0,
+        "completion_tokens": 2020,
+        "prompt_tokens": 4986,
+        "reasoning_tokens": 0,
+        "total_tokens": 7006
+      }
+    }
+  ],
+  "candidate_id": "CANDIDATE-0002",
+  "generated_at": "2026-09-05T22:50:30.537435+00:00",
+  "proposal": {
+    "acknowledges_rejected_hypothesis_ids": [],
+    "allowed_path_scope": [
+      "benchmark/",
+      "research/",
+      "experiments/",
+      "tests/",
+      "reports/"
+    ],
+    "baseline_comparison": "same as control condition; baseline person.recall = 0.211 (MEM-0003), TRUE_DETECTOR_MISS recovery = 1/92 (implied by MEM-0015 comparing yolov8l-oiv7 to YOLO11m), hazard.precision = 0.807 (MEM-0002)",
+    "baseline_metrics": {
+      "hazard_f1": 0.602291325695581,
+      "hazard_map50": 0.5822603224286523,
+      "hazard_precision": 0.8070175438596491,
+      "hazard_recall": 0.4804177545691906,
+      "num_images_evaluated": 380,
+      "overall_precision": 0.7342615012106537,
+      "overall_recall": 0.2467453213995118,
+      "run_id": "RUN-20260904-002"
+    },
+    "baseline_run_id": "RUN-20260904-002",
+    "compute_resource_estimate": {
+      "estimated_gpu_hours": 22,
+      "gpu": "RTX 3070 Ti"
+    },
+    "control_condition": "baseline: yolov8m-oiv7, conf=0.4, iou=0.7, imgsz=640, no preprocessing",
+    "controlled_variables": {
+      "confidence_threshold": 0.4,
+      "dataset": "Open Images V7",
+      "hazard_classes": [
+        "person",
+        "car",
+        "truck",
+        "bus",
+        "bicycle",
+        "motorcycle",
+        "stairs",
+        "dog"
+      ],
+      "imgsz": 640,
+      "iou_threshold": 0.7
+    },
+    "coreml_model_replacement_approved": false,
+    "data_privacy_classification": "NONE",
+    "dataset_version": "Open Images V7 (as used in MEM-0001, MEM-0002, MEM-0003, MEM-0004, MEM-0005)",
+    "dependent_variables": [
+      "person.recall",
+      "hazard.precision",
+      "TRUE_DETECTOR_MISS recovery count (out of 92)"
+    ],
+    "evidence_references": [
+      "MEM-0002",
+      "MEM-0003",
+      "MEM-0014",
+      "MEM-0015",
+      "MEM-0021",
+      "MEM-0027"
+    ],
+    "expected_artifacts": [
+      "benchmark/results/EXP-0006_yolov11m_gamma/metrics.json",
+      "benchmark/results/EXP-0006_yolov11m_gamma/per_class.json",
+      "benchmark/results/EXP-0006_yolov11m_gamma/true_detector_miss_analysis.json"
+    ],
+    "experiment_id": "EXP-9002",
+    "external_api_required": false,
+    "external_upload_approved": false,
+    "family": "model_variant",
+    "hypothesis": "The combination of YOLO11m (MEM-0015) and gamma preprocessing (MEM-0014) will recover more than 17/92 TRUE_DETECTOR_MISS Person cases at conf=0.4 by addressing both learned-representation limitations (via architecture shift) and local contrast deficits (via preprocessing), while maintaining hazard precision above 0.757, because gamma preprocessing alone showed a non-significant recall trend (+0.0198) and YOLO11m alone showed recovery potential, suggesting complementary mechanisms.",
+    "implementation_scope": "Benchmark evaluation only; requires constructing yolov11m-oiv7.pt and implementing gamma preprocessing in research/evaluation_policy.py inference path",
+    "inconclusive_if": "person.recall increase >= 0.03 but hazard.precision < 0.757, or vice versa, or if results are confounded by calibration shifts (per MEM-0021)",
+    "independent_variables": [
+      "model_checkpoint (yolov8m-oiv7 vs yolov11m)",
+      "preprocessing_transform (none vs gamma)"
+    ],
+    "isolation_requirements": "Exclude validation image IDs from training manifest via hash comparison; use Open Images V7 official train/val split; no image in val set may appear in training set (verified by SHA256 of filename + ground truth)",
+    "mac_iphone_deployment_approved": false,
+    "mac_iphone_required": false,
+    "materially_new_rationale": "While EXP-0004 tested preprocessing alone and EXP-0005 tested model size alone (both OIV7 vocabulary), this proposal tests a combination of a non-OIV7 checkpoint (YOLO11m, COCO-trained) with a specific preprocessing transform (gamma). This differs from rejected directions because: (1) it involves an architecture family shift (YOLOv8 -> YOLO11), not just backbone size; (2) it combines interventions shown to have individual trends (MEM-0014, MEM-0015); (3) it targets TRUE_DETECTOR_MISS recovery as a specific failure mode, not general recall; and (4) it holds conf=0.4 fixed to avoid the precision collapse seen in EXP-0001.",
+    "model_config_ref": "yolov11m (to be constructed; PREREQUISITE: yolov11m-oiv7.pt checkpoint does not yet exist and must be created by converting YOLO11m COCO weights to Open Images V7 601-class vocabulary and fine-tuning on OIV7 training split)",
+    "motivation": "MEM-0015 establishes YOLO11m recovers 17/92 TRUE_DETECTOR_MISS cases, but was rejected for production due to precision concerns. MEM-0014 found gamma preprocessing had the strongest effect among tested transforms (+0.0198 recall), though inconclusive. Since EXP-0004 and EXP-0005 showed negligible effects from preprocessing or model size alone, and MEM-0027 notes no combination experiments were run, combining these may yield synergistic gains in TRUE_DETECTOR_MISS recovery while allowing conf=0.4 to be retained, potentially mitigating precision loss seen in EXP-0001.",
+    "new_training_approved": false,
+    "prior_experiment_ids": [
+      "EXP-0001",
+      "EXP-0002",
+      "EXP-0003",
+      "EXP-0004",
+      "EXP-0005"
+    ],
+    "private_user_data_use_approved": false,
+    "procedure": "Eval four conditions: (1) yolov8m-oiv7 + no preprocessing (baseline), (2) yolov8m-oiv7 + gamma, (3) yolov11m + no preprocessing, (4) yolov11m + gamma. For each, compute person.recall, hazard.precision, and count of TRUE_DETECTOR_MISS cases recovered (defined as GT with zero detections at conf>=0.4 in baseline but >=1 detection with IoU>=0.5 in condition). Use benchmark/results/baseline/ as fixed GT. Isolate train/eval via image-ID hash exclusion (see isolation_requirements).",
+    "production_impact": false,
+    "production_impact_description": "This proposal evaluates model and preprocessing changes for offline benchmark analysis only. No change to ios/, benchmark/config.py, or baseline run is implied. Any production adoption would require separate human review, retraining on OmniSight-specific data, and validation on-device.",
+    "production_swift_modification_approved": false,
+    "rejects_hypothesis_if": "person.recall increase < 0.03 OR hazard.precision < 0.757 OR TRUE_DETECTOR_MISS recovery <= 17/92",
+    "reproducibility_requirements": "Fixed random seed for any stochastic processes; deterministic preprocessing; Open Images V7 validation split hash must match benchmark/results/baseline/; yolov11m-oiv7.pt must be shared via lab-approved artifact registry with SHA256 hash",
+    "research_question": "Does combining a YOLO11m checkpoint (different architecture family, COCO-trained) with gamma preprocessing recover more TRUE_DETECTOR_MISS Person cases than either intervention alone, without violating hazard precision guardrails?",
+    "schema_version": "1.0",
+    "signing_distribution_change_approved": false,
+    "success_criteria": {
+      "min_meaningful_delta": 0.03,
+      "primary_metric": "person.recall"
+    },
+    "supports_hypothesis_if": "person.recall increases by >= 0.03 (to >= 0.241) AND hazard.precision remains >= 0.757 AND TRUE_DETECTOR_MISS recovery increases to > 17/92",
+    "title": "Combined YOLO11m checkpoint and gamma preprocessing to recover TRUE_DETECTOR_MISS Person cases"
+  },
+  "raw_selected_problem": "TRUE_DETECTOR_MISS: the model simply never emits any Person detection with sufficient overlap for a given ground truth",
+  "raw_selection_rationale": "MEM-0003 shows Person recall is 0.211 at conf=0.4, the worst among hazard classes, with GT=303 boxes. MEM-0015 confirms YOLO11m recovered 17/92 (18.5%) TRUE_DETECTOR_MISS cases at conf=0.4, proving recovery is possible via architecture or data changes. This directly addresses the core failure mode where the model emits zero detections for Person GTs, which is distinct from low-confidence or localization failures. Since EXP-0001-0005 tested single interventions (threshold, resolution, class aliasing, preprocessing, model size) and failed to meaningfully improve recall, and MEM-0027 indicates no combined interventions were tested, targeting TRUE_DETECTOR_MISS via a novel combination is justified."
+}

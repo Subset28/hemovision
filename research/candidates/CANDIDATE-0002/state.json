@@ -1,0 +1,27 @@
+{
+  "calls_budget": 3,
+  "calls_made": 1,
+  "candidate_id": "CANDIDATE-0002",
+  "created_at": "2026-09-05T22:50:16.626096+00:00",
+  "final_report_path": null,
+  "history": [
+    {
+      "at": "2026-09-05T22:50:30.542057+00:00",
+      "from": "CREATED",
+      "reason": "",
+      "to": "RESEARCHER_COMPLETED"
+    },
+    {
+      "at": "2026-09-05T22:50:30.565919+00:00",
+      "from": "RESEARCHER_COMPLETED",
+      "reason": "deterministic admission failed: is_valid=False, unacknowledged_redundancy_conflicts=[('EXP-0005', 'MEM-0014')]",
+      "to": "REJECTED"
+    }
+  ],
+  "proposal_path": "C:\\Users\\Armaa\\Downloads\\OmniSight\\research\\candidates\\CANDIDATE-0002\\CANDIDATE-0002-proposal.json",
+  "review_path": null,
+  "revision_path": null,
+  "state": "REJECTED",
+  "stopped_reason": "deterministic admission failed: is_valid=False, unacknowledged_redundancy_conflicts=[('EXP-0005', 'MEM-0014')]",
+  "updated_at": "2026-09-05T22:50:30.565919+00:00"
+}
