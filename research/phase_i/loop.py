@@ -190,11 +190,11 @@ def _validation_to_dict(v: Optional[ValidationResult]) -> Optional[dict]:
 def _authorization_assessment(proposal: ExperimentProposal) -> dict:
     """Deterministic REQUIRED/APPROVED/NOT_REQUIRED status per Phase F
     human-authority flag (Phase-I CANDIDATE-0001 postmortem, section 7:
-    generalize across all approvals). Two flags
-    (coreml_model_replacement_approved, signing_distribution_change_approved)
-    have no deterministic "this proposal requires it" trigger anywhere in
-    the current canonical schema -- documented as a known gap, not silently
-    declared safe; both remain hard-coded False regardless."""
+    generalize across all approvals). All 7 flags now have a deterministic
+    "this proposal requires it" trigger -- CANDIDATE-0002's admission-
+    boundary audit (section 11) closed the last two gaps
+    (coreml_replacement_required, signing_distribution_change_required,
+    both new LLM-authorable requirement fields on ExperimentProposal)."""
     def status(required: bool, approved: bool) -> str:
         if not required:
             return "NOT_REQUIRED"
@@ -206,8 +206,8 @@ def _authorization_assessment(proposal: ExperimentProposal) -> dict:
         "new_training_approved": status(proposal.family == "training_data", proposal.new_training_approved),
         "private_user_data_use_approved": status(proposal.data_privacy_classification == "PRIVATE_USER_DATA", proposal.private_user_data_use_approved),
         "external_upload_approved": status(proposal.external_api_required, proposal.external_upload_approved),
-        "coreml_model_replacement_approved": "NO_DETERMINISTIC_TRIGGER_IN_SCHEMA",
-        "signing_distribution_change_approved": "NO_DETERMINISTIC_TRIGGER_IN_SCHEMA",
+        "coreml_model_replacement_approved": status(proposal.coreml_replacement_required, proposal.coreml_model_replacement_approved),
+        "signing_distribution_change_approved": status(proposal.signing_distribution_change_required, proposal.signing_distribution_change_approved),
     }
 
 

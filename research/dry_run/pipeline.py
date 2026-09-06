@@ -912,6 +912,35 @@ def _family_allowed_path_scope(family: str) -> tuple:
     return tuple(family_spec.allowed_path_prefixes) if family_spec is not None else ()
 
 
+def _family_requires_mac_iphone(family: str) -> bool:
+    """Deterministically derive the family-level floor for
+    `mac_iphone_required` from research/experiment_registry.py (Phase-I
+    CANDIDATE-0002 admission-boundary audit finding B). `mac_iphone_required`
+    is NOT "does executing this specific screening run need a device right
+    now" -- research/experiment_registry.py's `model_variant`/
+    `temporal_pipeline`/`application_decision_logic` entries are explicitly
+    `windows_evaluatable=True` (Windows-side screening is fine) while still
+    carrying `production_validation_requirement in ("REQUIRES_MAC",
+    "REQUIRES_IPHONE")` (eventual production adoption needs device
+    validation) -- confirmed by EXP-0005's own canonical spec
+    (research/experiment_specs/EXP-0005.json), a real, Windows-only-executed
+    model_variant experiment that was correctly backfilled with
+    `mac_iphone_required=True`. This is exactly the kind of registry
+    invariant OmniLab already knows and an autonomous researcher should
+    never be asked to memorize or guess -- CANDIDATE-0002 (family=
+    model_variant) set `mac_iphone_required=False` and was correctly
+    rejected by validate()'s MAC_IPHONE_REQUIRED_MISMATCH check, but that
+    rejection was for a fact this function now supplies deterministically,
+    never left to LLM judgment. Returns False (never guesses True) for an
+    unknown family."""
+    from research.experiment_registry import REGISTRY
+
+    family_spec = REGISTRY.get(family)
+    if family_spec is None:
+        return False
+    return family_spec.production_validation_requirement in ("REQUIRES_MAC", "REQUIRES_IPHONE")
+
+
 def _build_proposal(pr: ProposalResponse, experiment_id: str, baseline_run_id: str) -> ExperimentProposal:
     """Construct an ExperimentProposal from LLM-authored content. Every one
     of Phase F's 7 human-authority approval flags is hard-coded False here —
@@ -955,7 +984,14 @@ def _build_proposal(pr: ProposalResponse, experiment_id: str, baseline_run_id: s
         production_impact_description=pr.production_impact_description,
         data_privacy_classification=pr.data_privacy_classification,
         external_api_required=pr.external_api_required,
-        mac_iphone_required=pr.mac_iphone_required,
+        # Deterministic floor OR-ed with whatever the LLM said (Phase-I
+        # CANDIDATE-0002 fix): the researcher may still flag True for a
+        # reason the family registry doesn't capture, but can never
+        # incorrectly say False for a family the registry says needs
+        # eventual device validation.
+        mac_iphone_required=pr.mac_iphone_required or _family_requires_mac_iphone(pr.family),
+        coreml_replacement_required=pr.coreml_replacement_required,
+        signing_distribution_change_required=pr.signing_distribution_change_required,
         compute_resource_estimate=dict(pr.compute_resource_estimate),
         allowed_path_scope=_family_allowed_path_scope(pr.family),
         supports_hypothesis_if=pr.supports_hypothesis_if,

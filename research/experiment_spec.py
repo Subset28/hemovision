@@ -226,6 +226,18 @@ class ExperimentProposal:
     data_privacy_classification: str = "NONE"  # NONE | INTERNAL | PRIVATE_USER_DATA
     external_api_required: bool = False
     mac_iphone_required: bool = False
+    # Phase-I CANDIDATE-0002 admission-boundary audit (section 11): before
+    # this fix, a proposal had NO way to describe "this requires CoreML
+    # replacement" / "this requires a signing/distribution change"
+    # independently of the (always-False) approval flag -- the requirement
+    # and the approval were structurally indistinguishable, since only the
+    # approval field existed. These two REQUIREMENT fields close that gap,
+    # mirroring mac_iphone_required/external_api_required's existing
+    # pattern (requirement flag, LLM-supplied, separate from the approval
+    # flag it gates). LLM-authorable; never implies the corresponding
+    # *_approved flag, which remains hard-coded False regardless.
+    coreml_replacement_required: bool = False
+    signing_distribution_change_required: bool = False
     compute_resource_estimate: dict = field(default_factory=dict)
     allowed_path_scope: tuple = ()  # extends experiment_registry.FamilySpec.allowed_path_prefixes
 
@@ -278,8 +290,29 @@ def _canonical_json(obj: Any) -> str:
     return json.dumps(obj, sort_keys=True, default=str)
 
 
-def _proposal_hash(proposal: ExperimentProposal) -> str:
-    return hashlib.sha256(_canonical_json(proposal.to_dict()).encode("utf-8")).hexdigest()
+def _proposal_hash(proposal: ExperimentProposal, *, exclude: frozenset = frozenset()) -> str:
+    data = proposal.to_dict()
+    for k in exclude:
+        data.pop(k, None)
+    return hashlib.sha256(_canonical_json(data).encode("utf-8")).hexdigest()
+
+
+# Fields added to ExperimentProposal AFTER research/experiment_specs/
+# EXP-0001..0005.json were originally frozen (Phase-I CANDIDATE-0002
+# admission-boundary audit, section 11: coreml_replacement_required/
+# signing_distribution_change_required). Explicit and auditable, never
+# derived automatically -- a historical frozen_hash computed before one of
+# these fields existed is still considered valid IF the loaded proposal's
+# value for that field is exactly its listed default (i.e. the field
+# simply didn't exist at freeze time, nothing was silently changed). If a
+# historical record's value differs from the default, this grace does NOT
+# apply and FrozenProposalTamperedError still raises -- this narrows the
+# tolerance to exactly "a new field appeared", never to "an old field was
+# edited outside amend()".
+_FIELDS_ADDED_AFTER_PHASE_F_FREEZE: dict = {
+    "coreml_replacement_required": False,
+    "signing_distribution_change_required": False,
+}
 
 
 # ---------------------------------------------------------------------------
@@ -334,16 +367,34 @@ class ExperimentSpec:
 
     def verify_integrity(self) -> None:
         """Raise FrozenProposalTamperedError if the current proposal payload
-        does not match the hash recorded at freeze time."""
+        does not match the hash recorded at freeze time.
+
+        Tolerates additive schema evolution (Phase-I CANDIDATE-0002
+        admission-boundary audit): if a field in
+        _FIELDS_ADDED_AFTER_PHASE_F_FREEZE didn't exist when this record was
+        originally frozen, its value loads as the dataclass default -- that
+        alone must never be mistaken for tampering. The hash is recomputed
+        with those fields excluded and compared again ONLY as a fallback;
+        if the loaded value for any such field differs from its default,
+        this fallback does not apply and a genuine mismatch still raises."""
         if self.frozen_hash is None:
             return
         current = _proposal_hash(self.proposal)
-        if current != self.frozen_hash:
-            raise FrozenProposalTamperedError(
-                f"{self.proposal.experiment_id}: proposal payload does not match its "
-                f"frozen_hash — recorded={self.frozen_hash} current={current}. A frozen "
-                "proposal must only change via ExperimentSpec.amend()."
-            )
+        if current == self.frozen_hash:
+            return
+        at_default = all(
+            getattr(self.proposal, name, default) == default
+            for name, default in _FIELDS_ADDED_AFTER_PHASE_F_FREEZE.items()
+        )
+        if at_default:
+            legacy = _proposal_hash(self.proposal, exclude=frozenset(_FIELDS_ADDED_AFTER_PHASE_F_FREEZE))
+            if legacy == self.frozen_hash:
+                return
+        raise FrozenProposalTamperedError(
+            f"{self.proposal.experiment_id}: proposal payload does not match its "
+            f"frozen_hash — recorded={self.frozen_hash} current={current}. A frozen "
+            "proposal must only change via ExperimentSpec.amend()."
+        )
 
     def amend(self, field_name: str, new_value: Any, reason: str, approved_by: str = "human via CLI") -> Amendment:
         """Create a new versioned proposal record with `field_name` changed

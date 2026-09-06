@@ -438,6 +438,20 @@ def _validate_proposal(p: ExperimentProposal, result: ValidationResult, db, memo
             "research/experiment_validator.py's module docstring and tests/test_experiment_spec.py's "
             "decoupling test.",
         )
+    # Phase-I CANDIDATE-0002 admission-boundary audit (section 11): closes
+    # the CoreML/signing representation gap -- previously a proposal could
+    # not describe either requirement independently of its (always-False)
+    # approval flag at all.
+    if p.coreml_replacement_required and not p.coreml_model_replacement_approved:
+        result.add(
+            "NEEDS_HUMAN_APPROVAL", "UNAPPROVED_COREML_REPLACEMENT",
+            "coreml_replacement_required=True but coreml_model_replacement_approved=False.",
+        )
+    if p.signing_distribution_change_required and not p.signing_distribution_change_approved:
+        result.add(
+            "NEEDS_HUMAN_APPROVAL", "UNAPPROVED_SIGNING_DISTRIBUTION_CHANGE",
+            "signing_distribution_change_required=True but signing_distribution_change_approved=False.",
+        )
 
     # -- rejected-hypothesis acknowledgment (Phase F item #8) --
     conflicts = find_rejected_hypothesis_conflicts(p, memory_db)

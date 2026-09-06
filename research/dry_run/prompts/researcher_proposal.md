@@ -108,6 +108,8 @@ outside the JSON). Required fields:
   "data_privacy_classification": "NONE",
   "external_api_required": false,
   "mac_iphone_required": false,
+  "coreml_replacement_required": false,
+  "signing_distribution_change_required": false,
   "acknowledges_rejected_hypothesis_ids": [],
   "materially_new_rationale": "",
   "dataset_version": "... (real value, or an explicit blocking-prerequisite sentence)",

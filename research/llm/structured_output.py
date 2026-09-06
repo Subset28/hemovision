@@ -133,6 +133,8 @@ def proposal_response_json_schema() -> dict:
             "data_privacy_classification",
             "external_api_required",
             "mac_iphone_required",
+            "coreml_replacement_required",
+            "signing_distribution_change_required",
             "acknowledges_rejected_hypothesis_ids",
             "materially_new_rationale",
             "dataset_version",
@@ -168,6 +170,14 @@ def proposal_response_json_schema() -> dict:
             "data_privacy_classification": {"type": "string"},
             "external_api_required": {"type": "boolean"},
             "mac_iphone_required": {"type": "boolean"},
+            # Phase-I CANDIDATE-0002 admission-boundary audit (section 11):
+            # closes the gap where a proposal could not describe "this
+            # requires CoreML replacement"/"this requires a signing/
+            # distribution change" independently of the (always-False)
+            # approval flag. Mirrors mac_iphone_required/external_api_required's
+            # existing requirement-flag pattern.
+            "coreml_replacement_required": {"type": "boolean"},
+            "signing_distribution_change_required": {"type": "boolean"},
             "acknowledges_rejected_hypothesis_ids": {"type": "array", "items": {"type": "string"}},
             "materially_new_rationale": {"type": "string"},
             # -- Phase H schema-mapping fix (post-DRYRUN-0007 revision):
@@ -355,6 +365,8 @@ class ProposalResponse:
     data_privacy_classification: str = "NONE"
     external_api_required: bool = False
     mac_iphone_required: bool = False
+    coreml_replacement_required: bool = False
+    signing_distribution_change_required: bool = False
     acknowledges_rejected_hypothesis_ids: list = field(default_factory=list)
     materially_new_rationale: str = ""
     # -- Phase H schema-mapping fix -- see proposal_response_json_schema()'s
@@ -613,6 +625,8 @@ def parse_and_validate_proposal(raw_text: str) -> ProposalResponse:
         data_privacy_classification=str(data.get("data_privacy_classification") or "NONE"),
         external_api_required=bool(data.get("external_api_required") or False),
         mac_iphone_required=bool(data.get("mac_iphone_required") or False),
+        coreml_replacement_required=bool(data.get("coreml_replacement_required") or False),
+        signing_distribution_change_required=bool(data.get("signing_distribution_change_required") or False),
         acknowledges_rejected_hypothesis_ids=list(data.get("acknowledges_rejected_hypothesis_ids") or []),
         materially_new_rationale=str(data.get("materially_new_rationale") or ""),
         dataset_version=str(data.get("dataset_version") or ""),

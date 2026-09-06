@@ -142,6 +142,80 @@ class TestBuildProposalSchemaMapping:
         assert proposal.compute_resource_estimate == {"gpu": "RTX 3070 Ti", "estimated_gpu_hours": 6}
 
 
+class TestMacIphoneRequiredDeterministicFloor:
+    """Phase-I CANDIDATE-0002 admission-boundary audit finding B:
+    mac_iphone_required must be deterministically floored from
+    research/experiment_registry.py, never trusted as free-form LLM
+    output -- confirmed by EXP-0005's own canonical spec (a real,
+    Windows-only-executed model_variant experiment correctly backfilled
+    with mac_iphone_required=True)."""
+
+    def test_model_variant_forces_true_even_if_llm_said_false(self):
+        from research.dry_run.pipeline import _build_proposal
+
+        pr = _make_proposal_response(family="model_variant", mac_iphone_required=False)
+        proposal = _build_proposal(pr, "EXP-9001", "RUN-20260904-002")
+        assert proposal.mac_iphone_required is True
+
+    def test_temporal_pipeline_forces_true_even_if_llm_said_false(self):
+        from research.dry_run.pipeline import _build_proposal
+
+        pr = _make_proposal_response(family="temporal_pipeline", mac_iphone_required=False)
+        proposal = _build_proposal(pr, "EXP-9001", "RUN-20260904-002")
+        assert proposal.mac_iphone_required is True
+
+    def test_application_decision_logic_forces_true_even_if_llm_said_false(self):
+        from research.dry_run.pipeline import _build_proposal
+
+        pr = _make_proposal_response(family="application_decision_logic", mac_iphone_required=False)
+        proposal = _build_proposal(pr, "EXP-9001", "RUN-20260904-002")
+        assert proposal.mac_iphone_required is True
+
+    def test_offline_simulatable_family_not_forced_true(self):
+        """training_data is OFFLINE_SIMULATABLE per the registry -- Windows-
+        side screening AND no eventual device-validation floor. The LLM's
+        own (False) value is respected, not overridden to True."""
+        from research.dry_run.pipeline import _build_proposal
+
+        pr = _make_proposal_response(family="training_data", mac_iphone_required=False)
+        proposal = _build_proposal(pr, "EXP-9001", "RUN-20260904-002")
+        assert proposal.mac_iphone_required is False
+
+    def test_llm_true_is_preserved_for_offline_simulatable_family(self):
+        """The deterministic floor is an OR, never a downgrade -- an LLM
+        that independently flags True for a reason the registry doesn't
+        capture is never silently overridden back to False."""
+        from research.dry_run.pipeline import _build_proposal
+
+        pr = _make_proposal_response(family="threshold_postprocessing", mac_iphone_required=True)
+        proposal = _build_proposal(pr, "EXP-9001", "RUN-20260904-002")
+        assert proposal.mac_iphone_required is True
+
+    def test_resulting_proposal_is_structurally_valid_and_needs_approval_not_error(self):
+        """The fixed CANDIDATE-0002-style proposal (model_variant,
+        mac_iphone_required incorrectly claimed False by the LLM) is now
+        structurally/scientifically valid -- MAC_IPHONE_REQUIRED_MISMATCH
+        never fires because the deterministic value is already correct;
+        UNAPPROVED_MAC_IPHONE_DEPLOYMENT (NEEDS_HUMAN_APPROVAL) fires
+        instead, since the approval flag is still correctly False."""
+        from research.dry_run.pipeline import _build_proposal
+        from research.experiment_spec import ExperimentSpec
+        from research.experiment_validator import is_queue_eligible, validate
+
+        pr = _make_proposal_response(family="model_variant", mac_iphone_required=False)
+        proposal = _build_proposal(pr, "EXP-9001", "RUN-20260904-002")
+        result = validate(ExperimentSpec(proposal=proposal))
+        assert not any(i.code == "MAC_IPHONE_REQUIRED_MISMATCH" for i in result.errors)
+        assert any(i.code == "UNAPPROVED_MAC_IPHONE_DEPLOYMENT" for i in result.needs_human_approval)
+        assert result.is_valid is True
+        assert is_queue_eligible(result) is False
+
+    def test_unknown_family_does_not_force_true(self):
+        from research.dry_run.pipeline import _family_requires_mac_iphone
+
+        assert _family_requires_mac_iphone("not_a_real_family") is False
+
+
 # ---------------------------------------------------------------------------
 # research/experiment_validator.py -- placeholder-garbage rejection +
 # semantic-completeness NEEDS_HUMAN_REVIEW additions

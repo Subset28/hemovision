@@ -153,6 +153,59 @@ class TestApprovalFlagsNeverLlmSettable:
             assert getattr(proposal, flag) is False
 
 
+class TestCoreMLAndSigningRequirementRepresentation:
+    """Phase-I CANDIDATE-0002 admission-boundary audit, section 11: closes
+    the gap where a proposal had NO way to describe a CoreML-replacement or
+    signing/distribution-change requirement independently of the
+    (always-False) approval flag."""
+
+    def test_coreml_replacement_required_is_valid_not_error(self):
+        proposal = _proposal(coreml_replacement_required=True)
+        result = validate(ExperimentSpec(proposal=proposal))
+        assert result.is_valid is True
+        assert any(i.code == "UNAPPROVED_COREML_REPLACEMENT" for i in result.needs_human_approval)
+        assert not is_queue_eligible(result)
+
+    def test_signing_distribution_change_required_is_valid_not_error(self):
+        proposal = _proposal(signing_distribution_change_required=True)
+        result = validate(ExperimentSpec(proposal=proposal))
+        assert result.is_valid is True
+        assert any(i.code == "UNAPPROVED_SIGNING_DISTRIBUTION_CHANGE" for i in result.needs_human_approval)
+        assert not is_queue_eligible(result)
+
+    def test_llm_cannot_grant_coreml_or_signing_approval(self):
+        from research.llm.structured_output import ProposalResponse
+
+        fields = set(ProposalResponse.__dataclass_fields__)
+        assert "coreml_model_replacement_approved" not in fields
+        assert "signing_distribution_change_approved" not in fields
+        # but CAN describe the requirement:
+        assert "coreml_replacement_required" in fields
+        assert "signing_distribution_change_required" in fields
+
+    def test_build_proposal_never_sets_coreml_or_signing_approval(self):
+        from research.dry_run.pipeline import _build_proposal
+
+        pr = ProposalResponse(
+            selected_problem="p", selection_rationale="r", title="t", family="threshold_postprocessing",
+            research_question="rq", hypothesis="h", motivation="m",
+            independent_variables=["x"], dependent_variables=["person.recall"],
+            control_condition="c", baseline_comparison="bc", success_criteria={"primary_metric": "person.recall"},
+            supports_hypothesis_if="s", rejects_hypothesis_if="r2", inconclusive_if="i",
+            coreml_replacement_required=True, signing_distribution_change_required=True,
+        )
+        proposal = _build_proposal(pr, "EXP-9001", "RUN-20260904-002")
+        assert proposal.coreml_replacement_required is True  # requirement preserved
+        assert proposal.coreml_model_replacement_approved is False  # approval never granted
+        assert proposal.signing_distribution_change_required is True
+        assert proposal.signing_distribution_change_approved is False
+
+    def test_approving_coreml_makes_it_queue_eligible(self):
+        proposal = _proposal(coreml_replacement_required=True, coreml_model_replacement_approved=True)
+        result = validate(ExperimentSpec(proposal=proposal))
+        assert is_queue_eligible(result) is True
+
+
 class TestGenuineInvalidityStillRejects:
     def test_missing_control_condition_is_a_real_error(self):
         proposal = _proposal(control_condition="")
@@ -176,3 +229,78 @@ class TestMissingApprovalNeverMasqueradesAsInvalidity:
         assert "UNAPPROVED_MAC_IPHONE_DEPLOYMENT" not in error_codes
         assert "UNAPPROVED_PRODUCTION_IMPACT" not in error_codes
         assert result.is_valid is True
+
+
+class TestRejectedHypothesisAcknowledgmentArchitecture:
+    """Phase-I CANDIDATE-0002 admission-boundary audit finding A: the
+    acknowledgment mechanism (research/experiment_validator.py's
+    UNACKNOWLEDGED_REJECTED_HYPOTHESIS check) was audited and DELIBERATELY
+    KEPT as-is -- acknowledges_rejected_hypothesis_ids remains LLM_SUPPLIED,
+    a genuine research-integrity judgment, never satisfiable by citing the
+    same id in prior_experiment_ids/evidence_references alone (that would
+    let ANY proposal that merely cites prior work as background -- normal,
+    encouraged practice -- silently satisfy acknowledgment of a REJECTED
+    direction it may just be quietly repeating). See
+    reports/phase_i/PHASE_I_ADMISSION_BOUNDARY_AUDIT.md for the full
+    reasoning. These tests prove the (unchanged) mechanism still behaves
+    correctly under both a genuine repeat and a genuinely-acknowledged
+    materially-new proposal."""
+
+    def test_citing_rejected_exp_id_in_prior_experiment_ids_alone_does_not_acknowledge(self):
+        """CANDIDATE-0002's exact failure mode: EXP-0005/MEM-0014 cited in
+        prior_experiment_ids/evidence_references, but NOT in
+        acknowledges_rejected_hypothesis_ids -- must still be flagged as
+        unacknowledged. Proves the fix did NOT broaden the acknowledged-set
+        to include those fields."""
+        proposal = _proposal(
+            family="model_variant",
+            independent_variables=("model checkpoint/architecture",),  # overlaps EXP-0005/MEM-0014
+            prior_experiment_ids=("EXP-0005",),
+            evidence_references=(),
+            acknowledges_rejected_hypothesis_ids=(),  # NOT populated -- the actual CANDIDATE-0002 gap
+            materially_new_rationale="",
+        )
+        result = validate(ExperimentSpec(proposal=proposal))
+        assert any(i.code == "UNACKNOWLEDGED_REJECTED_HYPOTHESIS" for i in result.errors)
+        assert result.is_valid is False
+
+    def test_genuine_repeat_with_only_rationale_no_id_still_rejects(self):
+        """A materially_new_rationale alone, without the explicit id in
+        acknowledges_rejected_hypothesis_ids, is NOT sufficient -- this is
+        the deliberate design choice (Option A), not a bug."""
+        proposal = _proposal(
+            family="model_variant",
+            independent_variables=("model checkpoint/architecture",),
+            acknowledges_rejected_hypothesis_ids=(),
+            materially_new_rationale="This is totally different, trust me.",
+        )
+        result = validate(ExperimentSpec(proposal=proposal))
+        assert any(i.code == "UNACKNOWLEDGED_REJECTED_HYPOTHESIS" for i in result.errors)
+
+    def test_explicit_acknowledgment_with_rationale_passes(self):
+        """The correct way to satisfy this gate -- explicit id AND a
+        substantive rationale -- still works exactly as designed."""
+        proposal = _proposal(
+            family="model_variant",
+            independent_variables=("model checkpoint/architecture",),
+            acknowledges_rejected_hypothesis_ids=("EXP-0005",),
+            materially_new_rationale="Unlike EXP-0005's architecture-only comparison, this combines "
+                                     "a checkpoint shift with a preprocessing transform to target a "
+                                     "different failure subset.",
+        )
+        result = validate(ExperimentSpec(proposal=proposal))
+        assert not any(i.code == "UNACKNOWLEDGED_REJECTED_HYPOTHESIS" for i in result.errors)
+        assert not any(i.code == "MISSING_MATERIALLY_NEW_RATIONALE" for i in result.errors)
+
+    def test_acknowledged_id_without_rationale_still_rejects(self):
+        """Listing the id alone, with an EMPTY rationale, is also
+        insufficient -- both are required, acknowledgment is never reduced
+        to a bare ID-matching exercise."""
+        proposal = _proposal(
+            family="model_variant",
+            independent_variables=("model checkpoint/architecture",),
+            acknowledges_rejected_hypothesis_ids=("EXP-0005",),
+            materially_new_rationale="",
+        )
+        result = validate(ExperimentSpec(proposal=proposal))
+        assert any(i.code == "MISSING_MATERIALLY_NEW_RATIONALE" for i in result.errors)

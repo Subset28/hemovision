@@ -12,6 +12,7 @@ import pytest
 from research.db import OmniLabDB
 from research.dry_run.budget import DryRunBudgetExceededError, DryRunCallBudget
 from research.dry_run.pipeline import render_report, run_dry_run_cycle, write_artifacts
+from research.experiment_validator import is_queue_eligible
 from research.llm.base import ErrorCategory, LLMProvider, LLMResponse, LLMUnavailableError, RunBudget
 from research.llm.router import LLMRouter
 from research.llm.structured_output import ValidationError
@@ -416,18 +417,26 @@ class TestCallBudget:
 
 class TestLocalValidationAuthoritative:
     def test_reviewer_says_great_but_local_validator_disagrees(self):
-        """Proposal has mac_iphone_required=False while its family
-        (temporal_pipeline) requires REQUIRES_IPHONE per the registry — the
-        deterministic validator must flag this as an ERROR even though the
-        mocked reviewer enthusiastically says everything is fine."""
+        """Proposal claims mac_iphone_required=False, but its family
+        (temporal_pipeline) deterministically requires eventual device
+        validation per the registry (Phase-I CANDIDATE-0002 fix:
+        _family_requires_mac_iphone overrides the LLM's own claim) -- so
+        the built proposal ends up mac_iphone_required=True regardless,
+        correctly triggering NEEDS_HUMAN_APPROVAL (not an ERROR -- the
+        proposal itself is still structurally/scientifically sound) and
+        blocking queue eligibility, even though the mocked reviewer
+        enthusiastically says everything is fine. The deterministic
+        validator remains authoritative over reviewer opinion either way."""
         router = _router([
             _proposal_json(mac_iphone_required=False),
             _review_json(worth_running=True, scientific_validity_assessment="looks great, definitely valid"),
         ])
         result = run_dry_run_cycle(router=router, authorized=True, dry_run_budget=DryRunCallBudget(3))
         assert result.reviewer_critique.worth_running is True
-        assert result.final_validation.is_valid is False
-        assert any(i.code == "MAC_IPHONE_REQUIRED_MISMATCH" for i in result.final_validation.errors)
+        assert result.proposal.mac_iphone_required is True  # deterministic floor applied
+        assert result.final_validation.is_valid is True  # structurally/scientifically fine
+        assert not is_queue_eligible(result.final_validation)  # but not queue-eligible
+        assert any(i.code == "UNAPPROVED_MAC_IPHONE_DEPLOYMENT" for i in result.final_validation.needs_human_approval)
 
 
 # ---------------------------------------------------------------------------
